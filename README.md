@@ -1,2 +1,2 @@
 # Khebooth
-Logiciel de prise et partage de vidéos.
+Plateforme photobooth 360 web + applications mobiles et tablettes 
