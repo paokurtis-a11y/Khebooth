@@ -15,7 +15,7 @@ suite('Organization isolation (e2e)', () => {
   let organizationBId: string;
 
   beforeAll(async () => {
-    process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
+    process.env.DATABASE_URL = process.env.TEST_DATABASE_URL!;
     process.env.JWT_SECRET = 'integration-test-secret-change-outside-tests';
     process.env.JWT_EXPIRES_IN_SECONDS = '3600';
 
