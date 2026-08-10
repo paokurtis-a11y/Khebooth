@@ -1,7 +1,7 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 import { UserRole } from '@prisma/client';
-import * as argon2 from 'argon2';
 import request from 'supertest';
 import { PrismaService } from '../src/prisma/prisma.service';
 
@@ -12,8 +12,11 @@ const foreignClientId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 suite('Organization isolation (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
+  let jwt: JwtService;
   let organizationAId: string;
   let organizationBId: string;
+  let userAId: string;
+  let userAEmail: string;
 
   beforeAll(async () => {
     process.env.DATABASE_URL = process.env.TEST_DATABASE_URL!;
@@ -34,20 +37,23 @@ suite('Organization isolation (e2e)', () => {
     await app.init();
 
     prisma = app.get(PrismaService);
+    jwt = app.get(JwtService);
 
     const organizationA = await prisma.organization.create({ data: { name: 'Organization A' } });
     const organizationB = await prisma.organization.create({ data: { name: 'Organization B' } });
     organizationAId = organizationA.id;
     organizationBId = organizationB.id;
+    userAEmail = `owner-a-${organizationA.id}@example.test`;
 
-    await prisma.user.create({
+    const userA = await prisma.user.create({
       data: {
         organizationId: organizationA.id,
-        email: `owner-a-${organizationA.id}@example.test`,
-        passwordHash: await argon2.hash('correct-password'),
+        email: userAEmail,
+        passwordHash: 'not-used-by-this-isolation-test',
         role: UserRole.OWNER,
       },
     });
+    userAId = userA.id;
 
     await prisma.client.create({
       data: {
@@ -69,18 +75,16 @@ suite('Organization isolation (e2e)', () => {
   });
 
   it('returns 404 when Organization A requests a client owned by Organization B', async () => {
-    const email = `owner-a-${organizationAId}@example.test`;
-    const login = await request(app.getHttpServer())
-      .post('/auth/login')
-      .send({ email, password: 'correct-password' });
-
-    if (login.status !== 201) {
-      throw new Error(`Login failed with ${login.status}: ${JSON.stringify(login.body)}`);
-    }
+    const accessToken = await jwt.signAsync({
+      sub: userAId,
+      organizationId: organizationAId,
+      email: userAEmail,
+      role: UserRole.OWNER,
+    });
 
     const response = await request(app.getHttpServer())
       .get(`/clients/${foreignClientId}`)
-      .set('Authorization', `Bearer ${login.body.accessToken as string}`);
+      .set('Authorization', `Bearer ${accessToken}`);
 
     if (response.status !== 404) {
       throw new Error(`Cross-org request returned ${response.status}: ${JSON.stringify(response.body)}`);
