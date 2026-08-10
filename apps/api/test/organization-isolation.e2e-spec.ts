@@ -72,12 +72,20 @@ suite('Organization isolation (e2e)', () => {
     const email = `owner-a-${organizationAId}@example.test`;
     const login = await request(app.getHttpServer())
       .post('/auth/login')
-      .send({ email, password: 'correct-password' })
-      .expect(201);
+      .send({ email, password: 'correct-password' });
 
-    await request(app.getHttpServer())
+    if (login.status !== 201) {
+      throw new Error(`Login failed with ${login.status}: ${JSON.stringify(login.body)}`);
+    }
+
+    const response = await request(app.getHttpServer())
       .get(`/clients/${foreignClientId}`)
-      .set('Authorization', `Bearer ${login.body.accessToken as string}`)
-      .expect(404);
+      .set('Authorization', `Bearer ${login.body.accessToken as string}`);
+
+    if (response.status !== 404) {
+      throw new Error(`Cross-org request returned ${response.status}: ${JSON.stringify(response.body)}`);
+    }
+
+    expect(response.body).toMatchObject({ statusCode: 404 });
   });
 });
