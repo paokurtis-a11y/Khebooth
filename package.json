@@ -15,7 +15,8 @@
     "seed": "pnpm --filter @khe/api exec ts-node prisma.seed.ts"
   },
   "devDependencies": {
-    "prisma": "^6.1.0",
+    "@prisma/client": "6.19.3",
+    "prisma": "6.19.3",
     "typescript": "^5.7.2"
   }
 }
