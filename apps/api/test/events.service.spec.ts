@@ -85,7 +85,7 @@ describe('EventsService activation and manifest', () => {
       metadata: null,
       createdAt: new Date(),
     });
-    jest.spyOn(prisma, '$transaction').mockImplementation(async (operations) => Promise.all(operations));
+    jest.spyOn(prisma, '$transaction').mockResolvedValue([] as never);
 
     const before = Date.now();
     const result = await service.activate(organizationId, userId, eventId);
@@ -115,6 +115,8 @@ describe('EventsService activation and manifest', () => {
     jest.spyOn(prisma.organization, 'findUnique').mockResolvedValue({
       id: organizationId,
       name: 'Kurtis Hypnotic Events',
+      createdAt: new Date(),
+      updatedAt: new Date(),
     });
 
     const manifest = await service.manifest(organizationId, eventId);
