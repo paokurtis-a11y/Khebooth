@@ -7,6 +7,7 @@ import { PrismaService } from '../src/prisma/prisma.service';
 
 const integrationEnabled = Boolean(process.env.TEST_DATABASE_URL);
 const suite = integrationEnabled ? describe : describe.skip;
+const foreignClientId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 
 suite('Organization isolation (e2e)', () => {
   let app: INestApplication;
@@ -50,7 +51,7 @@ suite('Organization isolation (e2e)', () => {
 
     await prisma.client.create({
       data: {
-        id: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
+        id: foreignClientId,
         organizationId: organizationB.id,
         name: 'Private client B',
       },
@@ -75,7 +76,7 @@ suite('Organization isolation (e2e)', () => {
       .expect(201);
 
     await request(app.getHttpServer())
-      .get('/clients/cccccccc-cccc-cccc-cccc-cccccccccccc')
+      .get(`/clients/${foreignClientId}`)
       .set('Authorization', `Bearer ${login.body.accessToken as string}`)
       .expect(404);
   });
