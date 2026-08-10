@@ -8,6 +8,25 @@ import { apiRequest } from '@/lib/api';
 type Client = { id: string; name: string };
 type EventItem = { id: string; name: string; startsAt: string; status: string; venueName?: string | null };
 
+function EventTable({ items, emptyMessage }: Readonly<{ items: EventItem[]; emptyMessage: string }>) {
+  if (items.length === 0) return <div className="empty">{emptyMessage}</div>;
+  return (
+    <table className="table">
+      <thead><tr><th>Événement</th><th>Date</th><th>Lieu</th><th>Statut</th></tr></thead>
+      <tbody>
+        {items.slice(0, 5).map((event) => (
+          <tr key={event.id}>
+            <td>{event.name}</td>
+            <td>{new Date(event.startsAt).toLocaleString('fr-CH')}</td>
+            <td>{event.venueName ?? '—'}</td>
+            <td>{event.status}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 export default function DashboardPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [events, setEvents] = useState<EventItem[]>([]);
@@ -22,7 +41,9 @@ export default function DashboardPage() {
       .catch((caught) => setError(caught instanceof Error ? caught.message : 'Chargement impossible'));
   }, []);
 
-  const upcoming = events.filter((event) => new Date(event.startsAt).getTime() >= Date.now());
+  const now = Date.now();
+  const upcoming = events.filter((event) => new Date(event.startsAt).getTime() >= now);
+  const recent = events.filter((event) => new Date(event.startsAt).getTime() < now);
 
   return (
     <PortalShell>
@@ -38,11 +59,11 @@ export default function DashboardPage() {
       </section>
       <section className="card" style={{ marginTop: 20 }}>
         <div className="header" style={{ marginBottom: 12 }}><div><h1 style={{ fontSize: 20 }}>Prochains événements</h1></div><Link href="/events" className="muted">Tout voir</Link></div>
-        {upcoming.length === 0 ? <div className="empty">Aucun événement à venir.</div> : (
-          <table className="table"><thead><tr><th>Événement</th><th>Date</th><th>Lieu</th><th>Statut</th></tr></thead><tbody>
-            {upcoming.slice(0, 5).map((event) => <tr key={event.id}><td>{event.name}</td><td>{new Date(event.startsAt).toLocaleString('fr-CH')}</td><td>{event.venueName ?? '—'}</td><td>{event.status}</td></tr>)}
-          </tbody></table>
-        )}
+        <EventTable items={upcoming} emptyMessage="Aucun événement à venir." />
+      </section>
+      <section className="card" style={{ marginTop: 20 }}>
+        <div className="header" style={{ marginBottom: 12 }}><div><h1 style={{ fontSize: 20 }}>Événements récents</h1></div><Link href="/events" className="muted">Tout voir</Link></div>
+        <EventTable items={recent} emptyMessage="Aucun événement récent." />
       </section>
     </PortalShell>
   );
