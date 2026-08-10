@@ -1,12 +1,13 @@
 name: Phase 1 CI
 
 on:
-  push:
-    branches:
-      - agent/phase-1-foundation
   pull_request:
     branches:
       - main
+
+concurrency:
+  group: phase1-ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   validate:
