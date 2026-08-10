@@ -44,7 +44,7 @@ model User {
   id             String       @id @default(uuid()) @db.Uuid
   organizationId String       @db.Uuid
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  email          String
+  email          String       @unique
   passwordHash   String
   firstName      String?
   lastName       String?
@@ -54,7 +54,6 @@ model User {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
-  @@unique([organizationId, email])
   @@index([organizationId])
 }
 
