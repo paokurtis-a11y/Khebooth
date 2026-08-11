@@ -48,3 +48,13 @@ export interface EventManifestContract {
     formats: AspectRatio[];
   };
 }
+
+export interface CaptureStationActivationRequestContract {
+  code: string;
+}
+
+export interface CaptureStationActivationResponseContract {
+  stationToken: string;
+  manifest: EventManifestContract;
+  activatedAt: string | Date;
+}
