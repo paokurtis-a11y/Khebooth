@@ -7,6 +7,7 @@
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
+      "requireFullScreen": true,
       "bundleIdentifier": "ch.kurtishypnotic.khebooth.capture",
       "config": {
         "usesNonExemptEncryption": false
@@ -16,7 +17,22 @@
       "package": "ch.kurtishypnotic.khebooth.capture"
     },
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "KHE Booth utilise la caméra pour enregistrer les vidéos du photobooth.",
+          "microphonePermission": "KHE Booth utilise le microphone pour enregistrer le son des vidéos.",
+          "recordAudioAndroid": true,
+          "barcodeScannerEnabled": false
+        }
+      ],
+      [
+        "expo-screen-orientation",
+        {
+          "initialOrientation": "PORTRAIT_UP"
+        }
+      ]
     ]
   }
 }
