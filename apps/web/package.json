@@ -1,6 +1,7 @@
 {
   "name": "@khe/web",
   "private": true,
+  "packageManager": "pnpm@10.6.2",
   "engines": {
     "node": "22.x"
   },
