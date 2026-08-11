@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { PortalShell } from '@/components/portal-shell';
-import { apiRequest } from '@/lib/api';
+import { apiRequest, getSessionUser } from '@/lib/api';
 
 type ClientItem = { id: string; name: string };
 type PresetItem = { id: string; name: string; aspectRatio: string };
@@ -58,6 +58,7 @@ export default function EventDetailPage() {
   const [status, setStatus] = useState('DRAFT');
   const [activation, setActivation] = useState<Activation | null>(null);
   const [manifest, setManifest] = useState<Manifest | null>(null);
+  const [canDelete, setCanDelete] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -87,7 +88,11 @@ export default function EventDetailPage() {
     }
   }, [id]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    const role = getSessionUser()?.role;
+    setCanDelete(role === 'OWNER' || role === 'ADMIN');
+    void load();
+  }, [load]);
 
   async function save(eventForm: FormEvent<HTMLFormElement>) {
     eventForm.preventDefault();
@@ -145,7 +150,7 @@ export default function EventDetailPage() {
   }
 
   async function remove() {
-    if (!window.confirm('Supprimer définitivement cet événement ?')) return;
+    if (!canDelete || !window.confirm('Supprimer définitivement cet événement ?')) return;
     setSubmitting(true);
     setError('');
     try {
@@ -203,7 +208,7 @@ export default function EventDetailPage() {
             <div className="field"><label htmlFor="status">Statut</label><select id="status" value={status} onChange={(e) => setStatus(e.target.value)}><option value="DRAFT">DRAFT</option><option value="READY">READY</option><option value="ACTIVE">ACTIVE</option><option value="COMPLETED">COMPLETED</option><option value="ARCHIVED">ARCHIVED</option></select></div>
             <div className="toolbar">
               <button className="button" disabled={submitting}>{submitting ? 'Enregistrement…' : 'Enregistrer'}</button>
-              <button className="button danger" type="button" disabled={submitting} onClick={() => void remove()}>Supprimer</button>
+              {canDelete ? <button className="button danger" type="button" disabled={submitting} onClick={() => void remove()}>Supprimer</button> : null}
             </div>
           </form>
         </section>
