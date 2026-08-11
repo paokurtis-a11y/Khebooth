@@ -27,17 +27,39 @@ enum AspectRatio {
   SQUARE_1_1
 }
 
+enum StationMode {
+  CAPTURE
+  SHARING
+}
+
+enum MediaSyncState {
+  QUEUED
+  UPLOADING
+  SYNCED
+  FAILED
+}
+
+enum UploadState {
+  INITIALIZED
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
 model Organization {
-  id          String            @id @default(uuid()) @db.Uuid
-  name        String
-  users       User[]
-  clients     Client[]
-  events      Event[]
-  presets     Preset[]
-  activations EventActivation[]
-  auditLogs   AuditLog[]
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  id              String            @id @default(uuid()) @db.Uuid
+  name            String
+  users           User[]
+  clients         Client[]
+  events          Event[]
+  presets         Preset[]
+  activations     EventActivation[]
+  auditLogs       AuditLog[]
+  devices         Device[]
+  stationSessions StationSession[]
+  mediaAssets     MediaAsset[]
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
 }
 
 model User {
@@ -63,7 +85,7 @@ model Client {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   name           String
   email          String?
-  phone          String?
+  phone           String?
   companyName    String?
   notes          String?
   events         Event[]
@@ -75,23 +97,25 @@ model Client {
 }
 
 model Event {
-  id             String            @id @default(uuid()) @db.Uuid
-  organizationId String            @db.Uuid
-  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  clientId       String?           @db.Uuid
-  client         Client?           @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  presetId       String?           @db.Uuid
-  preset         Preset?           @relation(fields: [presetId], references: [id], onDelete: SetNull)
-  name           String
-  description    String?
-  startsAt       DateTime
-  endsAt         DateTime?
-  venueName      String?
-  venueAddress   String?
-  status         EventStatus       @default(DRAFT)
-  activations    EventActivation[]
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
+  id              String            @id @default(uuid()) @db.Uuid
+  organizationId  String            @db.Uuid
+  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clientId        String?           @db.Uuid
+  client          Client?           @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  presetId        String?           @db.Uuid
+  preset          Preset?           @relation(fields: [presetId], references: [id], onDelete: SetNull)
+  name            String
+  description     String?
+  startsAt        DateTime
+  endsAt          DateTime?
+  venueName       String?
+  venueAddress    String?
+  status          EventStatus       @default(DRAFT)
+  activations     EventActivation[]
+  stationSessions StationSession[]
+  mediaAssets     MediaAsset[]
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
 
   @@index([organizationId])
   @@index([organizationId, startsAt])
@@ -113,19 +137,100 @@ model Preset {
 }
 
 model EventActivation {
-  id             String       @id @default(uuid()) @db.Uuid
-  organizationId String       @db.Uuid
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  eventId        String       @db.Uuid
-  event          Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  codeHash       String
-  expiresAt      DateTime
-  usedAt         DateTime?
-  revokedAt      DateTime?
-  createdAt      DateTime     @default(now())
+  id              String            @id @default(uuid()) @db.Uuid
+  organizationId  String            @db.Uuid
+  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  eventId         String            @db.Uuid
+  event           Event             @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  codeHash        String
+  expiresAt       DateTime
+  usedAt          DateTime?
+  revokedAt       DateTime?
+  stationSessions StationSession[]
+  createdAt       DateTime          @default(now())
 
   @@index([organizationId, eventId])
   @@index([expiresAt])
+}
+
+model Device {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @db.Uuid
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  installationId String
+  name           String?
+  platform       String?
+  lastSeenAt     DateTime         @default(now())
+  revokedAt      DateTime?
+  sessions       StationSession[]
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@unique([organizationId, installationId])
+  @@index([organizationId])
+}
+
+model StationSession {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @db.Uuid
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  eventId        String           @db.Uuid
+  event          Event            @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  deviceId       String           @db.Uuid
+  device         Device           @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  activationId   String?          @db.Uuid
+  activation     EventActivation? @relation(fields: [activationId], references: [id], onDelete: SetNull)
+  mode           StationMode
+  expiresAt      DateTime
+  revokedAt      DateTime?
+  lastSeenAt     DateTime         @default(now())
+  mediaAssets    MediaAsset[]
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@unique([activationId, mode])
+  @@index([organizationId, eventId])
+  @@index([deviceId])
+  @@index([expiresAt])
+}
+
+model MediaAsset {
+  id                     String           @id @default(uuid()) @db.Uuid
+  organizationId         String           @db.Uuid
+  organization           Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  eventId                String           @db.Uuid
+  event                   Event            @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  createdBySessionId      String           @db.Uuid
+  createdBySession        StationSession   @relation(fields: [createdBySessionId], references: [id], onDelete: Restrict)
+  localId                 String
+  idempotencyKey          String
+  contentHash             String
+  byteSize                Int
+  mimeType                String
+  syncState               MediaSyncState   @default(QUEUED)
+  capturedAt              DateTime?
+  acknowledgedAt          DateTime?
+  uploadSession           UploadSession?
+  createdAt               DateTime         @default(now())
+  updatedAt               DateTime         @updatedAt
+
+  @@unique([organizationId, localId])
+  @@unique([organizationId, idempotencyKey])
+  @@index([organizationId, eventId, createdAt])
+  @@index([createdBySessionId])
+}
+
+model UploadSession {
+  id            String       @id @default(uuid()) @db.Uuid
+  mediaAssetId  String       @unique @db.Uuid
+  mediaAsset    MediaAsset   @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade)
+  state         UploadState  @default(INITIALIZED)
+  uploadedBytes Int          @default(0)
+  totalBytes    Int
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([state])
 }
 
 model AuditLog {
