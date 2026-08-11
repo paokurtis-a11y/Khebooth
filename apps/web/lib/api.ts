@@ -1,6 +1,11 @@
 'use client';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api';
+const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
+const API_URL = configuredApiUrl
+  ? configuredApiUrl.replace(/\/$/, '')
+  : process.env.NODE_ENV === 'production'
+    ? 'https://khebooth-api.vercel.app/api'
+    : 'http://localhost:3001/api';
 const TOKEN_KEY = 'khe_booth_access_token';
 const USER_KEY = 'khe_booth_user';
 
