@@ -3,15 +3,20 @@
   "private": true,
   "packageManager": "pnpm@9.15.4",
   "scripts": {
-    "dev": "pnpm -r --parallel dev",
-    "lint": "pnpm -r lint",
-    "test": "pnpm -r test",
-    "build": "pnpm -r build",
+    "dev": "pnpm -r --parallel --if-present dev",
+    "lint": "pnpm -r --if-present lint",
+    "test": "pnpm -r --if-present test",
+    "build": "pnpm -r --if-present build",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev"
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:seed": "pnpm --filter @khe/api exec ts-node prisma.seed.ts"
+  },
+  "prisma": {
+    "seed": "pnpm --filter @khe/api exec ts-node prisma.seed.ts"
   },
   "devDependencies": {
-    "prisma": "^6.1.0",
+    "@prisma/client": "6.19.3",
+    "prisma": "6.19.3",
     "typescript": "^5.7.2"
   }
 }

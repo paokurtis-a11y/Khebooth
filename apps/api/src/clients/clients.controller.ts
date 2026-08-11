@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { UserRole } from '@prisma/client';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -20,7 +20,7 @@ export class ClientsController {
   }
 
   @Get(':id')
-  get(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+  get(@CurrentUser() user: AuthenticatedUser, @Param('id', new ParseUUIDPipe()) id: string) {
     return this.clients.get(user.organizationId, id);
   }
 
@@ -32,13 +32,17 @@ export class ClientsController {
 
   @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.OPERATOR)
   @Patch(':id')
-  update(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpdateClientDto) {
+  update(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: UpdateClientDto,
+  ) {
     return this.clients.update(user.organizationId, user.id, id, dto);
   }
 
   @Roles(UserRole.OWNER, UserRole.ADMIN)
   @Delete(':id')
-  remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+  remove(@CurrentUser() user: AuthenticatedUser, @Param('id', new ParseUUIDPipe()) id: string) {
     return this.clients.remove(user.organizationId, user.id, id);
   }
 }

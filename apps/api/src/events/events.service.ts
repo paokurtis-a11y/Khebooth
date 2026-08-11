@@ -106,7 +106,7 @@ export class EventsService {
       select: { id: true, name: true },
     });
     return {
-      version: 1,
+      version: 1 as const,
       event: {
         id: event.id,
         name: event.name,
@@ -116,12 +116,19 @@ export class EventsService {
         venueAddress: event.venueAddress,
         status: event.status,
       },
-      preset: event.preset,
+      preset: event.preset
+        ? {
+            id: event.preset.id,
+            name: event.preset.name,
+            aspectRatio: event.preset.aspectRatio,
+            configuration: event.preset.configuration,
+          }
+        : null,
       organization,
       capabilities: {
-        capture: true,
-        sharing: true,
-        formats: ['9:16', '1:1'],
+        capture: true as const,
+        sharing: true as const,
+        formats: ['9:16', '1:1'] as const,
       },
     };
   }

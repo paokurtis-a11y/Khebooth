@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePresetDto } from './dto/create-preset.dto';
 import { UpdatePresetDto } from './dto/update-preset.dto';
@@ -23,7 +24,7 @@ export class PresetsService {
         organizationId,
         name: dto.name,
         aspectRatio: dto.aspectRatio,
-        configuration: dto.configuration ?? {},
+        configuration: (dto.configuration ?? {}) as Prisma.InputJsonValue,
       },
     });
     await this.audit(organizationId, userId, 'PRESET_CREATED', preset.id);
@@ -32,7 +33,16 @@ export class PresetsService {
 
   async update(organizationId: string, userId: string, id: string, dto: UpdatePresetDto) {
     await this.get(organizationId, id);
-    const preset = await this.prisma.preset.update({ where: { id }, data: dto });
+
+    const data: Prisma.PresetUpdateInput = {
+      ...(dto.name !== undefined ? { name: dto.name } : {}),
+      ...(dto.aspectRatio !== undefined ? { aspectRatio: dto.aspectRatio } : {}),
+      ...(dto.configuration !== undefined
+        ? { configuration: dto.configuration as Prisma.InputJsonValue }
+        : {}),
+    };
+
+    const preset = await this.prisma.preset.update({ where: { id }, data });
     await this.audit(organizationId, userId, 'PRESET_UPDATED', id);
     return preset;
   }
