@@ -1,9 +1,13 @@
 {
   "name": "@khe/api",
   "private": true,
+  "engines": { "node": "22.x" },
   "scripts": {
     "dev": "nest start --watch",
-    "build": "nest build",
+    "start": "node dist/main.js",
+    "build": "prisma generate && nest build",
+    "postinstall": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
     "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\"",
     "test": "jest --runInBand && jest --config ./test/jest-e2e.json --runInBand",
     "test:unit": "jest --runInBand",
@@ -22,6 +26,7 @@
     "class-validator": "^0.14.1",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
+    "prisma": "^6.1.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
   },
