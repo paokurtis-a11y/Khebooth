@@ -2,6 +2,9 @@
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api';
 const TOKEN_KEY = 'khe_booth_access_token';
+const USER_KEY = 'khe_booth_user';
+
+export type SessionUser = { id: string; email: string; role: string };
 
 export function getAccessToken() {
   if (typeof window === 'undefined') return null;
@@ -12,8 +15,25 @@ export function setAccessToken(token: string) {
   window.localStorage.setItem(TOKEN_KEY, token);
 }
 
+export function getSessionUser(): SessionUser | null {
+  if (typeof window === 'undefined') return null;
+  const raw = window.localStorage.getItem(USER_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as SessionUser;
+  } catch {
+    window.localStorage.removeItem(USER_KEY);
+    return null;
+  }
+}
+
+export function setSessionUser(user: SessionUser) {
+  window.localStorage.setItem(USER_KEY, JSON.stringify(user));
+}
+
 export function clearAccessToken() {
   window.localStorage.removeItem(TOKEN_KEY);
+  window.localStorage.removeItem(USER_KEY);
 }
 
 export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
