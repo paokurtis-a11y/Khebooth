@@ -10,7 +10,11 @@ if (!jwtSecret) {
   throw new Error('JWT_SECRET is required');
 }
 
-const jwtExpiresInSeconds = Number(process.env.JWT_EXPIRES_IN_SECONDS ?? 43200);
+const rawJwtExpiresInSeconds = process.env.JWT_EXPIRES_IN_SECONDS?.trim();
+const jwtExpiresInSeconds = rawJwtExpiresInSeconds
+  ? Number(rawJwtExpiresInSeconds)
+  : 43200;
+
 if (!Number.isFinite(jwtExpiresInSeconds) || jwtExpiresInSeconds <= 0) {
   throw new Error('JWT_EXPIRES_IN_SECONDS must be a positive number');
 }
