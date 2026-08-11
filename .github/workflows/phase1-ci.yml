@@ -1,12 +1,10 @@
-name: Phase 1 CI
+name: KHE Booth CI
 
 on:
   pull_request:
-    branches:
-      - main
 
 concurrency:
-  group: phase1-ci-${{ github.event.pull_request.number }}
+  group: khe-booth-ci-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
@@ -30,8 +28,9 @@ jobs:
     env:
       DATABASE_URL: postgresql://khe:khe@localhost:5432/khe_booth_test?schema=public
       TEST_DATABASE_URL: postgresql://khe:khe@localhost:5432/khe_booth_test?schema=public
-      JWT_SECRET: phase1-ci-secret-not-for-production
+      JWT_SECRET: ci-secret-not-for-production
       JWT_EXPIRES_IN_SECONDS: 3600
+      STATION_TOKEN_EXPIRES_IN_SECONDS: 604800
 
     steps:
       - name: Checkout
