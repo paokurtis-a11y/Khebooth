@@ -1,7 +1,10 @@
 {
   "name": "khe-booth",
   "private": true,
-  "packageManager": "pnpm@9.15.4",
+  "packageManager": "pnpm@10.6.2",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "pnpm -r --parallel --if-present dev",
     "lint": "pnpm -r --if-present lint",
