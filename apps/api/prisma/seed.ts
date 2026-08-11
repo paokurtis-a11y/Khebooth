@@ -4,12 +4,14 @@ import * as argon2 from 'argon2';
 const prisma = new PrismaClient();
 
 async function main() {
-  const organizationName = process.env.SEED_ORG_NAME;
+  const organizationName = process.env.SEED_ORGANIZATION_NAME;
   const email = process.env.SEED_OWNER_EMAIL?.trim().toLowerCase();
   const password = process.env.SEED_OWNER_PASSWORD;
 
   if (!organizationName || !email || !password) {
-    throw new Error('SEED_ORG_NAME, SEED_OWNER_EMAIL and SEED_OWNER_PASSWORD are required');
+    throw new Error(
+      'SEED_ORGANIZATION_NAME, SEED_OWNER_EMAIL and SEED_OWNER_PASSWORD are required',
+    );
   }
 
   const passwordHash = await argon2.hash(password);
