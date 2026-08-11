@@ -5,19 +5,19 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
 
-const jwtSecret = process.env.JWT_SECRET;
+const jwtSecret = process.env.JWT_SECRET?.trim();
 if (!jwtSecret) {
   throw new Error('JWT_SECRET is required');
 }
 
 const rawJwtExpiresInSeconds = process.env.JWT_EXPIRES_IN_SECONDS?.trim();
-const jwtExpiresInSeconds = rawJwtExpiresInSeconds
-  ? Number(rawJwtExpiresInSeconds)
-  : 43200;
-
-if (!Number.isFinite(jwtExpiresInSeconds) || jwtExpiresInSeconds <= 0) {
-  throw new Error('JWT_EXPIRES_IN_SECONDS must be a positive number');
-}
+const parsedJwtExpiresInSeconds = rawJwtExpiresInSeconds
+  ? Number.parseInt(rawJwtExpiresInSeconds, 10)
+  : Number.NaN;
+const jwtExpiresInSeconds =
+  Number.isInteger(parsedJwtExpiresInSeconds) && parsedJwtExpiresInSeconds > 0
+    ? parsedJwtExpiresInSeconds
+    : 43200;
 
 @Module({
   imports: [
