@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { apiRequest, clearAccessToken, getAccessToken } from '@/lib/api';
+import { apiRequest, clearAccessToken, getAccessToken, setSessionUser } from '@/lib/api';
 
 type CurrentUser = {
   id: string;
@@ -24,7 +24,10 @@ export function PortalShell({ children }: Readonly<{ children: React.ReactNode }
     }
 
     apiRequest<CurrentUser>('/auth/me')
-      .then(setUser)
+      .then((currentUser) => {
+        setUser(currentUser);
+        setSessionUser(currentUser);
+      })
       .catch(() => {
         clearAccessToken();
         router.replace('/login');
@@ -40,6 +43,7 @@ export function PortalShell({ children }: Readonly<{ children: React.ReactNode }
     ['/dashboard', 'Dashboard'],
     ['/clients', 'Clients'],
     ['/events', 'Événements'],
+    ['/presets', 'Presets'],
     ['/events/new', 'Créer'],
   ] as const;
 
