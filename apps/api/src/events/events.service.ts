@@ -105,17 +105,28 @@ export class EventsService {
       where: { id: organizationId },
       select: { id: true, name: true },
     });
+
     return {
       version: 1 as const,
+      generatedAt: new Date(),
+      organization,
       event: {
         id: event.id,
         name: event.name,
+        description: event.description,
         startsAt: event.startsAt,
         endsAt: event.endsAt,
         venueName: event.venueName,
         venueAddress: event.venueAddress,
         status: event.status,
       },
+      client: event.client
+        ? {
+            id: event.client.id,
+            name: event.client.name,
+            companyName: event.client.companyName,
+          }
+        : null,
       preset: event.preset
         ? {
             id: event.preset.id,
@@ -124,11 +135,22 @@ export class EventsService {
             configuration: event.preset.configuration,
           }
         : null,
-      organization,
       capabilities: {
         capture: true as const,
         sharing: true as const,
+        separateStations: true as const,
         formats: ['9:16', '1:1'] as const,
+      },
+      mediaPolicy: {
+        offlineFirst: true as const,
+        preserveUnsyncedMedia: true as const,
+        idempotentUploads: true as const,
+        resumableUploads: true as const,
+        export: {
+          container: 'MP4' as const,
+          videoCodec: 'H.264' as const,
+          audioCodec: 'AAC' as const,
+        },
       },
     };
   }
