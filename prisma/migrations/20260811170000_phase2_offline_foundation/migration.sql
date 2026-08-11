@@ -61,6 +61,7 @@ CREATE TABLE "UploadSession" (
 
 CREATE UNIQUE INDEX "Device_organizationId_installationId_key" ON "Device"("organizationId", "installationId");
 CREATE INDEX "Device_organizationId_idx" ON "Device"("organizationId");
+CREATE UNIQUE INDEX "StationSession_activationId_mode_key" ON "StationSession"("activationId", "mode");
 CREATE INDEX "StationSession_organizationId_eventId_idx" ON "StationSession"("organizationId", "eventId");
 CREATE INDEX "StationSession_deviceId_idx" ON "StationSession"("deviceId");
 CREATE INDEX "StationSession_expiresAt_idx" ON "StationSession"("expiresAt");
