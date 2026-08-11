@@ -7,6 +7,15 @@ export type EventStatus = (typeof EVENT_STATUSES)[number];
 export const ASPECT_RATIOS = ['9:16', '1:1'] as const;
 export type AspectRatio = (typeof ASPECT_RATIOS)[number];
 
+export const STATION_MODES = ['CAPTURE', 'SHARING'] as const;
+export type StationMode = (typeof STATION_MODES)[number];
+
+export const MEDIA_SYNC_STATES = ['QUEUED', 'UPLOADING', 'SYNCED', 'FAILED'] as const;
+export type MediaSyncState = (typeof MEDIA_SYNC_STATES)[number];
+
+export const UPLOAD_STATES = ['INITIALIZED', 'IN_PROGRESS', 'COMPLETED', 'FAILED'] as const;
+export type UploadState = (typeof UPLOAD_STATES)[number];
+
 export interface AuthUserContract {
   id: string;
   organizationId: string;
@@ -23,6 +32,7 @@ export interface LoginResponseContract {
 
 export interface EventManifestContract {
   version: 1;
+  generatedAt: string | Date;
   event: {
     id: string;
     name: string;
@@ -32,6 +42,11 @@ export interface EventManifestContract {
     venueAddress: string | null;
     status: EventStatus;
   };
+  client: {
+    id: string;
+    name: string;
+    companyName: string | null;
+  } | null;
   preset: {
     id: string;
     name: string;
@@ -45,6 +60,73 @@ export interface EventManifestContract {
   capabilities: {
     capture: true;
     sharing: true;
+    separateStations: true;
     formats: AspectRatio[];
   };
+  mediaPolicy: {
+    offlineFirst: true;
+    preserveUnsyncedMedia: true;
+    idempotentUploads: true;
+    resumableUploads: true;
+    export: {
+      container: 'MP4';
+      videoCodec: 'H.264';
+      audioCodec: 'AAC';
+    };
+  };
+}
+
+export interface StationRedeemRequestContract {
+  eventId: string;
+  code: string;
+  installationId: string;
+  mode: StationMode;
+  deviceName?: string;
+  platform?: string;
+}
+
+export interface StationSessionContract {
+  id: string;
+  organizationId: string;
+  eventId: string;
+  deviceId: string;
+  mode: StationMode;
+  expiresAt: string | Date;
+}
+
+export interface StationRedeemResponseContract {
+  stationToken: string;
+  session: StationSessionContract;
+  manifest: EventManifestContract;
+}
+
+export interface SyntheticMediaCreateContract {
+  localId: string;
+  idempotencyKey: string;
+  contentHash: string;
+  byteSize: number;
+  mimeType: string;
+  capturedAt?: string | Date;
+}
+
+export interface MediaAssetContract {
+  id: string;
+  organizationId: string;
+  eventId: string;
+  localId: string;
+  contentHash: string;
+  byteSize: number;
+  mimeType: string;
+  syncState: MediaSyncState;
+  capturedAt: string | Date | null;
+  acknowledgedAt: string | Date | null;
+}
+
+export interface UploadSessionContract {
+  id: string;
+  mediaAssetId: string;
+  state: UploadState;
+  uploadedBytes: number;
+  totalBytes: number;
+  updatedAt: string | Date;
 }

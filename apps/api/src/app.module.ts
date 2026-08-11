@@ -5,8 +5,9 @@ import { EventsModule } from './events/events.module';
 import { HealthModule } from './health/health.module';
 import { PresetsModule } from './presets/presets.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { StationsModule } from './stations/stations.module';
 
 @Module({
-  imports: [PrismaModule, HealthModule, AuthModule, ClientsModule, EventsModule, PresetsModule],
+  imports: [PrismaModule, HealthModule, AuthModule, ClientsModule, EventsModule, PresetsModule, StationsModule],
 })
 export class AppModule {}
