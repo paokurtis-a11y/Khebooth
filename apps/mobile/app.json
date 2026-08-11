@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "KHE Booth Capture",
+    "slug": "khe-booth-capture",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "ch.kurtishypnotic.khebooth.capture",
+      "config": {
+        "usesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "ch.kurtishypnotic.khebooth.capture"
+    },
+    "plugins": [
+      "expo-secure-store"
+    ]
+  }
+}
