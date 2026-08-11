@@ -35,14 +35,16 @@ export default function EventsPage() {
       <section className="card">
         {events.length === 0 ? <div className="empty">Aucun événement enregistré.</div> : (
           <table className="table">
-            <thead><tr><th>Nom</th><th>Date</th><th>Lieu</th><th>Statut</th></tr></thead>
+            <thead><tr><th>Nom</th><th>Client</th><th>Date</th><th>Lieu</th><th>Statut</th><th></th></tr></thead>
             <tbody>
               {events.map((event) => (
                 <tr key={event.id}>
-                  <td>{event.name}</td>
+                  <td><Link className="table-link" href={`/events/${event.id}`}>{event.name}</Link></td>
+                  <td>{event.client?.name ?? '—'}</td>
                   <td>{new Date(event.startsAt).toLocaleString('fr-CH')}</td>
                   <td>{event.venueName ?? '—'}</td>
-                  <td>{event.status}</td>
+                  <td><span className="status-badge">{event.status}</span></td>
+                  <td><Link className="muted" href={`/events/${event.id}`}>Ouvrir →</Link></td>
                 </tr>
               ))}
             </tbody>
