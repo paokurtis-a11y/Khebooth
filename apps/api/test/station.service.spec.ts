@@ -37,7 +37,11 @@ describe('StationService', () => {
     },
     preset: null,
     organization: { id: organizationId, name: 'KHE' },
-    capabilities: { capture: true as const, sharing: true as const, formats: ['9:16', '1:1'] },
+    capabilities: {
+      capture: true as const,
+      sharing: true as const,
+      formats: ['9:16', '1:1'] as const,
+    },
   };
 
   const prisma = {
