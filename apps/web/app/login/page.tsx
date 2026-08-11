@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiRequest, getAccessToken, setAccessToken } from '@/lib/api';
+import { apiRequest, getAccessToken, setAccessToken, setSessionUser } from '@/lib/api';
 
 type LoginResponse = {
   accessToken: string;
@@ -30,6 +30,7 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       });
       setAccessToken(result.accessToken);
+      setSessionUser(result.user);
       router.replace('/dashboard');
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Connexion impossible');
