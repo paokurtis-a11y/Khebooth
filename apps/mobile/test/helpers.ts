@@ -2,6 +2,9 @@ import type {
   EventManifestContract,
   FinalizeUploadResponseContract,
   MediaAssetContract,
+  StationControlCommandContract,
+  StationControlContract,
+  StationControlStatusContract,
   StationRedeemRequestContract,
   StationRedeemResponseContract,
   UploadSessionContract,
@@ -44,6 +47,17 @@ export class FakeStationApi implements StationApi {
   readonly mediaByIdempotency = new Map<string, ServerMedia>();
   createCalls = 0;
   failListMedia = false;
+  private controlState: StationControlContract = {
+    eventId: TEST_EVENT_ID,
+    command: 'NONE',
+    commandVersion: 0,
+    acknowledgedVersion: 0,
+    runtimeState: 'IDLE',
+    selectedEffect: 'NONE',
+    elapsedSeconds: 0,
+    captureSeenAt: null,
+    updatedAt: '2026-08-15T06:00:00.000Z',
+  };
 
   async redeem(request: StationRedeemRequestContract): Promise<StationRedeemResponseContract> {
     return {
@@ -62,6 +76,35 @@ export class FakeStationApi implements StationApi {
 
   async manifest(): Promise<EventManifestContract> {
     return testManifest();
+  }
+
+  async control(): Promise<StationControlContract> {
+    return { ...this.controlState };
+  }
+
+  async updateControlCommand(
+    _stationToken: string,
+    command: StationControlCommandContract,
+  ): Promise<StationControlContract> {
+    if (command.command) {
+      this.controlState.command = command.command;
+      this.controlState.commandVersion += 1;
+    }
+    if (command.selectedEffect) this.controlState.selectedEffect = command.selectedEffect;
+    this.controlState.updatedAt = new Date().toISOString();
+    return { ...this.controlState };
+  }
+
+  async updateControlStatus(
+    _stationToken: string,
+    status: StationControlStatusContract,
+  ): Promise<StationControlContract> {
+    if (status.acknowledgedVersion !== undefined) this.controlState.acknowledgedVersion = status.acknowledgedVersion;
+    if (status.runtimeState !== undefined) this.controlState.runtimeState = status.runtimeState;
+    if (status.elapsedSeconds !== undefined) this.controlState.elapsedSeconds = status.elapsedSeconds;
+    this.controlState.captureSeenAt = new Date().toISOString();
+    this.controlState.updatedAt = new Date().toISOString();
+    return { ...this.controlState };
   }
 
   async listMedia(): Promise<MediaAssetContract[]> {
