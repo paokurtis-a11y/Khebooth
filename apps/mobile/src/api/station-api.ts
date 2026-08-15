@@ -2,6 +2,9 @@ import type {
   EventManifestContract,
   FinalizeUploadResponseContract,
   MediaAssetContract,
+  StationControlCommandContract,
+  StationControlContract,
+  StationControlStatusContract,
   StationRedeemRequestContract,
   StationRedeemResponseContract,
   SyntheticMediaCreateContract,
@@ -11,6 +14,9 @@ import type {
 export interface StationApi {
   redeem(request: StationRedeemRequestContract): Promise<StationRedeemResponseContract>;
   manifest(stationToken: string): Promise<EventManifestContract>;
+  control(stationToken: string): Promise<StationControlContract>;
+  updateControlCommand(stationToken: string, command: StationControlCommandContract): Promise<StationControlContract>;
+  updateControlStatus(stationToken: string, status: StationControlStatusContract): Promise<StationControlContract>;
   listMedia(stationToken: string): Promise<MediaAssetContract[]>;
   createMedia(stationToken: string, media: SyntheticMediaCreateContract): Promise<MediaAssetContract>;
   initializeUpload(stationToken: string, mediaId: string): Promise<UploadSessionContract>;
@@ -59,6 +65,32 @@ export class HttpStationApi implements StationApi {
 
   manifest(stationToken: string): Promise<EventManifestContract> {
     return this.request('/stations/manifest', { headers: this.stationHeaders(stationToken) });
+  }
+
+  control(stationToken: string): Promise<StationControlContract> {
+    return this.request('/stations/control', { headers: this.stationHeaders(stationToken) });
+  }
+
+  updateControlCommand(
+    stationToken: string,
+    command: StationControlCommandContract,
+  ): Promise<StationControlContract> {
+    return this.request('/stations/control/command', {
+      method: 'PATCH',
+      headers: this.stationHeaders(stationToken),
+      body: JSON.stringify(command),
+    });
+  }
+
+  updateControlStatus(
+    stationToken: string,
+    status: StationControlStatusContract,
+  ): Promise<StationControlContract> {
+    return this.request('/stations/control/status', {
+      method: 'PATCH',
+      headers: this.stationHeaders(stationToken),
+      body: JSON.stringify(status),
+    });
   }
 
   listMedia(stationToken: string): Promise<MediaAssetContract[]> {
