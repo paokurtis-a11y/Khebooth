@@ -123,19 +123,21 @@ export class SQLiteLocalStore implements LocalStore {
   }
 
   async saveStation(context: PersistedStationContext): Promise<void> {
-    const db = await this.database();
-    await db.runAsync(
-      `INSERT INTO app_state(key, value, updatedAt) VALUES('station', ?, ?)
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updatedAt = excluded.updatedAt`,
-      JSON.stringify(context),
-      new Date().toISOString(),
-    );
+    await this.withNativeRecovery(async (db) => {
+      await db.runAsync(
+        `INSERT INTO app_state(key, value, updatedAt) VALUES('station', ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updatedAt = excluded.updatedAt`,
+        JSON.stringify(context),
+        new Date().toISOString(),
+      );
+    });
   }
 
   async getStation(): Promise<PersistedStationContext | null> {
-    const db = await this.database();
-    const row = await db.getFirstAsync<JsonRow>("SELECT value FROM app_state WHERE key = 'station'");
-    return row ? (JSON.parse(row.value) as PersistedStationContext) : null;
+    return this.withNativeRecovery(async (db) => {
+      const row = await db.getFirstAsync<JsonRow>("SELECT value FROM app_state WHERE key = 'station'");
+      return row ? (JSON.parse(row.value) as PersistedStationContext) : null;
+    });
   }
 
   async saveManifest(eventId: string, manifest: EventManifestContract): Promise<void> {
