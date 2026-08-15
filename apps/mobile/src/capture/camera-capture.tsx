@@ -21,6 +21,9 @@ interface CameraCaptureProps {
   onCaptured: (media: LocalMediaRecord, format: AspectRatio) => void;
 }
 
+const CAPTURE_DURATIONS = [10, 15, 20, 25, 30] as const;
+type CaptureDuration = (typeof CAPTURE_DURATIONS)[number];
+
 function makeLocalId(): string {
   return `media-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 }
@@ -52,6 +55,7 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
   const [microphonePermission, requestMicrophonePermission] = useMicrophonePermissions();
   const [facing, setFacing] = useState<CameraType>('back');
   const [format, setFormat] = useState<AspectRatio>('9:16');
+  const [captureDuration, setCaptureDuration] = useState<CaptureDuration>(15);
   const [ready, setReady] = useState(false);
   const [recording, setRecording] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -71,9 +75,9 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
 
   useEffect(() => {
     if (!recording || paused) return;
-    const timer = setInterval(() => setElapsedSeconds((current) => current + 1), 1000);
+    const timer = setInterval(() => setElapsedSeconds((current) => Math.min(captureDuration, current + 1)), 1000);
     return () => clearInterval(timer);
-  }, [paused, recording]);
+  }, [captureDuration, paused, recording]);
 
   useEffect(() => {
     if (!cameraPermission?.granted || !microphonePermission?.granted) return;
@@ -135,7 +139,7 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
           }
         }
       } catch {
-        // Remote control is best-effort. Local recording must remain usable if the network drops.
+        // Le contrôle distant reste best-effort : la capture locale doit continuer sans réseau.
       }
     };
 
@@ -161,9 +165,7 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
   async function requestPermissions(): Promise<void> {
     setMessage('');
     const camera = cameraPermission?.granted ? cameraPermission : await requestCameraPermission();
-    const microphone = microphonePermission?.granted
-      ? microphonePermission
-      : await requestMicrophonePermission();
+    const microphone = microphonePermission?.granted ? microphonePermission : await requestMicrophonePermission();
     if (!camera.granted || !microphone.granted) {
       setMessage('La caméra et le microphone sont nécessaires pour enregistrer une vidéo avec son.');
     }
@@ -205,12 +207,7 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
     };
 
     await store.upsertMedia(media);
-    await store.enqueue({
-      localId,
-      nextAttemptAt: capturedAt,
-      retryCount: 0,
-      lastError: null,
-    });
+    await store.enqueue({ localId, nextAttemptAt: capturedAt, retryCount: 0, lastError: null });
     return media;
   }
 
@@ -230,7 +227,7 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
       setPaused(false);
       setRuntimeState('RECORDING');
       void api.updateControlStatus(stationToken, { runtimeState: 'RECORDING', elapsedSeconds: 0 }).catch(() => undefined);
-      const result = await cameraRef.current.recordAsync({ maxDuration: 60 });
+      const result = await cameraRef.current.recordAsync({ maxDuration: captureDuration });
       setRuntimeState('SAVING');
       if (!result?.uri) {
         setRuntimeState('ERROR');
@@ -239,9 +236,7 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
       }
       const media = await persistRecording(result.uri);
       onCaptured(media, format);
-      setMessage(
-        `Vidéo conservée hors ligne (${format}). Elle ne sera pas supprimée avant synchronisation confirmée.`,
-      );
+      setMessage(`Vidéo ${captureDuration} s max conservée hors ligne (${format}). Elle ne sera pas supprimée avant synchronisation confirmée.`);
       setRuntimeState('IDLE');
       void api.updateControlStatus(stationToken, { runtimeState: 'IDLE', elapsedSeconds: 0 }).catch(() => undefined);
     } catch (error) {
@@ -283,9 +278,7 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
       <View style={styles.permissionPage}>
         <Text style={styles.brand}>KHE BOOTH</Text>
         <Text style={styles.title}>Autorisation caméra</Text>
-        <Text style={styles.help}>
-          KHE Booth a besoin de la caméra et du microphone pour produire les vidéos événementielles avec son.
-        </Text>
+        <Text style={styles.help}>KHE Booth a besoin de la caméra et du microphone pour produire les vidéos événementielles avec son.</Text>
         <Pressable style={styles.primaryButton} onPress={() => void requestPermissions()}>
           <Text style={styles.primaryText}>Autoriser caméra + micro</Text>
         </Pressable>
@@ -325,9 +318,7 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
 
       {countdown !== null ? (
         <View pointerEvents="none" style={styles.countdownOverlay}>
-          <View style={styles.countdownCircle}>
-            <Text style={styles.countdownText}>{countdown}</Text>
-          </View>
+          <View style={styles.countdownCircle}><Text style={styles.countdownText}>{countdown}</Text></View>
           <Text style={styles.countdownLabel}>Préparez-vous</Text>
         </View>
       ) : null}
@@ -335,65 +326,64 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
       {recording ? (
         <View pointerEvents="none" style={styles.recordingTimer}>
           <View style={styles.recordingDot} />
-          <Text style={styles.recordingTimerText}>{paused ? 'PAUSE' : 'REC'} {formatDuration(elapsedSeconds)}</Text>
+          <Text style={styles.recordingTimerText}>
+            {paused ? 'PAUSE' : 'REC'} {formatDuration(elapsedSeconds)} / {formatDuration(captureDuration)}
+          </Text>
         </View>
       ) : null}
 
       <View style={styles.topControls}>
-        <Pressable disabled={controlsLocked} style={styles.control} onPress={onClose}>
-          <Text style={styles.controlText}>Fermer</Text>
-        </Pressable>
-        <Pressable
-          disabled={controlsLocked}
-          style={styles.control}
-          onPress={() => setFacing((current) => (current === 'back' ? 'front' : 'back'))}
-        >
+        <Pressable disabled={controlsLocked} style={styles.control} onPress={onClose}><Text style={styles.controlText}>Fermer</Text></Pressable>
+        <Pressable disabled={controlsLocked} style={styles.control} onPress={() => setFacing((current) => (current === 'back' ? 'front' : 'back'))}>
           <Text style={styles.controlText}>Retourner</Text>
         </Pressable>
       </View>
+
       <View style={styles.bottomPanel}>
         <View style={styles.formatRow}>
           {(['9:16', '1:1'] as const).map((candidate) => (
-            <Pressable
-              key={candidate}
-              disabled={controlsLocked}
-              onPress={() => setFormat(candidate)}
-              style={[styles.formatButton, format === candidate && styles.formatButtonActive]}
-            >
+            <Pressable key={candidate} disabled={controlsLocked} onPress={() => setFormat(candidate)} style={[styles.formatButton, format === candidate && styles.formatButtonActive]}>
               <Text style={format === candidate ? styles.formatTextActive : styles.formatText}>{candidate}</Text>
             </Pressable>
           ))}
         </View>
+
+        <Text style={styles.durationLabel}>DURÉE MAXIMUM</Text>
+        <View style={styles.durationRow}>
+          {CAPTURE_DURATIONS.map((seconds) => (
+            <Pressable
+              key={seconds}
+              disabled={controlsLocked}
+              onPress={() => setCaptureDuration(seconds)}
+              style={[styles.durationButton, captureDuration === seconds && styles.durationButtonActive]}
+            >
+              <Text style={captureDuration === seconds ? styles.durationTextActive : styles.durationText}>{seconds}s</Text>
+            </Pressable>
+          ))}
+        </View>
+
         <Text style={styles.status}>
           {recording
-            ? `${paused ? 'Pause' : 'Enregistrement'} • ${formatDuration(elapsedSeconds)}`
+            ? `${paused ? 'Pause' : 'Enregistrement'} • ${formatDuration(elapsedSeconds)} / ${formatDuration(captureDuration)}`
             : starting
               ? `Départ dans ${countdown ?? 1} s…`
               : ready
-                ? `Prêt • ${format}`
+                ? `Prêt • ${format} • ${captureDuration} s max`
                 : 'Initialisation caméra…'}
         </Text>
+
         {recording ? (
           <View style={styles.recordingControls}>
-            <Pressable style={styles.pauseButton} onPress={() => void toggleLocalPause()}>
-              <Text style={styles.recordText}>{paused ? 'REPRENDRE' : 'PAUSE'}</Text>
-            </Pressable>
-            <Pressable style={[styles.recordButton, styles.stopButton]} onPress={stopRecording}>
-              <Text style={styles.recordText}>ARRÊTER • {formatDuration(elapsedSeconds)}</Text>
-            </Pressable>
+            <Pressable style={styles.pauseButton} onPress={() => void toggleLocalPause()}><Text style={styles.recordText}>{paused ? 'REPRENDRE' : 'PAUSE'}</Text></Pressable>
+            <Pressable style={[styles.recordButton, styles.stopButton]} onPress={stopRecording}><Text style={styles.recordText}>ARRÊTER • {formatDuration(elapsedSeconds)}</Text></Pressable>
           </View>
         ) : (
-          <Pressable
-            disabled={!ready || starting}
-            style={[styles.recordButton, starting && styles.disabledButton]}
-            onPress={() => void startRecording()}
-          >
-            <Text style={styles.recordText}>{starting ? 'PRÉPAREZ-VOUS…' : 'ENREGISTRER'}</Text>
+          <Pressable disabled={!ready || starting} style={[styles.recordButton, starting && styles.disabledButton]} onPress={() => void startRecording()}>
+            <Text style={styles.recordText}>{starting ? 'PRÉPAREZ-VOUS…' : `ENREGISTRER • ${captureDuration}s`}</Text>
           </Pressable>
         )}
-        <Text style={styles.policy}>
-          Décompte automatique de 5 secondes. La tablette SHARING peut piloter REC, Pause/Reprendre, Stop et l’effet visuel quand cette caméra reste ouverte.
-        </Text>
+
+        <Text style={styles.policy}>Décompte automatique de 5 secondes, puis arrêt automatique à la durée choisie (10 à 30 secondes maximum). Stop manuel et pause/reprise restent disponibles.</Text>
         {message ? <Text style={styles.message}>{message}</Text> : null}
       </View>
     </View>
@@ -430,6 +420,12 @@ const styles = StyleSheet.create({
   formatButtonActive: { backgroundColor: '#ffffff', borderColor: '#ffffff' },
   formatText: { color: '#ffffff', fontWeight: '800' },
   formatTextActive: { color: '#111111', fontWeight: '800' },
+  durationLabel: { color: '#c9c9c9', fontSize: 10, fontWeight: '900', letterSpacing: 1.2 },
+  durationRow: { flexDirection: 'row', gap: 6 },
+  durationButton: { flex: 1, borderWidth: 1, borderColor: '#777777', borderRadius: 10, paddingVertical: 9, alignItems: 'center' },
+  durationButtonActive: { backgroundColor: '#ffffff', borderColor: '#ffffff' },
+  durationText: { color: '#ffffff', fontSize: 11, fontWeight: '800' },
+  durationTextActive: { color: '#111111', fontSize: 11, fontWeight: '900' },
   status: { color: '#ffffff', textAlign: 'center', fontWeight: '700' },
   recordingControls: { flexDirection: 'row', gap: 8 },
   pauseButton: { flex: 1, backgroundColor: '#f2f2f2', borderRadius: 16, padding: 18, alignItems: 'center' },
