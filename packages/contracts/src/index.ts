@@ -139,6 +139,17 @@ export interface StationControlStatusContract {
   maxDurationSeconds?: CaptureDurationSeconds;
 }
 
+export interface StationLiveSessionContract {
+  provider: 'livekit';
+  serverUrl: string;
+  participantToken: string;
+  roomName: string;
+  participantIdentity: string;
+  mode: StationMode;
+  canPublish: boolean;
+  canSubscribe: boolean;
+}
+
 export interface SyntheticMediaCreateContract {
   localId: string;
   idempotencyKey: string;
