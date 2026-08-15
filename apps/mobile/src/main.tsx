@@ -13,6 +13,7 @@ import type { AspectRatio, StationMode } from '@khe/contracts';
 import { HttpStationApi } from './api/station-api';
 import { CameraCapture } from './capture/camera-capture';
 import { API_BASE_URL } from './config';
+import { MediaGallery } from './gallery/media-gallery';
 import { SQLiteLocalStore } from './offline/sqlite-store';
 import type { LocalMediaRecord, PersistedStationContext } from './offline/types';
 import { SecureStoreCredentialVault } from './security/secure-store-vault';
@@ -48,6 +49,7 @@ function App() {
   const [mode, setMode] = useState<StationMode>('CAPTURE');
   const [message, setMessage] = useState('');
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [galleryOpen, setGalleryOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -147,6 +149,17 @@ function App() {
     );
   }
 
+  if (galleryOpen && station?.mode === 'CAPTURE') {
+    return (
+      <MediaGallery
+        eventId={station.session.eventId}
+        eventName={eventName ?? station.session.eventId}
+        store={store}
+        onClose={() => setGalleryOpen(false)}
+      />
+    );
+  }
+
   return (
     <SafeAreaView style={styles.page}>
       <View style={styles.card}>
@@ -167,11 +180,16 @@ function App() {
             </Pressable>
             {station.mode === 'CAPTURE' ? (
               <>
-                <Pressable disabled={busy} style={styles.captureButton} onPress={() => setCameraOpen(true)}>
-                  <Text style={styles.captureButtonText}>Ouvrir la caméra</Text>
-                </Pressable>
+                <View style={styles.captureActions}>
+                  <Pressable disabled={busy} style={styles.captureButton} onPress={() => setCameraOpen(true)}>
+                    <Text style={styles.captureButtonText}>Ouvrir la caméra</Text>
+                  </Pressable>
+                  <Pressable disabled={busy} style={styles.galleryButton} onPress={() => setGalleryOpen(true)}>
+                    <Text style={styles.galleryButtonText}>Galerie</Text>
+                  </Pressable>
+                </View>
                 <Text style={styles.notice}>
-                  Gate matériel validé : capture locale 9:16 / 1:1 activée. Aucun média non synchronisé n’est supprimé automatiquement.
+                  Capture locale 9:16 / 1:1 avec décompte de 5 secondes et chronomètre d’enregistrement. Les vidéos restent disponibles dans la Galerie KHE Booth tant qu’elles sont conservées sur la tablette.
                 </Text>
               </>
             ) : (
@@ -241,8 +259,11 @@ const styles = StyleSheet.create({
   input: { borderWidth: 1, borderColor: '#d6d6d6', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 },
   primaryButton: { marginTop: 8, backgroundColor: '#111111', borderRadius: 12, padding: 14, alignItems: 'center' },
   primaryButtonText: { color: '#ffffff', fontWeight: '800' },
-  captureButton: { borderWidth: 1, borderColor: '#111111', borderRadius: 12, padding: 14, alignItems: 'center' },
+  captureActions: { flexDirection: 'row', gap: 10 },
+  captureButton: { flex: 1, borderWidth: 1, borderColor: '#111111', borderRadius: 12, padding: 14, alignItems: 'center' },
   captureButtonText: { color: '#111111', fontWeight: '800' },
+  galleryButton: { flex: 1, backgroundColor: '#111111', borderRadius: 12, padding: 14, alignItems: 'center' },
+  galleryButtonText: { color: '#ffffff', fontWeight: '800' },
   notice: { marginTop: 8, fontSize: 12, lineHeight: 18, opacity: 0.65 },
   message: { marginTop: 14, fontSize: 13, lineHeight: 18 },
 });
