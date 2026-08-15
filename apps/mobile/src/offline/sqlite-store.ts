@@ -10,76 +10,116 @@ import type {
 } from './types';
 
 type JsonRow = { value: string };
-
 type MediaRow = LocalMediaRecord;
 type QueueRow = SyncQueueItem;
 type SharedMediaRow = SharedMediaRecord;
 
 export class SQLiteLocalStore implements LocalStore {
   private db: SQLite.SQLiteDatabase | null = null;
+  private initPromise: Promise<void> | null = null;
 
   constructor(private readonly databaseName = 'khe-booth.db') {}
 
   async init(): Promise<void> {
     if (this.db) return;
-    this.db = await SQLite.openDatabaseAsync(this.databaseName);
-    await this.db.execAsync(`
-      PRAGMA journal_mode = WAL;
-      PRAGMA foreign_keys = ON;
-      CREATE TABLE IF NOT EXISTS app_state (
-        key TEXT PRIMARY KEY NOT NULL,
-        value TEXT NOT NULL,
-        updatedAt TEXT NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS manifests (
-        eventId TEXT PRIMARY KEY NOT NULL,
-        value TEXT NOT NULL,
-        updatedAt TEXT NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS local_media (
-        localId TEXT PRIMARY KEY NOT NULL,
-        eventId TEXT NOT NULL,
-        idempotencyKey TEXT NOT NULL UNIQUE,
-        contentHash TEXT NOT NULL,
-        byteSize INTEGER NOT NULL,
-        mimeType TEXT NOT NULL,
-        localUri TEXT NOT NULL,
-        capturedAt TEXT NOT NULL,
-        syncState TEXT NOT NULL,
-        remoteId TEXT,
-        uploadedBytes INTEGER NOT NULL DEFAULT 0,
-        acknowledgedAt TEXT,
-        retryCount INTEGER NOT NULL DEFAULT 0,
-        lastError TEXT,
-        updatedAt TEXT NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS local_media_event_sync_idx ON local_media(eventId, syncState);
-      CREATE TABLE IF NOT EXISTS sync_queue (
-        localId TEXT PRIMARY KEY NOT NULL,
-        nextAttemptAt TEXT NOT NULL,
-        retryCount INTEGER NOT NULL DEFAULT 0,
-        lastError TEXT,
-        FOREIGN KEY(localId) REFERENCES local_media(localId) ON DELETE RESTRICT
-      );
-      CREATE TABLE IF NOT EXISTS shared_media (
-        id TEXT PRIMARY KEY NOT NULL,
-        eventId TEXT NOT NULL,
-        localId TEXT NOT NULL,
-        contentHash TEXT NOT NULL,
-        byteSize INTEGER NOT NULL,
-        mimeType TEXT NOT NULL,
-        capturedAt TEXT,
-        acknowledgedAt TEXT NOT NULL,
-        cachedAt TEXT NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS shared_media_event_idx ON shared_media(eventId, acknowledgedAt);
-    `);
+    if (this.initPromise) return this.initPromise;
+
+    this.initPromise = (async () => {
+      const db = await SQLite.openDatabaseAsync(this.databaseName);
+      await db.execAsync(`
+        PRAGMA journal_mode = WAL;
+        PRAGMA foreign_keys = ON;
+        CREATE TABLE IF NOT EXISTS app_state (
+          key TEXT PRIMARY KEY NOT NULL,
+          value TEXT NOT NULL,
+          updatedAt TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS manifests (
+          eventId TEXT PRIMARY KEY NOT NULL,
+          value TEXT NOT NULL,
+          updatedAt TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS local_media (
+          localId TEXT PRIMARY KEY NOT NULL,
+          eventId TEXT NOT NULL,
+          idempotencyKey TEXT NOT NULL UNIQUE,
+          contentHash TEXT NOT NULL,
+          byteSize INTEGER NOT NULL,
+          mimeType TEXT NOT NULL,
+          localUri TEXT NOT NULL,
+          capturedAt TEXT NOT NULL,
+          syncState TEXT NOT NULL,
+          remoteId TEXT,
+          uploadedBytes INTEGER NOT NULL DEFAULT 0,
+          acknowledgedAt TEXT,
+          retryCount INTEGER NOT NULL DEFAULT 0,
+          lastError TEXT,
+          updatedAt TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS local_media_event_sync_idx ON local_media(eventId, syncState);
+        CREATE TABLE IF NOT EXISTS sync_queue (
+          localId TEXT PRIMARY KEY NOT NULL,
+          nextAttemptAt TEXT NOT NULL,
+          retryCount INTEGER NOT NULL DEFAULT 0,
+          lastError TEXT,
+          FOREIGN KEY(localId) REFERENCES local_media(localId) ON DELETE RESTRICT
+        );
+        CREATE TABLE IF NOT EXISTS shared_media (
+          id TEXT PRIMARY KEY NOT NULL,
+          eventId TEXT NOT NULL,
+          localId TEXT NOT NULL,
+          contentHash TEXT NOT NULL,
+          byteSize INTEGER NOT NULL,
+          mimeType TEXT NOT NULL,
+          capturedAt TEXT,
+          acknowledgedAt TEXT NOT NULL,
+          cachedAt TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS shared_media_event_idx ON shared_media(eventId, acknowledgedAt);
+      `);
+      this.db = db;
+    })();
+
+    try {
+      await this.initPromise;
+    } finally {
+      this.initPromise = null;
+    }
   }
 
   private async database(): Promise<SQLite.SQLiteDatabase> {
     await this.init();
     if (!this.db) throw new Error('SQLite database unavailable');
     return this.db;
+  }
+
+  private isRecoverableNativeError(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    return /NativeDatabase|prepareAsync|NullPointerException|database.*(?:closed|unavailable)/i.test(message);
+  }
+
+  private async resetDatabase(): Promise<void> {
+    const current = this.db;
+    this.db = null;
+    this.initPromise = null;
+    if (current) {
+      try {
+        await current.closeAsync();
+      } catch {
+        // The native handle may already be invalid. Reopening the same file is the recovery path.
+      }
+    }
+    await this.init();
+  }
+
+  private async withNativeRecovery<T>(operation: (db: SQLite.SQLiteDatabase) => Promise<T>): Promise<T> {
+    try {
+      return await operation(await this.database());
+    } catch (error) {
+      if (!this.isRecoverableNativeError(error)) throw error;
+      await this.resetDatabase();
+      return operation(await this.database());
+    }
   }
 
   async saveStation(context: PersistedStationContext): Promise<void> {
@@ -99,20 +139,22 @@ export class SQLiteLocalStore implements LocalStore {
   }
 
   async saveManifest(eventId: string, manifest: EventManifestContract): Promise<void> {
-    const db = await this.database();
-    await db.runAsync(
-      `INSERT INTO manifests(eventId, value, updatedAt) VALUES(?, ?, ?)
-       ON CONFLICT(eventId) DO UPDATE SET value = excluded.value, updatedAt = excluded.updatedAt`,
-      eventId,
-      JSON.stringify(manifest),
-      new Date().toISOString(),
-    );
+    await this.withNativeRecovery(async (db) => {
+      await db.runAsync(
+        `INSERT INTO manifests(eventId, value, updatedAt) VALUES(?, ?, ?)
+         ON CONFLICT(eventId) DO UPDATE SET value = excluded.value, updatedAt = excluded.updatedAt`,
+        eventId,
+        JSON.stringify(manifest),
+        new Date().toISOString(),
+      );
+    });
   }
 
   async getManifest(eventId: string): Promise<EventManifestContract | null> {
-    const db = await this.database();
-    const row = await db.getFirstAsync<JsonRow>('SELECT value FROM manifests WHERE eventId = ?', eventId);
-    return row ? (JSON.parse(row.value) as EventManifestContract) : null;
+    return this.withNativeRecovery(async (db) => {
+      const row = await db.getFirstAsync<JsonRow>('SELECT value FROM manifests WHERE eventId = ?', eventId);
+      return row ? (JSON.parse(row.value) as EventManifestContract) : null;
+    });
   }
 
   async upsertMedia(media: LocalMediaRecord): Promise<void> {
