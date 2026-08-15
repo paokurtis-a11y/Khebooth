@@ -23,6 +23,15 @@
         {
           "configureAndroidBackup": true
         }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Autoriser KHE Booth à utiliser la caméra pour les captures événementielles.",
+          "microphonePermission": "Autoriser KHE Booth à utiliser le microphone pour enregistrer le son des vidéos.",
+          "recordAudioAndroid": true,
+          "barcodeScannerEnabled": false
+        }
       ]
     ]
   }
