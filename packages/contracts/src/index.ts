@@ -136,6 +136,7 @@ export interface StationControlStatusContract {
   acknowledgedVersion?: number;
   runtimeState?: RemoteCaptureState;
   elapsedSeconds?: number;
+  maxDurationSeconds?: CaptureDurationSeconds;
 }
 
 export interface SyntheticMediaCreateContract {
