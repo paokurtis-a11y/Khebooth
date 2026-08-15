@@ -1,5 +1,6 @@
 import type {
   EventManifestContract,
+  FinalizeUploadResponseContract,
   MediaAssetContract,
   StationRedeemRequestContract,
   StationRedeemResponseContract,
@@ -14,7 +15,7 @@ export interface StationApi {
   createMedia(stationToken: string, media: SyntheticMediaCreateContract): Promise<MediaAssetContract>;
   initializeUpload(stationToken: string, mediaId: string): Promise<UploadSessionContract>;
   updateUpload(stationToken: string, mediaId: string, uploadedBytes: number): Promise<UploadSessionContract>;
-  finalizeUpload(stationToken: string, mediaId: string): Promise<MediaAssetContract>;
+  finalizeUpload(stationToken: string, mediaId: string): Promise<FinalizeUploadResponseContract>;
 }
 
 export class HttpStationApi implements StationApi {
@@ -87,7 +88,7 @@ export class HttpStationApi implements StationApi {
     });
   }
 
-  finalizeUpload(stationToken: string, mediaId: string): Promise<MediaAssetContract> {
+  finalizeUpload(stationToken: string, mediaId: string): Promise<FinalizeUploadResponseContract> {
     return this.request(`/stations/media/${encodeURIComponent(mediaId)}/finalize`, {
       method: 'POST',
       headers: this.stationHeaders(stationToken),
