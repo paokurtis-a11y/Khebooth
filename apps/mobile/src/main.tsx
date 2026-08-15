@@ -42,6 +42,9 @@ function App() {
       try {
         await store.init();
         const cached = await bootstrap.getCachedContext();
+        if (cached && !(await vault.getInstallationId())) {
+          await vault.saveInstallationId(cached.installationId);
+        }
         if (cancelled) return;
         setStation(cached);
         if (cached) {
@@ -57,16 +60,22 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [bootstrap, store]);
+  }, [bootstrap, store, vault]);
 
   async function activate(): Promise<void> {
     setBusy(true);
     setMessage('');
     try {
+      let installationId = await vault.getInstallationId();
+      if (!installationId) {
+        installationId = makeInstallationId();
+        await vault.saveInstallationId(installationId);
+      }
+
       const response = await bootstrap.redeem({
         eventId: eventId.trim(),
         code: code.trim().toUpperCase(),
-        installationId: makeInstallationId(),
+        installationId,
         mode,
         platform: 'react-native',
         deviceName: mode === 'CAPTURE' ? 'KHE Booth Capture' : 'KHE Booth Sharing',
