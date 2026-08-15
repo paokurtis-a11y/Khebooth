@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { MemoryLocalStore } from '../src/offline/memory-store';
+import { MemoryCredentialVault } from '../src/security/memory-credential-vault';
 import { SharingCatalogService } from '../src/sharing/sharing-catalog';
 import { StationBootstrapService } from '../src/station/station-bootstrap';
 import { SyntheticMediaTransfer } from '../src/sync/media-transfer';
@@ -11,13 +12,14 @@ test('SHARING discovers only server-acknowledged media and keeps an offline cach
   const api = new FakeStationApi();
 
   const captureStore = new MemoryLocalStore();
-  await new StationBootstrapService(api, captureStore).redeem({
+  const captureVault = new MemoryCredentialVault();
+  await new StationBootstrapService(api, captureStore, captureVault).redeem({
     eventId: TEST_EVENT_ID,
     code: 'KHE-123456',
     installationId: 'capture-tablet',
     mode: 'CAPTURE',
   });
-  const capture = new SyncEngine(api, captureStore, new SyntheticMediaTransfer());
+  const capture = new SyncEngine(api, captureStore, captureVault, new SyntheticMediaTransfer());
   await capture.queueMedia({
     eventId: TEST_EVENT_ID,
     localId: 'share-me',
@@ -29,13 +31,14 @@ test('SHARING discovers only server-acknowledged media and keeps an offline cach
   });
 
   const sharingStore = new MemoryLocalStore();
-  await new StationBootstrapService(api, sharingStore).redeem({
+  const sharingVault = new MemoryCredentialVault();
+  await new StationBootstrapService(api, sharingStore, sharingVault).redeem({
     eventId: TEST_EVENT_ID,
     code: 'KHE-123456',
     installationId: 'sharing-tablet',
     mode: 'SHARING',
   });
-  const sharing = new SharingCatalogService(api, sharingStore);
+  const sharing = new SharingCatalogService(api, sharingStore, sharingVault);
 
   assert.deepEqual(await sharing.refresh(), []);
 
