@@ -178,12 +178,14 @@ export class StationsService {
         acknowledgedVersion: dto.acknowledgedVersion ?? 0,
         runtimeState: dto.runtimeState ?? RemoteCaptureState.IDLE,
         elapsedSeconds: dto.elapsedSeconds ?? 0,
+        maxDurationSeconds: dto.maxDurationSeconds ?? 15,
         captureSeenAt: now,
       },
       update: {
         ...(dto.acknowledgedVersion !== undefined ? { acknowledgedVersion: dto.acknowledgedVersion } : {}),
         ...(dto.runtimeState !== undefined ? { runtimeState: dto.runtimeState } : {}),
         ...(dto.elapsedSeconds !== undefined ? { elapsedSeconds: dto.elapsedSeconds } : {}),
+        ...(dto.maxDurationSeconds !== undefined ? { maxDurationSeconds: dto.maxDurationSeconds } : {}),
         captureSeenAt: now,
       },
     });
