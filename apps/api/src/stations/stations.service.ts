@@ -17,6 +17,7 @@ import { UpdateUploadProgressDto } from './dto/update-upload-progress.dto';
 import type { AuthenticatedStation, StationTokenPayload } from './station-auth.types';
 
 const STATION_SESSION_TTL_SECONDS = 24 * 60 * 60;
+const MAX_ACTIVE_CODE_CANDIDATES = 50;
 
 @Injectable()
 export class StationsService {
@@ -246,16 +247,27 @@ export class StationsService {
     return { media: updatedMedia, upload: updatedUpload };
   }
 
-  private async findMatchingActivation(eventId: string, code: string) {
+  private async findMatchingActivation(eventId: string | undefined, code: string) {
     const candidates = await this.prisma.eventActivation.findMany({
-      where: { eventId, revokedAt: null, expiresAt: { gt: new Date() } },
+      where: {
+        ...(eventId ? { eventId } : {}),
+        revokedAt: null,
+        expiresAt: { gt: new Date() },
+      },
       orderBy: { createdAt: 'desc' },
-      take: 3,
+      take: eventId ? 3 : MAX_ACTIVE_CODE_CANDIDATES,
     });
 
+    let match: (typeof candidates)[number] | null = null;
     for (const candidate of candidates) {
-      if (await argon2.verify(candidate.codeHash, code)) return candidate;
+      if (await argon2.verify(candidate.codeHash, code)) {
+        if (match && match.id !== candidate.id) {
+          throw new ConflictException('Activation code is ambiguous. Generate a new activation code.');
+        }
+        match = candidate;
+      }
     }
+    if (match) return match;
     throw new UnauthorizedException('Invalid or expired activation code');
   }
 
