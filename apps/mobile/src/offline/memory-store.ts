@@ -1,12 +1,19 @@
 import type { EventManifestContract } from '@khe/contracts';
 import type { LocalStore } from './local-store';
-import type { LocalMediaRecord, OfflineSnapshot, PersistedStationContext, SyncQueueItem } from './types';
+import type {
+  LocalMediaRecord,
+  OfflineSnapshot,
+  PersistedStationContext,
+  SharedMediaRecord,
+  SyncQueueItem,
+} from './types';
 
 export class MemoryLocalStore implements LocalStore {
   private station: PersistedStationContext | null = null;
   private readonly manifests = new Map<string, EventManifestContract>();
   private readonly media = new Map<string, LocalMediaRecord>();
   private readonly queue = new Map<string, SyncQueueItem>();
+  private readonly sharedMedia = new Map<string, SharedMediaRecord[]>();
 
   async init(): Promise<void> {}
 
@@ -56,12 +63,21 @@ export class MemoryLocalStore implements LocalStore {
     this.queue.delete(localId);
   }
 
+  async replaceSharedMedia(eventId: string, media: SharedMediaRecord[]): Promise<void> {
+    this.sharedMedia.set(eventId, structuredClone(media));
+  }
+
+  async listSharedMedia(eventId: string): Promise<SharedMediaRecord[]> {
+    return structuredClone(this.sharedMedia.get(eventId) ?? []);
+  }
+
   async snapshot(eventId: string): Promise<OfflineSnapshot> {
     return {
       station: await this.getStation(),
       manifest: await this.getManifest(eventId),
       pendingMedia: await this.listPendingMedia(eventId),
       queue: await this.listQueue(),
+      sharedMedia: await this.listSharedMedia(eventId),
     };
   }
 }
