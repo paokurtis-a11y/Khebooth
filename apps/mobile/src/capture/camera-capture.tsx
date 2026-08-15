@@ -6,7 +6,7 @@ import {
   type CameraType,
 } from 'expo-camera';
 import { Directory, File, Paths } from 'expo-file-system';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { LocalStore } from '../offline/local-store';
 import type { LocalMediaRecord } from '../offline/types';
@@ -22,6 +22,16 @@ function makeLocalId(): string {
   return `media-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function formatDuration(totalSeconds: number): string {
+  const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+  const seconds = (totalSeconds % 60).toString().padStart(2, '0');
+  return `${minutes}:${seconds}`;
+}
+
 export function CameraCapture({ eventId, store, onClose, onCaptured }: CameraCaptureProps) {
   const cameraRef = useRef<CameraView | null>(null);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
@@ -30,7 +40,16 @@ export function CameraCapture({ eventId, store, onClose, onCaptured }: CameraCap
   const [format, setFormat] = useState<AspectRatio>('9:16');
   const [ready, setReady] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    if (!recording) return;
+    const timer = setInterval(() => setElapsedSeconds((current) => current + 1), 1000);
+    return () => clearInterval(timer);
+  }, [recording]);
 
   async function requestPermissions(): Promise<void> {
     setMessage('');
@@ -51,10 +70,6 @@ export function CameraCapture({ eventId, store, onClose, onCaptured }: CameraCap
 
     const source = new File(uri);
     const destination = new File(directory, `${localId}.mp4`);
-
-    // expo-file-system SDK 56 performs relocation asynchronously. Waiting for
-    // the copy is critical: checking destination.exists immediately after
-    // starting the copy can falsely report that persistence failed on Android.
     await source.copy(destination);
 
     if (!destination.exists || destination.size <= 0) {
@@ -93,10 +108,17 @@ export function CameraCapture({ eventId, store, onClose, onCaptured }: CameraCap
   }
 
   async function startRecording(): Promise<void> {
-    if (!cameraRef.current || !ready || recording) return;
+    if (!cameraRef.current || !ready || recording || starting) return;
     setMessage('');
-    setRecording(true);
+    setStarting(true);
     try {
+      for (let value = 5; value >= 1; value -= 1) {
+        setCountdown(value);
+        await sleep(1000);
+      }
+      setCountdown(null);
+      setElapsedSeconds(0);
+      setRecording(true);
       const result = await cameraRef.current.recordAsync({ maxDuration: 60 });
       if (!result?.uri) {
         setMessage('Enregistrement interrompu avant la création du fichier vidéo.');
@@ -110,6 +132,8 @@ export function CameraCapture({ eventId, store, onClose, onCaptured }: CameraCap
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Échec de l’enregistrement vidéo.');
     } finally {
+      setCountdown(null);
+      setStarting(false);
       setRecording(false);
     }
   }
@@ -117,6 +141,8 @@ export function CameraCapture({ eventId, store, onClose, onCaptured }: CameraCap
   function stopRecording(): void {
     cameraRef.current?.stopRecording();
   }
+
+  const controlsLocked = recording || starting;
 
   if (!cameraPermission?.granted || !microphonePermission?.granted) {
     return (
@@ -149,12 +175,29 @@ export function CameraCapture({ eventId, store, onClose, onCaptured }: CameraCap
         onCameraReady={() => setReady(true)}
         onMountError={(event) => setMessage(event.message)}
       />
+
+      {countdown !== null ? (
+        <View pointerEvents="none" style={styles.countdownOverlay}>
+          <View style={styles.countdownCircle}>
+            <Text style={styles.countdownText}>{countdown}</Text>
+          </View>
+          <Text style={styles.countdownLabel}>Préparez-vous</Text>
+        </View>
+      ) : null}
+
+      {recording ? (
+        <View pointerEvents="none" style={styles.recordingTimer}>
+          <View style={styles.recordingDot} />
+          <Text style={styles.recordingTimerText}>REC {formatDuration(elapsedSeconds)}</Text>
+        </View>
+      ) : null}
+
       <View style={styles.topControls}>
-        <Pressable disabled={recording} style={styles.control} onPress={onClose}>
+        <Pressable disabled={controlsLocked} style={styles.control} onPress={onClose}>
           <Text style={styles.controlText}>Fermer</Text>
         </Pressable>
         <Pressable
-          disabled={recording}
+          disabled={controlsLocked}
           style={styles.control}
           onPress={() => setFacing((current) => (current === 'back' ? 'front' : 'back'))}
         >
@@ -166,7 +209,7 @@ export function CameraCapture({ eventId, store, onClose, onCaptured }: CameraCap
           {(['9:16', '1:1'] as const).map((candidate) => (
             <Pressable
               key={candidate}
-              disabled={recording}
+              disabled={controlsLocked}
               onPress={() => setFormat(candidate)}
               style={[styles.formatButton, format === candidate && styles.formatButtonActive]}
             >
@@ -175,17 +218,25 @@ export function CameraCapture({ eventId, store, onClose, onCaptured }: CameraCap
           ))}
         </View>
         <Text style={styles.status}>
-          {recording ? 'Enregistrement en cours…' : ready ? `Prêt • ${format}` : 'Initialisation caméra…'}
+          {recording
+            ? `Enregistrement • ${formatDuration(elapsedSeconds)}`
+            : starting
+              ? `Départ dans ${countdown ?? 1} s…`
+              : ready
+                ? `Prêt • ${format}`
+                : 'Initialisation caméra…'}
         </Text>
         <Pressable
-          disabled={!ready}
-          style={[styles.recordButton, recording && styles.stopButton]}
+          disabled={!ready || starting}
+          style={[styles.recordButton, recording && styles.stopButton, starting && styles.disabledButton]}
           onPress={() => (recording ? stopRecording() : void startRecording())}
         >
-          <Text style={styles.recordText}>{recording ? 'ARRÊTER' : 'ENREGISTRER'}</Text>
+          <Text style={styles.recordText}>
+            {recording ? `ARRÊTER • ${formatDuration(elapsedSeconds)}` : starting ? 'PRÉPAREZ-VOUS…' : 'ENREGISTRER'}
+          </Text>
         </Pressable>
         <Text style={styles.policy}>
-          Les vidéos sont d’abord copiées dans le stockage permanent de la tablette puis ajoutées à la file de synchronisation.
+          Décompte automatique de 5 secondes avant chaque capture. Les vidéos sont ensuite copiées dans le stockage permanent de la tablette puis ajoutées à la file de synchronisation.
         </Text>
         {format === '1:1' ? (
           <Text style={styles.policy}>Le cadrage 1:1 sera normalisé lors du pipeline d’export MP4.</Text>
@@ -210,6 +261,13 @@ const styles = StyleSheet.create({
   topControls: { position: 'absolute', left: 18, right: 18, top: 28, flexDirection: 'row', justifyContent: 'space-between' },
   control: { backgroundColor: 'rgba(0,0,0,0.65)', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 10 },
   controlText: { color: '#ffffff', fontWeight: '700' },
+  countdownOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.18)' },
+  countdownCircle: { width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(0,0,0,0.72)', borderWidth: 4, borderColor: '#ffffff', alignItems: 'center', justifyContent: 'center' },
+  countdownText: { color: '#ffffff', fontSize: 84, lineHeight: 96, fontWeight: '900' },
+  countdownLabel: { marginTop: 18, color: '#ffffff', fontSize: 20, fontWeight: '800', backgroundColor: 'rgba(0,0,0,0.65)', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12 },
+  recordingTimer: { position: 'absolute', top: 82, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(0,0,0,0.72)', borderRadius: 18, paddingHorizontal: 14, paddingVertical: 8 },
+  recordingDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#ff3b30' },
+  recordingTimerText: { color: '#ffffff', fontWeight: '900', fontSize: 16, letterSpacing: 0.5 },
   bottomPanel: { position: 'absolute', left: 16, right: 16, bottom: 20, backgroundColor: 'rgba(0,0,0,0.78)', borderRadius: 20, padding: 16, gap: 10 },
   formatRow: { flexDirection: 'row', gap: 10 },
   formatButton: { flex: 1, borderWidth: 1, borderColor: '#777777', borderRadius: 12, padding: 10, alignItems: 'center' },
@@ -219,6 +277,7 @@ const styles = StyleSheet.create({
   status: { color: '#ffffff', textAlign: 'center', fontWeight: '700' },
   recordButton: { backgroundColor: '#ffffff', borderRadius: 16, padding: 18, alignItems: 'center' },
   stopButton: { backgroundColor: '#d9d9d9' },
+  disabledButton: { opacity: 0.7 },
   recordText: { color: '#111111', fontWeight: '900', letterSpacing: 1 },
   policy: { color: '#c9c9c9', fontSize: 12, lineHeight: 17 },
   message: { color: '#ffffff', fontSize: 13, lineHeight: 18 },
