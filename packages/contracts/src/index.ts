@@ -77,7 +77,8 @@ export interface EventManifestContract {
 }
 
 export interface StationRedeemRequestContract {
-  eventId: string;
+  /** Optional for backward compatibility. New clients activate using the code only. */
+  eventId?: string;
   code: string;
   installationId: string;
   mode: StationMode;
