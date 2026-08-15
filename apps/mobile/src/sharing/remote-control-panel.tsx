@@ -8,6 +8,7 @@ import { CAPTURE_DURATIONS, VISUAL_EFFECTS } from '@khe/contracts';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { StationApi } from '../api/station-api';
+import { SharingLivePreview } from '../live/live-preview';
 
 interface RemoteControlPanelProps {
   eventName: string;
@@ -140,11 +141,11 @@ export function RemoteControlPanel({ eventName, api, stationToken }: RemoteContr
         </View>
       </View>
 
-      <View style={styles.previewPlaceholder}>
-        <Text style={styles.previewTitle}>APERÇU LIVE</Text>
-        <Text style={styles.previewText}>
-          Le canal de contrôle est actif. Le vrai flux vidéo temps réel sera raccordé au transport live dédié sans remplacer ni dégrader l’enregistrement local.
-        </Text>
+      <View>
+        <Text style={styles.sectionTitle}>APERÇU LIVE CAPTURE</Text>
+        <View style={styles.liveGap}>
+          <SharingLivePreview api={api} stationToken={stationToken} />
+        </View>
       </View>
 
       <View style={styles.statusCard}>
@@ -240,9 +241,7 @@ const styles = StyleSheet.create({
   onlineBadge: { backgroundColor: '#111111', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 7 },
   offlineBadge: { opacity: 0.35 },
   onlineText: { color: '#ffffff', fontSize: 9, fontWeight: '900' },
-  previewPlaceholder: { minHeight: 150, borderRadius: 18, backgroundColor: '#121212', padding: 18, justifyContent: 'center' },
-  previewTitle: { color: '#ffffff', fontSize: 13, fontWeight: '900', letterSpacing: 2 },
-  previewText: { marginTop: 8, color: '#c8c8c8', fontSize: 12, lineHeight: 18 },
+  liveGap: { marginTop: 8 },
   statusCard: { borderWidth: 1, borderColor: '#d5d5d5', borderRadius: 16, padding: 16 },
   statusLabel: { fontSize: 10, fontWeight: '800', opacity: 0.5 },
   statusValue: { fontSize: 20, fontWeight: '900', marginTop: 4 },
