@@ -145,8 +145,8 @@ export class StationsService {
     if (dto.command === RemoteCaptureCommand.NONE) {
       throw new BadRequestException('NONE cannot be issued as a remote command');
     }
-    if (dto.command === undefined && dto.selectedEffect === undefined) {
-      throw new BadRequestException('A command or visual effect is required');
+    if (dto.command === undefined && dto.selectedEffect === undefined && dto.maxDurationSeconds === undefined) {
+      throw new BadRequestException('A command, visual effect or capture duration is required');
     }
 
     return this.prisma.stationRemoteControl.upsert({
@@ -157,10 +157,12 @@ export class StationsService {
         command: dto.command ?? RemoteCaptureCommand.NONE,
         commandVersion: dto.command ? 1 : 0,
         selectedEffect: dto.selectedEffect ?? VisualEffect.NONE,
+        maxDurationSeconds: dto.maxDurationSeconds ?? 15,
       },
       update: {
         ...(dto.command ? { command: dto.command, commandVersion: { increment: 1 } } : {}),
         ...(dto.selectedEffect !== undefined ? { selectedEffect: dto.selectedEffect } : {}),
+        ...(dto.maxDurationSeconds !== undefined ? { maxDurationSeconds: dto.maxDurationSeconds } : {}),
       },
     });
   }
