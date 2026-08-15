@@ -8,6 +8,9 @@ import { SyntheticMediaTransfer } from '../src/sync/media-transfer';
 import { SyncEngine } from '../src/sync/sync-engine';
 import { FakeStationApi, TEST_EVENT_ID } from './helpers';
 
+const DRAIN_AT = new Date('2030-01-01T00:00:00.000Z');
+const RETRY_AT = new Date('2030-01-01T00:00:10.000Z');
+
 class InterruptingTransfer implements MediaTransfer {
   async transfer(
     media: Parameters<MediaTransfer['transfer']>[0],
@@ -44,7 +47,7 @@ test('interrupted upload resumes idempotently without deleting local media', asy
     capturedAt: '2026-08-15T06:30:00.000Z',
   });
 
-  const first = await firstEngine.drain(new Date('2026-08-15T06:31:00.000Z'));
+  const first = await firstEngine.drain(DRAIN_AT);
   assert.deepEqual(first, { attempted: 1, synced: 0, failed: 1 });
 
   const interrupted = await store.getMedia('local-video-001');
@@ -55,7 +58,7 @@ test('interrupted upload resumes idempotently without deleting local media', asy
 
   // Simulates an application/service restart while keeping the same durable store and secure credential.
   const restartedEngine = new SyncEngine(api, store, vault, new SyntheticMediaTransfer());
-  const second = await restartedEngine.drain(new Date('2026-08-15T06:31:10.000Z'));
+  const second = await restartedEngine.drain(RETRY_AT);
   assert.deepEqual(second, { attempted: 1, synced: 1, failed: 0 });
 
   const synced = await store.getMedia('local-video-001');
