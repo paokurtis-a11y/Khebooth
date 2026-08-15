@@ -14,6 +14,8 @@
   "dependencies": {
     "@khe/contracts": "workspace:*",
     "expo": "~56.0.12",
+    "expo-camera": "~56.0.8",
+    "expo-file-system": "~56.0.9",
     "expo-secure-store": "~56.0.4",
     "expo-sqlite": "~56.0.5",
     "react": "19.2.3",
