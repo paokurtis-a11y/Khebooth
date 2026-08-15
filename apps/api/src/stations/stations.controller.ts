@@ -24,6 +24,7 @@ export class StationsController {
     return this.stations.manifest(station);
   }
 
+  // LiveKit credentials stay server-side; stations only receive a scoped participant token.
   @UseGuards(StationAuthGuard)
   @Get('live-session')
   liveSession(@CurrentStation() station: AuthenticatedStation) {
