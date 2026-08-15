@@ -3,6 +3,8 @@ import type { AuthenticatedStation } from './station-auth.types';
 import { CurrentStation } from './current-station.decorator';
 import { CreateMediaDto } from './dto/create-media.dto';
 import { RedeemStationDto } from './dto/redeem-station.dto';
+import { UpdateStationCommandDto } from './dto/update-station-command.dto';
+import { UpdateStationStatusDto } from './dto/update-station-status.dto';
 import { UpdateUploadProgressDto } from './dto/update-upload-progress.dto';
 import { StationAuthGuard } from './station-auth.guard';
 import { StationsService } from './stations.service';
@@ -20,6 +22,30 @@ export class StationsController {
   @Get('manifest')
   manifest(@CurrentStation() station: AuthenticatedStation) {
     return this.stations.manifest(station);
+  }
+
+  @UseGuards(StationAuthGuard)
+  @Get('control')
+  control(@CurrentStation() station: AuthenticatedStation) {
+    return this.stations.getControl(station);
+  }
+
+  @UseGuards(StationAuthGuard)
+  @Patch('control/command')
+  updateControlCommand(
+    @CurrentStation() station: AuthenticatedStation,
+    @Body() dto: UpdateStationCommandDto,
+  ) {
+    return this.stations.updateControlCommand(station, dto);
+  }
+
+  @UseGuards(StationAuthGuard)
+  @Patch('control/status')
+  updateControlStatus(
+    @CurrentStation() station: AuthenticatedStation,
+    @Body() dto: UpdateStationStatusDto,
+  ) {
+    return this.stations.updateControlStatus(station, dto);
   }
 
   @UseGuards(StationAuthGuard)
