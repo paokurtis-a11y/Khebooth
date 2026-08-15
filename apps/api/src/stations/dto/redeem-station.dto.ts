@@ -2,8 +2,9 @@ import { StationMode } from '@prisma/client';
 import { IsEnum, IsOptional, IsString, IsUUID, Matches, MaxLength } from 'class-validator';
 
 export class RedeemStationDto {
+  @IsOptional()
   @IsUUID()
-  eventId!: string;
+  eventId?: string;
 
   @IsString()
   @Matches(/^KHE-\d{6}$/)
