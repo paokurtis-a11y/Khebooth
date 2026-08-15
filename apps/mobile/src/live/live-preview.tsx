@@ -2,6 +2,7 @@ import type { StationLiveSessionContract } from '@khe/contracts';
 import {
   isTrackReference,
   LiveKitRoom,
+  registerGlobals,
   useConnectionState,
   useTracks,
   VideoTrack,
@@ -10,6 +11,8 @@ import { ConnectionState, Track } from 'livekit-client';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { StationApi } from '../api/station-api';
+
+registerGlobals({ autoConfigureAudioSession: false });
 
 export type LivePreviewState = 'OFF' | 'LOADING' | 'CONNECTING' | 'LIVE' | 'UNAVAILABLE' | 'ERROR';
 
