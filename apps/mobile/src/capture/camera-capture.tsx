@@ -403,7 +403,7 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#000000' },
   camera: { flex: 1 },
-  effectOverlay: { ...StyleSheet.absoluteFillObject },
+  effectOverlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
   effectBadge: { position: 'absolute', top: 82, left: 18, backgroundColor: 'rgba(0,0,0,0.68)', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 7 },
   effectBadgeText: { color: '#ffffff', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
   permissionPage: { flex: 1, backgroundColor: '#101010', padding: 28, justifyContent: 'center', gap: 16 },
