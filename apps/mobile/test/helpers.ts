@@ -54,6 +54,7 @@ export class FakeStationApi implements StationApi {
     acknowledgedVersion: 0,
     runtimeState: 'IDLE',
     selectedEffect: 'NONE',
+    maxDurationSeconds: 15,
     elapsedSeconds: 0,
     captureSeenAt: null,
     updatedAt: '2026-08-15T06:00:00.000Z',
@@ -91,6 +92,7 @@ export class FakeStationApi implements StationApi {
       this.controlState.commandVersion += 1;
     }
     if (command.selectedEffect) this.controlState.selectedEffect = command.selectedEffect;
+    if (command.maxDurationSeconds !== undefined) this.controlState.maxDurationSeconds = command.maxDurationSeconds;
     this.controlState.updatedAt = new Date().toISOString();
     return { ...this.controlState };
   }
@@ -102,6 +104,7 @@ export class FakeStationApi implements StationApi {
     if (status.acknowledgedVersion !== undefined) this.controlState.acknowledgedVersion = status.acknowledgedVersion;
     if (status.runtimeState !== undefined) this.controlState.runtimeState = status.runtimeState;
     if (status.elapsedSeconds !== undefined) this.controlState.elapsedSeconds = status.elapsedSeconds;
+    if (status.maxDurationSeconds !== undefined) this.controlState.maxDurationSeconds = status.maxDurationSeconds;
     this.controlState.captureSeenAt = new Date().toISOString();
     this.controlState.updatedAt = new Date().toISOString();
     return { ...this.controlState };
