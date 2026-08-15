@@ -19,7 +19,12 @@ interface LiveSessionState {
   loading: boolean;
 }
 
-function useStationLiveSession(api: StationApi, stationToken: string, enabled: boolean): LiveSessionState {
+function useStationLiveSession(
+  api: StationApi,
+  stationToken: string,
+  enabled: boolean,
+  retryNonce = 0,
+): LiveSessionState {
   const [session, setSession] = useState<StationLiveSessionContract | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(enabled);
@@ -58,7 +63,7 @@ function useStationLiveSession(api: StationApi, stationToken: string, enabled: b
       cancelled = true;
       if (retryTimer) clearTimeout(retryTimer);
     };
-  }, [api, enabled, stationToken]);
+  }, [api, enabled, retryNonce, stationToken]);
 
   return { session, error, loading };
 }
@@ -100,7 +105,9 @@ export function CaptureLivePublisher({
       onConnected={() => onStateChange?.('LIVE')}
       onDisconnected={() => onStateChange?.('CONNECTING')}
       onError={(liveError) => onStateChange?.('ERROR', liveError.message)}
-      onMediaDeviceFailure={(failure) => onStateChange?.('ERROR', failure ?? 'Partage écran indisponible')}
+      onMediaDeviceFailure={(failure) =>
+        onStateChange?.('ERROR', failure ? String(failure) : 'Partage écran indisponible')
+      }
     >
       <View />
     </LiveKitRoom>
@@ -116,11 +123,12 @@ function RemoteScreenTrack() {
     return <VideoTrack trackRef={screenTrack} style={styles.video} />;
   }
 
+  const reconnecting = connectionState === ConnectionState.Reconnecting;
+  const connecting = connectionState === ConnectionState.Connecting || reconnecting;
+
   return (
     <View style={styles.placeholder}>
-      {connectionState === ConnectionState.Connecting || connectionState === ConnectionState.Reconnecting ? (
-        <ActivityIndicator />
-      ) : null}
+      {connecting ? <ActivityIndicator /> : null}
       <Text style={styles.placeholderTitle}>
         {connectionState === ConnectionState.Connected ? 'CAPTURE CONNECTÉE' : 'CONNEXION LIVE'}
       </Text>
@@ -140,38 +148,9 @@ interface SharingLivePreviewProps {
 
 export function SharingLivePreview({ api, stationToken }: SharingLivePreviewProps) {
   const [retryNonce, setRetryNonce] = useState(0);
-  const { session, error, loading } = useStationLiveSession(api, `${stationToken}:${retryNonce}`, true);
-  const actualToken = stationToken;
-  const [resolvedSession, setResolvedSession] = useState<StationLiveSessionContract | null>(null);
-  const [resolvedError, setResolvedError] = useState<string | null>(null);
-  const [resolvedLoading, setResolvedLoading] = useState(true);
+  const { session, error, loading } = useStationLiveSession(api, stationToken, true, retryNonce);
 
-  useEffect(() => {
-    let cancelled = false;
-    setResolvedLoading(true);
-    void api.liveSession(actualToken)
-      .then((next) => {
-        if (cancelled) return;
-        setResolvedSession(next);
-        setResolvedError(null);
-        setResolvedLoading(false);
-      })
-      .catch((liveError) => {
-        if (cancelled) return;
-        setResolvedSession(null);
-        setResolvedError(liveError instanceof Error ? liveError.message : 'Aperçu live indisponible.');
-        setResolvedLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [actualToken, api, retryNonce]);
-
-  void session;
-  void error;
-  void loading;
-
-  if (resolvedLoading) {
+  if (loading && !session) {
     return (
       <View style={styles.placeholder}>
         <ActivityIndicator />
@@ -181,11 +160,11 @@ export function SharingLivePreview({ api, stationToken }: SharingLivePreviewProp
     );
   }
 
-  if (!resolvedSession) {
+  if (!session) {
     return (
       <View style={styles.placeholder}>
         <Text style={styles.placeholderTitle}>APERÇU LIVE INDISPONIBLE</Text>
-        <Text style={styles.placeholderText}>{resolvedError ?? 'Le service live n’est pas configuré.'}</Text>
+        <Text style={styles.placeholderText}>{error ?? 'Le service live n’est pas configuré.'}</Text>
         <Pressable style={styles.retryButton} onPress={() => setRetryNonce((current) => current + 1)}>
           <Text style={styles.retryText}>RÉESSAYER</Text>
         </Pressable>
@@ -196,8 +175,8 @@ export function SharingLivePreview({ api, stationToken }: SharingLivePreviewProp
   return (
     <View style={styles.previewFrame}>
       <LiveKitRoom
-        serverUrl={resolvedSession.serverUrl}
-        token={resolvedSession.participantToken}
+        serverUrl={session.serverUrl}
+        token={session.participantToken}
         connect
         audio={false}
         video={false}
@@ -231,6 +210,13 @@ const styles = StyleSheet.create({
   },
   placeholderTitle: { color: '#ffffff', fontSize: 12, fontWeight: '900', letterSpacing: 1.4 },
   placeholderText: { color: '#c8c8c8', fontSize: 11, lineHeight: 17, textAlign: 'center' },
-  retryButton: { marginTop: 4, borderWidth: 1, borderColor: '#ffffff', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 },
+  retryButton: {
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: '#ffffff',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
   retryText: { color: '#ffffff', fontSize: 10, fontWeight: '900' },
 });
