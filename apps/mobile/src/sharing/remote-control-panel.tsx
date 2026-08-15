@@ -1,9 +1,10 @@
 import type {
+  CaptureDurationSeconds,
   RemoteCaptureCommand,
   StationControlContract,
   VisualEffect,
 } from '@khe/contracts';
-import { VISUAL_EFFECTS } from '@khe/contracts';
+import { CAPTURE_DURATIONS, VISUAL_EFFECTS } from '@khe/contracts';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { StationApi } from '../api/station-api';
@@ -67,10 +68,10 @@ export function RemoteControlPanel({ eventName, api, stationToken }: RemoteContr
       return;
     }
     const timer = setInterval(() => {
-      setDisplaySeconds((current) => Math.max(current + 1, lastServerSeconds.current));
+      setDisplaySeconds((current) => Math.min(control.maxDurationSeconds, Math.max(current + 1, lastServerSeconds.current)));
     }, 1000);
     return () => clearInterval(timer);
-  }, [control?.runtimeState, control?.elapsedSeconds]);
+  }, [control?.runtimeState, control?.elapsedSeconds, control?.maxDurationSeconds]);
 
   async function command(commandName: Exclude<RemoteCaptureCommand, 'NONE'>): Promise<void> {
     setBusy(true);
@@ -93,6 +94,19 @@ export function RemoteControlPanel({ eventName, api, stationToken }: RemoteContr
       setMessage(`Effet ${effectLabels[selectedEffect]} sélectionné.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Impossible de modifier l’effet.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function selectDuration(maxDurationSeconds: CaptureDurationSeconds): Promise<void> {
+    setBusy(true);
+    try {
+      const next = await api.updateControlCommand(stationToken, { maxDurationSeconds });
+      setControl(next);
+      setMessage(`Durée maximum réglée à ${maxDurationSeconds} secondes sur CAPTURE.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Impossible de modifier la durée.');
     } finally {
       setBusy(false);
     }
@@ -129,7 +143,7 @@ export function RemoteControlPanel({ eventName, api, stationToken }: RemoteContr
       <View style={styles.previewPlaceholder}>
         <Text style={styles.previewTitle}>APERÇU LIVE</Text>
         <Text style={styles.previewText}>
-          Le canal de contrôle est actif. Le flux vidéo temps réel sera raccordé au transport live dédié afin de ne pas dégrader l’enregistrement local.
+          Le canal de contrôle est actif. Le vrai flux vidéo temps réel sera raccordé au transport live dédié sans remplacer ni dégrader l’enregistrement local.
         </Text>
       </View>
 
@@ -139,12 +153,34 @@ export function RemoteControlPanel({ eventName, api, stationToken }: RemoteContr
         <View style={styles.timerRow}>
           {control.runtimeState === 'RECORDING' ? <View style={styles.recordingDot} /> : null}
           <Text style={styles.timerLabel}>{timerLabel}</Text>
-          <Text style={styles.timer}>{formatDuration(displaySeconds)}</Text>
+          <Text style={styles.timer}>
+            {formatDuration(displaySeconds)} / {formatDuration(control.maxDurationSeconds)}
+          </Text>
         </View>
         <Text style={styles.timerHint}>
-          Le minuteur suit l’écoulement de la station CAPTURE et se fige automatiquement pendant une pause.
+          Le minuteur suit CAPTURE, se fige en pause et respecte la durée maximum sélectionnée ci-dessous.
         </Text>
         <Text style={styles.ack}>Commande #{control.commandVersion} · acquittée #{control.acknowledgedVersion}</Text>
+      </View>
+
+      <Text style={styles.sectionTitle}>DURÉE MAXIMUM</Text>
+      <View style={styles.durationRow}>
+        {CAPTURE_DURATIONS.map((seconds) => (
+          <Pressable
+            key={seconds}
+            disabled={busy || active}
+            onPress={() => void selectDuration(seconds)}
+            style={[
+              styles.durationButton,
+              control.maxDurationSeconds === seconds && styles.durationButtonActive,
+              (busy || active) && styles.disabled,
+            ]}
+          >
+            <Text style={control.maxDurationSeconds === seconds ? styles.durationTextActive : styles.durationText}>
+              {seconds}s
+            </Text>
+          </Pressable>
+        ))}
       </View>
 
       <View style={styles.commandRow}>
@@ -210,17 +246,22 @@ const styles = StyleSheet.create({
   statusCard: { borderWidth: 1, borderColor: '#d5d5d5', borderRadius: 16, padding: 16 },
   statusLabel: { fontSize: 10, fontWeight: '800', opacity: 0.5 },
   statusValue: { fontSize: 20, fontWeight: '900', marginTop: 4 },
-  timerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
+  timerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' },
   recordingDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#d62424' },
   timerLabel: { fontSize: 12, fontWeight: '900', letterSpacing: 1 },
-  timer: { fontSize: 36, fontWeight: '900' },
+  timer: { fontSize: 32, fontWeight: '900' },
   timerHint: { fontSize: 10, opacity: 0.55, marginTop: 2 },
   ack: { fontSize: 10, opacity: 0.5, marginTop: 4 },
+  sectionTitle: { marginTop: 4, fontSize: 11, fontWeight: '900', letterSpacing: 1.5 },
+  durationRow: { flexDirection: 'row', gap: 6 },
+  durationButton: { flex: 1, borderWidth: 1, borderColor: '#bdbdbd', borderRadius: 11, paddingVertical: 11, alignItems: 'center' },
+  durationButtonActive: { backgroundColor: '#111111', borderColor: '#111111' },
+  durationText: { fontWeight: '800', fontSize: 11 },
+  durationTextActive: { color: '#ffffff', fontWeight: '900', fontSize: 11 },
   commandRow: { flexDirection: 'row', gap: 8 },
   commandButton: { flex: 1, backgroundColor: '#111111', borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
   commandText: { color: '#ffffff', fontSize: 11, fontWeight: '900' },
   disabled: { opacity: 0.25 },
-  sectionTitle: { marginTop: 4, fontSize: 11, fontWeight: '900', letterSpacing: 1.5 },
   effectsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   effectButton: { borderWidth: 1, borderColor: '#bdbdbd', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 },
   effectActive: { backgroundColor: '#111111', borderColor: '#111111' },
