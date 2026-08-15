@@ -14,6 +14,7 @@ import { HttpStationApi } from './api/station-api';
 import { API_BASE_URL } from './config';
 import { SQLiteLocalStore } from './offline/sqlite-store';
 import type { PersistedStationContext } from './offline/types';
+import { SecureStoreCredentialVault } from './security/secure-store-vault';
 import { StationBootstrapService } from './station/station-bootstrap';
 
 function makeInstallationId(): string {
@@ -22,8 +23,9 @@ function makeInstallationId(): string {
 
 function App() {
   const store = useMemo(() => new SQLiteLocalStore(), []);
+  const vault = useMemo(() => new SecureStoreCredentialVault(), []);
   const api = useMemo(() => new HttpStationApi(API_BASE_URL), []);
-  const bootstrap = useMemo(() => new StationBootstrapService(api, store), [api, store]);
+  const bootstrap = useMemo(() => new StationBootstrapService(api, store, vault), [api, store, vault]);
 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
