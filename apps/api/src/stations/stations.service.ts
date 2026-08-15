@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -17,6 +18,7 @@ import {
   VisualEffect,
 } from '@prisma/client';
 import * as argon2 from 'argon2';
+import { AccessToken } from 'livekit-server-sdk';
 import { EventsService } from '../events/events.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateMediaDto } from './dto/create-media.dto';
@@ -28,6 +30,12 @@ import type { AuthenticatedStation, StationTokenPayload } from './station-auth.t
 
 const STATION_SESSION_TTL_SECONDS = 24 * 60 * 60;
 const MAX_ACTIVE_CODE_CANDIDATES = 50;
+
+function normalizedLiveKitUrl(value: string): string {
+  if (value.startsWith('https://')) return `wss://${value.slice('https://'.length)}`;
+  if (value.startsWith('http://')) return `ws://${value.slice('http://'.length)}`;
+  return value;
+}
 
 @Injectable()
 export class StationsService {
@@ -127,6 +135,51 @@ export class StationsService {
 
   manifest(station: AuthenticatedStation) {
     return this.events.manifest(station.organizationId, station.eventId);
+  }
+
+  async liveSession(station: AuthenticatedStation) {
+    const rawUrl = process.env.LIVEKIT_URL?.trim();
+    const apiKey = process.env.LIVEKIT_API_KEY?.trim();
+    const apiSecret = process.env.LIVEKIT_API_SECRET?.trim();
+    if (!rawUrl || !apiKey || !apiSecret) {
+      throw new ServiceUnavailableException('Live preview is not configured on the API');
+    }
+
+    const serverUrl = normalizedLiveKitUrl(rawUrl);
+    if (!/^wss?:\/\//i.test(serverUrl)) {
+      throw new ServiceUnavailableException('LIVEKIT_URL must use ws:// or wss://');
+    }
+
+    const roomName = `khe-event-${station.eventId}`;
+    const participantIdentity = `${station.mode.toLowerCase()}-${station.sessionId}`;
+    const canPublish = station.mode === StationMode.CAPTURE;
+    const canSubscribe = station.mode === StationMode.SHARING;
+    const token = new AccessToken(apiKey, apiSecret, {
+      identity: participantIdentity,
+      ttl: STATION_SESSION_TTL_SECONDS,
+      metadata: JSON.stringify({
+        eventId: station.eventId,
+        organizationId: station.organizationId,
+        mode: station.mode,
+      }),
+    });
+    token.addGrant({
+      roomJoin: true,
+      room: roomName,
+      canPublish,
+      canSubscribe,
+    });
+
+    return {
+      provider: 'livekit' as const,
+      serverUrl,
+      participantToken: await token.toJwt(),
+      roomName,
+      participantIdentity,
+      mode: station.mode,
+      canPublish,
+      canSubscribe,
+    };
   }
 
   async getControl(station: AuthenticatedStation) {
