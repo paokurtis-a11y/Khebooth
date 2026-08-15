@@ -21,6 +21,17 @@ function makeInstallationId(): string {
   return `khe-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 }
 
+function refreshErrorMessage(error: unknown): string {
+  const detail = error instanceof Error ? error.message : String(error ?? '');
+  if (/fetch failed|network request failed|unknownhost|unable to resolve host|timed?\s*out/i.test(detail)) {
+    return `Réseau indisponible : le cache local reste conservé. ${detail}`.trim();
+  }
+  if (/NativeDatabase|prepareAsync|SQLite|NullPointerException|database/i.test(detail)) {
+    return `Stockage local indisponible : le cache existant reste conservé. ${detail}`.trim();
+  }
+  return `Actualisation impossible : le cache local reste conservé. ${detail}`.trim();
+}
+
 function App() {
   const store = useMemo(() => new SQLiteLocalStore(), []);
   const vault = useMemo(() => new SecureStoreCredentialVault(), []);
@@ -102,9 +113,7 @@ function App() {
       }
       setMessage('Manifest actualisé et remis en cache.');
     } catch (error) {
-      setMessage(
-        `Réseau indisponible : le cache local reste conservé. ${error instanceof Error ? error.message : ''}`.trim(),
-      );
+      setMessage(refreshErrorMessage(error));
     } finally {
       setBusy(false);
     }
