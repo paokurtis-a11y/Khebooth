@@ -44,7 +44,6 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [station, setStation] = useState<PersistedStationContext | null>(null);
   const [eventName, setEventName] = useState<string | null>(null);
-  const [eventId, setEventId] = useState('');
   const [code, setCode] = useState('');
   const [mode, setMode] = useState<StationMode>('CAPTURE');
   const [message, setMessage] = useState('');
@@ -88,7 +87,6 @@ function App() {
       }
 
       const response = await bootstrap.redeem({
-        eventId: eventId.trim(),
         code: code.trim().toUpperCase(),
         installationId,
         mode,
@@ -98,7 +96,7 @@ function App() {
       const cached = await bootstrap.getCachedContext();
       setStation(cached);
       setEventName(response.manifest.event.name);
-      setMessage('Station activée. Le manifest est disponible hors ligne.');
+      setMessage(`Station activée pour « ${response.manifest.event.name} ». L’événement a été identifié automatiquement.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Activation impossible.');
     } finally {
@@ -210,15 +208,6 @@ function App() {
                 </Pressable>
               ))}
             </View>
-            <Text style={styles.label}>Event ID</Text>
-            <TextInput
-              autoCapitalize="none"
-              autoCorrect={false}
-              value={eventId}
-              onChangeText={setEventId}
-              placeholder="UUID de l’événement"
-              style={styles.input}
-            />
             <Text style={styles.label}>Code d’activation</Text>
             <TextInput
               autoCapitalize="characters"
@@ -228,7 +217,10 @@ function App() {
               placeholder="KHE-123456"
               style={styles.input}
             />
-            <Pressable disabled={busy || !eventId.trim() || !code.trim()} style={styles.primaryButton} onPress={() => void activate()}>
+            <Text style={styles.activationHelp}>
+              Aucun Event ID à saisir : KHE Booth retrouve automatiquement l’événement lié à ce code.
+            </Text>
+            <Pressable disabled={busy || !code.trim()} style={styles.primaryButton} onPress={() => void activate()}>
               <Text style={styles.primaryButtonText}>{busy ? 'Activation…' : 'Activer cette station'}</Text>
             </Pressable>
           </View>
@@ -257,6 +249,7 @@ const styles = StyleSheet.create({
   modeText: { fontWeight: '700' },
   modeTextActive: { color: '#ffffff', fontWeight: '700' },
   input: { borderWidth: 1, borderColor: '#d6d6d6', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 },
+  activationHelp: { fontSize: 12, lineHeight: 17, opacity: 0.6 },
   primaryButton: { marginTop: 8, backgroundColor: '#111111', borderRadius: 12, padding: 14, alignItems: 'center' },
   primaryButtonText: { color: '#ffffff', fontWeight: '800' },
   captureActions: { flexDirection: 'row', gap: 10 },
