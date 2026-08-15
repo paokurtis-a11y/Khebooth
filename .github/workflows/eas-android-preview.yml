@@ -2,6 +2,11 @@ name: KHE Booth Android APK
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - apps/mobile/.eas-build-trigger
 
 permissions:
   contents: read
