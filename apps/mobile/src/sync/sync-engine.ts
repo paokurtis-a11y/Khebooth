@@ -2,6 +2,7 @@ import type { SyntheticMediaCreateContract } from '@khe/contracts';
 import type { StationApi } from '../api/station-api';
 import type { LocalStore } from '../offline/local-store';
 import type { LocalMediaRecord } from '../offline/types';
+import type { CredentialVault } from '../security/credential-vault';
 import type { MediaTransfer } from './media-transfer';
 
 export interface QueueMediaInput {
@@ -25,6 +26,7 @@ export class SyncEngine {
   constructor(
     private readonly api: StationApi,
     private readonly store: LocalStore,
+    private readonly vault: CredentialVault,
     private readonly transfer: MediaTransfer,
   ) {}
 
@@ -73,6 +75,8 @@ export class SyncEngine {
     const station = await this.store.getStation();
     if (!station) throw new Error('Station not activated');
     if (station.mode !== 'CAPTURE') throw new Error('Only CAPTURE stations can synchronize media uploads');
+    const stationToken = await this.vault.getStationToken();
+    if (!stationToken) throw new Error('Station credential unavailable');
 
     const queue = (await this.store.listQueue()).filter((item) => new Date(item.nextAttemptAt).getTime() <= now.getTime());
     const result: DrainResult = { attempted: 0, synced: 0, failed: 0 };
@@ -80,7 +84,7 @@ export class SyncEngine {
     for (const item of queue) {
       result.attempted += 1;
       try {
-        await this.syncOne(station.stationToken, item.localId);
+        await this.syncOne(stationToken, item.localId);
         result.synced += 1;
       } catch (error) {
         result.failed += 1;
@@ -151,11 +155,16 @@ export class SyncEngine {
       throw new Error('Server did not acknowledge synchronized media');
     }
 
+    const acknowledgedAt =
+      finalized.media.acknowledgedAt instanceof Date
+        ? finalized.media.acknowledgedAt.toISOString()
+        : new Date(finalized.media.acknowledgedAt).toISOString();
+
     await this.store.upsertMedia({
       ...working,
       syncState: 'SYNCED',
       uploadedBytes: working.byteSize,
-      acknowledgedAt: new Date(finalized.media.acknowledgedAt).toISOString(),
+      acknowledgedAt,
       retryCount: 0,
       lastError: null,
       updatedAt: new Date().toISOString(),
