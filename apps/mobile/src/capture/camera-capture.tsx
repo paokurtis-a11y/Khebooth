@@ -12,9 +12,10 @@ import {
   type CameraType,
 } from 'expo-camera';
 import { Directory, File, Paths } from 'expo-file-system';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { StationApi } from '../api/station-api';
+import { CaptureLivePublisher, type LivePreviewState } from '../live/live-preview';
 import type { LocalStore } from '../offline/local-store';
 import type { LocalMediaRecord } from '../offline/types';
 
@@ -49,6 +50,15 @@ const effectOverlay: Record<VisualEffect, string> = {
   PARTY: 'rgba(225,40,180,0.12)',
 };
 
+const liveLabels: Record<LivePreviewState, string> = {
+  OFF: 'LIVE OFF',
+  LOADING: 'LIVE…',
+  CONNECTING: 'LIVE…',
+  LIVE: 'LIVE ●',
+  UNAVAILABLE: 'LIVE !',
+  ERROR: 'LIVE !',
+};
+
 export function CameraCapture({ eventId, store, api, stationToken, onClose, onCaptured }: CameraCaptureProps) {
   const cameraRef = useRef<CameraView | null>(null);
   const handledCommandVersion = useRef(0);
@@ -68,6 +78,8 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [selectedEffect, setSelectedEffect] = useState<VisualEffect>('NONE');
   const [message, setMessage] = useState('');
+  const [liveEnabled, setLiveEnabled] = useState(false);
+  const [liveState, setLiveState] = useState<LivePreviewState>('OFF');
 
   function setRuntimeState(next: RemoteCaptureState): void {
     runtimeStateRef.current = next;
@@ -78,19 +90,29 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
     setCaptureDuration(seconds);
   }
 
+  const handleLiveState = useCallback((next: LivePreviewState, detail?: string) => {
+    setLiveState(next);
+    if ((next === 'ERROR' || next === 'UNAVAILABLE') && detail) {
+      setMessage(`Aperçu live indisponible : ${detail}. La capture locale reste active.`);
+    }
+  }, []);
+
   useEffect(() => {
     elapsedRef.current = elapsedSeconds;
   }, [elapsedSeconds]);
 
   useEffect(() => {
     if (!recording || paused) return;
-    const timer = setInterval(() => setElapsedSeconds((current) => Math.min(durationRef.current, current + 1)), 1000);
+    const timer = setInterval(() => {
+      setElapsedSeconds((current) => Math.min(durationRef.current, current + 1));
+    }, 1000);
     return () => clearInterval(timer);
   }, [paused, recording]);
 
   useEffect(() => {
     if (!cameraPermission?.granted || !microphonePermission?.granted) return;
     let cancelled = false;
+
     const poll = async () => {
       try {
         const control = await api.control(stationToken);
@@ -157,7 +179,7 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
           }
         }
       } catch {
-        // Le contrôle distant reste best-effort : la capture locale doit continuer sans réseau.
+        // Le pilotage distant reste best-effort : la capture locale ne doit jamais dépendre du réseau.
       }
     };
 
@@ -237,6 +259,7 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
     setMessage('');
     setStarting(true);
     setRuntimeState('COUNTDOWN');
+
     try {
       for (let value = 5; value >= 1; value -= 1) {
         setCountdown(value);
@@ -252,6 +275,7 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
         elapsedSeconds: 0,
         maxDurationSeconds: duration,
       }).catch(() => undefined);
+
       const result = await cameraRef.current.recordAsync({ maxDuration: duration });
       setRuntimeState('SAVING');
       if (!result?.uri) {
@@ -259,6 +283,7 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
         setMessage('Enregistrement interrompu avant la création du fichier vidéo.');
         return;
       }
+
       const media = await persistRecording(result.uri);
       onCaptured(media, format);
       setMessage(`Vidéo ${duration} s max conservée hors ligne (${format}). Elle ne sera pas supprimée avant synchronisation confirmée.`);
@@ -314,6 +339,12 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
     }).catch(() => undefined);
   }
 
+  function toggleLive(): void {
+    if (recording || starting) return;
+    setMessage('');
+    setLiveEnabled((current) => !current);
+  }
+
   const controlsLocked = recording || starting;
 
   if (!cameraPermission?.granted || !microphonePermission?.granted) {
@@ -356,6 +387,14 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
           setMessage(event.message);
         }}
       />
+
+      <CaptureLivePublisher
+        api={api}
+        stationToken={stationToken}
+        enabled={liveEnabled}
+        onStateChange={handleLiveState}
+      />
+
       <View pointerEvents="none" style={[styles.effectOverlay, { backgroundColor: effectOverlay[selectedEffect] }]} />
       {selectedEffect !== 'NONE' ? (
         <View pointerEvents="none" style={styles.effectBadge}>
@@ -363,9 +402,17 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
         </View>
       ) : null}
 
+      {liveEnabled ? (
+        <View pointerEvents="none" style={styles.liveBadge}>
+          <Text style={styles.liveBadgeText}>SHARING · {liveLabels[liveState]}</Text>
+        </View>
+      ) : null}
+
       {countdown !== null ? (
         <View pointerEvents="none" style={styles.countdownOverlay}>
-          <View style={styles.countdownCircle}><Text style={styles.countdownText}>{countdown}</Text></View>
+          <View style={styles.countdownCircle}>
+            <Text style={styles.countdownText}>{countdown}</Text>
+          </View>
           <Text style={styles.countdownLabel}>Préparez-vous</Text>
         </View>
       ) : null}
@@ -380,16 +427,26 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
       ) : null}
 
       <View style={styles.topControls}>
-        <Pressable disabled={controlsLocked} style={styles.control} onPress={onClose}><Text style={styles.controlText}>Fermer</Text></Pressable>
+        <Pressable disabled={controlsLocked} style={styles.control} onPress={onClose}>
+          <Text style={styles.controlText}>Fermer</Text>
+        </Pressable>
         <Pressable disabled={controlsLocked} style={styles.control} onPress={() => setFacing((current) => (current === 'back' ? 'front' : 'back'))}>
           <Text style={styles.controlText}>Retourner</Text>
+        </Pressable>
+        <Pressable disabled={controlsLocked} style={[styles.control, liveState === 'LIVE' && styles.liveControl]} onPress={toggleLive}>
+          <Text style={styles.controlText}>{liveEnabled ? liveLabels[liveState] : 'ACTIVER LIVE'}</Text>
         </Pressable>
       </View>
 
       <View style={styles.bottomPanel}>
         <View style={styles.formatRow}>
           {(['9:16', '1:1'] as const).map((candidate) => (
-            <Pressable key={candidate} disabled={controlsLocked} onPress={() => setFormat(candidate)} style={[styles.formatButton, format === candidate && styles.formatButtonActive]}>
+            <Pressable
+              key={candidate}
+              disabled={controlsLocked}
+              onPress={() => setFormat(candidate)}
+              style={[styles.formatButton, format === candidate && styles.formatButtonActive]}
+            >
               <Text style={format === candidate ? styles.formatTextActive : styles.formatText}>{candidate}</Text>
             </Pressable>
           ))}
@@ -421,8 +478,12 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
 
         {recording ? (
           <View style={styles.recordingControls}>
-            <Pressable style={styles.pauseButton} onPress={() => void toggleLocalPause()}><Text style={styles.recordText}>{paused ? 'REPRENDRE' : 'PAUSE'}</Text></Pressable>
-            <Pressable style={[styles.recordButton, styles.stopButton]} onPress={stopRecording}><Text style={styles.recordText}>ARRÊTER • {formatDuration(elapsedSeconds)}</Text></Pressable>
+            <Pressable style={styles.pauseButton} onPress={() => void toggleLocalPause()}>
+              <Text style={styles.recordText}>{paused ? 'REPRENDRE' : 'PAUSE'}</Text>
+            </Pressable>
+            <Pressable style={[styles.recordButton, styles.stopButton]} onPress={stopRecording}>
+              <Text style={styles.recordText}>ARRÊTER • {formatDuration(elapsedSeconds)}</Text>
+            </Pressable>
           </View>
         ) : (
           <Pressable disabled={!ready || starting} style={[styles.recordButton, starting && styles.disabledButton]} onPress={() => void startRecording()}>
@@ -430,7 +491,9 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
           </Pressable>
         )}
 
-        <Text style={styles.policy}>Décompte automatique de 5 secondes, puis arrêt automatique à la durée choisie (10 à 30 secondes maximum). La durée peut être réglée depuis CAPTURE ou SHARING avant chaque prise.</Text>
+        <Text style={styles.policy}>
+          Décompte automatique de 5 secondes, puis arrêt automatique à la durée choisie. Active le LIVE avant la prise : Android demandera l’autorisation de partager l’écran. Si le live échoue, l’enregistrement local continue normalement.
+        </Text>
         {message ? <Text style={styles.message}>{message}</Text> : null}
       </View>
     </View>
@@ -443,6 +506,8 @@ const styles = StyleSheet.create({
   effectOverlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
   effectBadge: { position: 'absolute', top: 82, left: 18, backgroundColor: 'rgba(0,0,0,0.68)', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 7 },
   effectBadgeText: { color: '#ffffff', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+  liveBadge: { position: 'absolute', top: 122, left: 18, backgroundColor: 'rgba(0,0,0,0.72)', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 7 },
+  liveBadgeText: { color: '#ffffff', fontSize: 10, fontWeight: '900', letterSpacing: 0.8 },
   permissionPage: { flex: 1, backgroundColor: '#101010', padding: 28, justifyContent: 'center', gap: 16 },
   brand: { color: '#ffffff', fontSize: 14, letterSpacing: 3, fontWeight: '800' },
   title: { color: '#ffffff', fontSize: 30, fontWeight: '800' },
@@ -451,9 +516,10 @@ const styles = StyleSheet.create({
   primaryText: { color: '#111111', fontWeight: '800' },
   secondaryButton: { borderWidth: 1, borderColor: '#777777', borderRadius: 14, padding: 14, alignItems: 'center' },
   secondaryText: { color: '#ffffff', fontWeight: '700' },
-  topControls: { position: 'absolute', left: 18, right: 18, top: 28, flexDirection: 'row', justifyContent: 'space-between' },
-  control: { backgroundColor: 'rgba(0,0,0,0.65)', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 10 },
-  controlText: { color: '#ffffff', fontWeight: '700' },
+  topControls: { position: 'absolute', left: 18, right: 18, top: 28, flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
+  control: { flexShrink: 1, backgroundColor: 'rgba(0,0,0,0.65)', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 },
+  liveControl: { borderWidth: 1, borderColor: '#ffffff' },
+  controlText: { color: '#ffffff', fontSize: 11, fontWeight: '700' },
   countdownOverlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.18)' },
   countdownCircle: { width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(0,0,0,0.72)', borderWidth: 4, borderColor: '#ffffff', alignItems: 'center', justifyContent: 'center' },
   countdownText: { color: '#ffffff', fontSize: 84, lineHeight: 96, fontWeight: '900' },
