@@ -5,6 +5,7 @@ import type {
   StationControlCommandContract,
   StationControlContract,
   StationControlStatusContract,
+  StationLiveSessionContract,
   StationRedeemRequestContract,
   StationRedeemResponseContract,
   UploadSessionContract,
@@ -77,6 +78,20 @@ export class FakeStationApi implements StationApi {
 
   async manifest(): Promise<EventManifestContract> {
     return testManifest();
+  }
+
+  async liveSession(stationToken: string): Promise<StationLiveSessionContract> {
+    const capture = stationToken === 'capture-token';
+    return {
+      provider: 'livekit',
+      serverUrl: 'wss://live.example.test',
+      participantToken: capture ? 'capture-live-token' : 'sharing-live-token',
+      roomName: `khe-event-${TEST_EVENT_ID}`,
+      participantIdentity: capture ? 'capture-test-session' : 'sharing-test-session',
+      mode: capture ? 'CAPTURE' : 'SHARING',
+      canPublish: capture,
+      canSubscribe: !capture,
+    };
   }
 
   async control(): Promise<StationControlContract> {
