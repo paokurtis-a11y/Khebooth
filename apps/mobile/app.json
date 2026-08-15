@@ -14,7 +14,11 @@
       }
     },
     "android": {
-      "package": "com.kurtishypnotic.khebooth"
+      "package": "com.kurtishypnotic.khebooth",
+      "permissions": [
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"
+      ]
     },
     "plugins": [
       "expo-sqlite",
@@ -31,6 +35,25 @@
           "microphonePermission": "Autoriser KHE Booth à utiliser le microphone pour enregistrer le son des vidéos.",
           "recordAudioAndroid": true,
           "barcodeScannerEnabled": false
+        }
+      ],
+      [
+        "@livekit/react-native-expo-plugin",
+        {
+          "android": {
+            "audioType": "media",
+            "enableScreenShareService": true
+          },
+          "ios": {
+            "enableMultitaskingCameraAccess": false
+          }
+        }
+      ],
+      [
+        "@config-plugins/react-native-webrtc",
+        {
+          "cameraPermission": "Autoriser KHE Booth à utiliser la caméra pour les captures événementielles.",
+          "microphonePermission": "Autoriser KHE Booth à utiliser le microphone pour enregistrer le son des vidéos."
         }
       ]
     ]
