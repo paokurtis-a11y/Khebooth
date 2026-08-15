@@ -1,3 +1,4 @@
-trigger=2026-08-15T23:40:00+02:00
-reason=livekit-production-config-and-sharing-control
+trigger=2026-08-15T23:49:00+02:00
+reason=livekit-peer-aligned-expo-config-validated
 api_commit=5df5b4e31aeb80460e5ab039d2a4b20619bb8af2
+mobile_commit=7293bbaea9a80428d81446b761cef7be710c28ad
