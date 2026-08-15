@@ -1,14 +1,19 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { MemoryLocalStore } from '../src/offline/memory-store';
+import { MemoryCredentialVault } from '../src/security/memory-credential-vault';
+import { StationBootstrapService } from '../src/station/station-bootstrap';
 import type { MediaTransfer } from '../src/sync/media-transfer';
 import { SyntheticMediaTransfer } from '../src/sync/media-transfer';
-import { MemoryLocalStore } from '../src/offline/memory-store';
-import { StationBootstrapService } from '../src/station/station-bootstrap';
 import { SyncEngine } from '../src/sync/sync-engine';
 import { FakeStationApi, TEST_EVENT_ID } from './helpers';
 
 class InterruptingTransfer implements MediaTransfer {
-  async transfer(media: Parameters<MediaTransfer['transfer']>[0], resumeFrom: number, onProgress: Parameters<MediaTransfer['transfer']>[2]): Promise<void> {
+  async transfer(
+    media: Parameters<MediaTransfer['transfer']>[0],
+    resumeFrom: number,
+    onProgress: Parameters<MediaTransfer['transfer']>[2],
+  ): Promise<void> {
     assert.equal(resumeFrom, 0);
     await onProgress(Math.floor(media.byteSize / 2));
     throw new Error('simulated network interruption');
@@ -18,7 +23,8 @@ class InterruptingTransfer implements MediaTransfer {
 test('interrupted upload resumes idempotently without deleting local media', async () => {
   const api = new FakeStationApi();
   const store = new MemoryLocalStore();
-  const bootstrap = new StationBootstrapService(api, store);
+  const vault = new MemoryCredentialVault();
+  const bootstrap = new StationBootstrapService(api, store, vault);
   await bootstrap.redeem({
     eventId: TEST_EVENT_ID,
     code: 'KHE-123456',
@@ -26,7 +32,7 @@ test('interrupted upload resumes idempotently without deleting local media', asy
     mode: 'CAPTURE',
   });
 
-  const firstEngine = new SyncEngine(api, store, new InterruptingTransfer());
+  const firstEngine = new SyncEngine(api, store, vault, new InterruptingTransfer());
   await firstEngine.queueMedia({
     eventId: TEST_EVENT_ID,
     localId: 'local-video-001',
@@ -47,8 +53,8 @@ test('interrupted upload resumes idempotently without deleting local media', asy
   assert.equal(interrupted?.localUri, 'file:///documents/khe/local-video-001.mp4');
   assert.equal((await store.listQueue()).length, 1);
 
-  // Simulates an application/service restart while keeping the same durable store.
-  const restartedEngine = new SyncEngine(api, store, new SyntheticMediaTransfer());
+  // Simulates an application/service restart while keeping the same durable store and secure credential.
+  const restartedEngine = new SyncEngine(api, store, vault, new SyntheticMediaTransfer());
   const second = await restartedEngine.drain(new Date('2026-08-15T06:31:10.000Z'));
   assert.deepEqual(second, { attempted: 1, synced: 1, failed: 0 });
 
@@ -67,7 +73,8 @@ test('interrupted upload resumes idempotently without deleting local media', asy
 test('queuing the same local media is idempotent and rejects conflicting metadata', async () => {
   const api = new FakeStationApi();
   const store = new MemoryLocalStore();
-  const engine = new SyncEngine(api, store, new SyntheticMediaTransfer());
+  const vault = new MemoryCredentialVault();
+  const engine = new SyncEngine(api, store, vault, new SyntheticMediaTransfer());
   const input = {
     eventId: TEST_EVENT_ID,
     localId: 'same-local-id',
