@@ -1,4 +1,6 @@
+import type { AspectRatio, StationMode } from '@khe/contracts';
 import { registerRootComponent } from 'expo';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -9,7 +11,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import type { AspectRatio, StationMode } from '@khe/contracts';
 import { HttpStationApi } from './api/station-api';
 import { CameraCapture } from './capture/camera-capture';
 import { API_BASE_URL } from './config';
@@ -19,6 +20,8 @@ import type { LocalMediaRecord, PersistedStationContext } from './offline/types'
 import { SecureStoreCredentialVault } from './security/secure-store-vault';
 import { RemoteControlPanel } from './sharing/remote-control-panel';
 import { StationBootstrapService } from './station/station-bootstrap';
+
+const EVENT_KEEP_AWAKE_TAG = 'khe-booth-event';
 
 function makeInstallationId(): string {
   return `khe-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
@@ -51,6 +54,7 @@ function App() {
   const [message, setMessage] = useState('');
   const [cameraOpen, setCameraOpen] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
+  const [keepAwakeEnabled, setKeepAwakeEnabled] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -80,6 +84,19 @@ function App() {
     };
   }, [bootstrap, store, vault]);
 
+  useEffect(() => {
+    if (!station || !keepAwakeEnabled) {
+      void deactivateKeepAwake(EVENT_KEEP_AWAKE_TAG).catch(() => undefined);
+      return;
+    }
+    void activateKeepAwakeAsync(EVENT_KEEP_AWAKE_TAG).catch(() => {
+      setMessage('Impossible d’empêcher automatiquement la mise en veille sur cette tablette.');
+    });
+    return () => {
+      void deactivateKeepAwake(EVENT_KEEP_AWAKE_TAG).catch(() => undefined);
+    };
+  }, [keepAwakeEnabled, station]);
+
   async function activate(): Promise<void> {
     setBusy(true);
     setMessage('');
@@ -101,6 +118,7 @@ function App() {
       setStation(cached);
       setStationToken(response.stationToken);
       setEventName(response.manifest.event.name);
+      setKeepAwakeEnabled(true);
       setMessage(`Station activée pour « ${response.manifest.event.name} ». L’événement a été identifié automatiquement.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Activation impossible.');
@@ -174,6 +192,26 @@ function App() {
 
         {station ? (
           <View style={styles.section}>
+            <View style={styles.awakeCard}>
+              <View style={styles.awakeCopy}>
+                <Text style={styles.awakeTitle}>ÉTAT DE VEILLE</Text>
+                <Text style={styles.awakeStatus}>{keepAwakeEnabled ? 'Écran toujours actif' : 'Veille autorisée'}</Text>
+                <Text style={styles.awakeHelp}>
+                  {keepAwakeEnabled
+                    ? 'La tablette ne se mettra pas automatiquement en veille pendant l’événement.'
+                    : 'Les réglages Android habituels de mise en veille sont de nouveau autorisés.'}
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => setKeepAwakeEnabled((current) => !current)}
+                style={[styles.awakeButton, keepAwakeEnabled && styles.awakeButtonActive]}
+              >
+                <Text style={keepAwakeEnabled ? styles.awakeButtonTextActive : styles.awakeButtonText}>
+                  {keepAwakeEnabled ? 'AUTORISER VEILLE' : 'BLOQUER VEILLE'}
+                </Text>
+              </Pressable>
+            </View>
+
             {station.mode === 'SHARING' && stationToken ? (
               <RemoteControlPanel
                 eventName={eventName ?? 'Événement KHE Booth'}
@@ -263,6 +301,15 @@ const styles = StyleSheet.create({
   activationHelp: { fontSize: 12, lineHeight: 17, opacity: 0.6 },
   primaryButton: { marginTop: 8, backgroundColor: '#111111', borderRadius: 12, padding: 14, alignItems: 'center' },
   primaryButtonText: { color: '#ffffff', fontWeight: '800' },
+  awakeCard: { borderWidth: 1, borderColor: '#d5d5d5', borderRadius: 16, padding: 14, gap: 10 },
+  awakeCopy: { gap: 3 },
+  awakeTitle: { fontSize: 10, fontWeight: '900', letterSpacing: 1.5, opacity: 0.55 },
+  awakeStatus: { fontSize: 17, fontWeight: '900' },
+  awakeHelp: { fontSize: 11, lineHeight: 16, opacity: 0.62 },
+  awakeButton: { borderWidth: 1, borderColor: '#111111', borderRadius: 11, paddingVertical: 11, alignItems: 'center' },
+  awakeButtonActive: { backgroundColor: '#111111' },
+  awakeButtonText: { color: '#111111', fontWeight: '900', fontSize: 11 },
+  awakeButtonTextActive: { color: '#ffffff', fontWeight: '900', fontSize: 11 },
   captureActions: { flexDirection: 'row', gap: 10 },
   captureButton: { flex: 1, borderWidth: 1, borderColor: '#111111', borderRadius: 12, padding: 14, alignItems: 'center' },
   captureButtonText: { color: '#111111', fontWeight: '800' },
