@@ -7,12 +7,22 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { MediaSyncState, Prisma, StationMode, UploadState } from '@prisma/client';
+import {
+  MediaSyncState,
+  Prisma,
+  RemoteCaptureCommand,
+  RemoteCaptureState,
+  StationMode,
+  UploadState,
+  VisualEffect,
+} from '@prisma/client';
 import * as argon2 from 'argon2';
 import { EventsService } from '../events/events.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateMediaDto } from './dto/create-media.dto';
 import { RedeemStationDto } from './dto/redeem-station.dto';
+import { UpdateStationCommandDto } from './dto/update-station-command.dto';
+import { UpdateStationStatusDto } from './dto/update-station-status.dto';
 import { UpdateUploadProgressDto } from './dto/update-upload-progress.dto';
 import type { AuthenticatedStation, StationTokenPayload } from './station-auth.types';
 
@@ -117,6 +127,64 @@ export class StationsService {
 
   manifest(station: AuthenticatedStation) {
     return this.events.manifest(station.organizationId, station.eventId);
+  }
+
+  async getControl(station: AuthenticatedStation) {
+    return this.prisma.stationRemoteControl.upsert({
+      where: { eventId: station.eventId },
+      create: {
+        organizationId: station.organizationId,
+        eventId: station.eventId,
+      },
+      update: {},
+    });
+  }
+
+  async updateControlCommand(station: AuthenticatedStation, dto: UpdateStationCommandDto) {
+    this.assertSharing(station);
+    if (dto.command === RemoteCaptureCommand.NONE) {
+      throw new BadRequestException('NONE cannot be issued as a remote command');
+    }
+    if (dto.command === undefined && dto.selectedEffect === undefined) {
+      throw new BadRequestException('A command or visual effect is required');
+    }
+
+    return this.prisma.stationRemoteControl.upsert({
+      where: { eventId: station.eventId },
+      create: {
+        organizationId: station.organizationId,
+        eventId: station.eventId,
+        command: dto.command ?? RemoteCaptureCommand.NONE,
+        commandVersion: dto.command ? 1 : 0,
+        selectedEffect: dto.selectedEffect ?? VisualEffect.NONE,
+      },
+      update: {
+        ...(dto.command ? { command: dto.command, commandVersion: { increment: 1 } } : {}),
+        ...(dto.selectedEffect !== undefined ? { selectedEffect: dto.selectedEffect } : {}),
+      },
+    });
+  }
+
+  async updateControlStatus(station: AuthenticatedStation, dto: UpdateStationStatusDto) {
+    this.assertCapture(station);
+    const now = new Date();
+    return this.prisma.stationRemoteControl.upsert({
+      where: { eventId: station.eventId },
+      create: {
+        organizationId: station.organizationId,
+        eventId: station.eventId,
+        acknowledgedVersion: dto.acknowledgedVersion ?? 0,
+        runtimeState: dto.runtimeState ?? RemoteCaptureState.IDLE,
+        elapsedSeconds: dto.elapsedSeconds ?? 0,
+        captureSeenAt: now,
+      },
+      update: {
+        ...(dto.acknowledgedVersion !== undefined ? { acknowledgedVersion: dto.acknowledgedVersion } : {}),
+        ...(dto.runtimeState !== undefined ? { runtimeState: dto.runtimeState } : {}),
+        ...(dto.elapsedSeconds !== undefined ? { elapsedSeconds: dto.elapsedSeconds } : {}),
+        captureSeenAt: now,
+      },
+    });
   }
 
   async listMedia(station: AuthenticatedStation) {
@@ -312,6 +380,12 @@ export class StationsService {
   private assertCapture(station: AuthenticatedStation) {
     if (station.mode !== StationMode.CAPTURE) {
       throw new ForbiddenException('Only a Capture station can create or upload media');
+    }
+  }
+
+  private assertSharing(station: AuthenticatedStation) {
+    if (station.mode !== StationMode.SHARING) {
+      throw new ForbiddenException('Only a Sharing station can issue remote capture commands');
     }
   }
 
