@@ -1,0 +1,17 @@
+{
+  "expo": {
+    "name": "KHE Booth",
+    "slug": "khe-booth",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.kurtishypnotic.khebooth"
+    },
+    "android": {
+      "package": "com.kurtishypnotic.khebooth"
+    },
+    "plugins": ["expo-sqlite"]
+  }
+}
