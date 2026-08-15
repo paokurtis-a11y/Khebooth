@@ -15,6 +15,7 @@ export interface LocalStore {
   getManifest(eventId: string): Promise<EventManifestContract | null>;
   upsertMedia(media: LocalMediaRecord): Promise<void>;
   getMedia(localId: string): Promise<LocalMediaRecord | null>;
+  listMedia(eventId: string): Promise<LocalMediaRecord[]>;
   listPendingMedia(eventId: string): Promise<LocalMediaRecord[]>;
   enqueue(item: SyncQueueItem): Promise<void>;
   listQueue(): Promise<SyncQueueItem[]>;
