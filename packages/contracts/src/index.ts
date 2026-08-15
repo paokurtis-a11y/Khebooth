@@ -25,6 +25,9 @@ export type RemoteCaptureState = (typeof REMOTE_CAPTURE_STATES)[number];
 export const VISUAL_EFFECTS = ['NONE', 'WARM', 'COOL', 'GOLD', 'PARTY'] as const;
 export type VisualEffect = (typeof VISUAL_EFFECTS)[number];
 
+export const CAPTURE_DURATIONS = [10, 15, 20, 25, 30] as const;
+export type CaptureDurationSeconds = (typeof CAPTURE_DURATIONS)[number];
+
 export interface AuthUserContract {
   id: string;
   organizationId: string;
@@ -117,6 +120,7 @@ export interface StationControlContract {
   acknowledgedVersion: number;
   runtimeState: RemoteCaptureState;
   selectedEffect: VisualEffect;
+  maxDurationSeconds: CaptureDurationSeconds;
   elapsedSeconds: number;
   captureSeenAt: string | Date | null;
   updatedAt: string | Date;
@@ -125,6 +129,7 @@ export interface StationControlContract {
 export interface StationControlCommandContract {
   command?: Exclude<RemoteCaptureCommand, 'NONE'>;
   selectedEffect?: VisualEffect;
+  maxDurationSeconds?: CaptureDurationSeconds;
 }
 
 export interface StationControlStatusContract {
