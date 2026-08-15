@@ -1,5 +1,11 @@
 import type { EventManifestContract } from '@khe/contracts';
-import type { LocalMediaRecord, OfflineSnapshot, PersistedStationContext, SyncQueueItem } from './types';
+import type {
+  LocalMediaRecord,
+  OfflineSnapshot,
+  PersistedStationContext,
+  SharedMediaRecord,
+  SyncQueueItem,
+} from './types';
 
 export interface LocalStore {
   init(): Promise<void>;
@@ -13,5 +19,7 @@ export interface LocalStore {
   enqueue(item: SyncQueueItem): Promise<void>;
   listQueue(): Promise<SyncQueueItem[]>;
   removeQueueItem(localId: string): Promise<void>;
+  replaceSharedMedia(eventId: string, media: SharedMediaRecord[]): Promise<void>;
+  listSharedMedia(eventId: string): Promise<SharedMediaRecord[]>;
   snapshot(eventId: string): Promise<OfflineSnapshot>;
 }
