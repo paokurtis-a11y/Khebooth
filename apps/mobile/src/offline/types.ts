@@ -1,7 +1,6 @@
 import type { EventManifestContract, MediaSyncState, StationMode, StationSessionContract } from '@khe/contracts';
 
 export interface PersistedStationContext {
-  stationToken: string;
   session: StationSessionContract;
   installationId: string;
   mode: StationMode;
