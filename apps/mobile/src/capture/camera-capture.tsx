@@ -1,4 +1,4 @@
-import type { AspectRatio } from '@khe/contracts';
+import type { AspectRatio, RemoteCaptureState, VisualEffect } from '@khe/contracts';
 import {
   CameraView,
   useCameraPermissions,
@@ -8,12 +8,15 @@ import {
 import { Directory, File, Paths } from 'expo-file-system';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import type { StationApi } from '../api/station-api';
 import type { LocalStore } from '../offline/local-store';
 import type { LocalMediaRecord } from '../offline/types';
 
 interface CameraCaptureProps {
   eventId: string;
   store: LocalStore;
+  api: StationApi;
+  stationToken: string;
   onClose: () => void;
   onCaptured: (media: LocalMediaRecord, format: AspectRatio) => void;
 }
@@ -32,24 +35,128 @@ function formatDuration(totalSeconds: number): string {
   return `${minutes}:${seconds}`;
 }
 
-export function CameraCapture({ eventId, store, onClose, onCaptured }: CameraCaptureProps) {
+const effectOverlay: Record<VisualEffect, string> = {
+  NONE: 'transparent',
+  WARM: 'rgba(255,118,35,0.13)',
+  COOL: 'rgba(60,120,255,0.13)',
+  GOLD: 'rgba(218,170,60,0.17)',
+  PARTY: 'rgba(225,40,180,0.12)',
+};
+
+export function CameraCapture({ eventId, store, api, stationToken, onClose, onCaptured }: CameraCaptureProps) {
   const cameraRef = useRef<CameraView | null>(null);
+  const handledCommandVersion = useRef(0);
+  const runtimeStateRef = useRef<RemoteCaptureState>('IDLE');
+  const elapsedRef = useRef(0);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [microphonePermission, requestMicrophonePermission] = useMicrophonePermissions();
   const [facing, setFacing] = useState<CameraType>('back');
   const [format, setFormat] = useState<AspectRatio>('9:16');
   const [ready, setReady] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [paused, setPaused] = useState(false);
   const [starting, setStarting] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [selectedEffect, setSelectedEffect] = useState<VisualEffect>('NONE');
   const [message, setMessage] = useState('');
 
+  function setRuntimeState(next: RemoteCaptureState): void {
+    runtimeStateRef.current = next;
+  }
+
   useEffect(() => {
-    if (!recording) return;
+    elapsedRef.current = elapsedSeconds;
+  }, [elapsedSeconds]);
+
+  useEffect(() => {
+    if (!recording || paused) return;
     const timer = setInterval(() => setElapsedSeconds((current) => current + 1), 1000);
     return () => clearInterval(timer);
-  }, [recording]);
+  }, [paused, recording]);
+
+  useEffect(() => {
+    if (!cameraPermission?.granted || !microphonePermission?.granted) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const control = await api.control(stationToken);
+        if (cancelled) return;
+        setSelectedEffect(control.selectedEffect);
+        if (control.commandVersion <= handledCommandVersion.current) return;
+        handledCommandVersion.current = control.commandVersion;
+
+        if (control.command === 'START') {
+          if (ready && !recording && !starting) {
+            void startRecording();
+            await api.updateControlStatus(stationToken, {
+              acknowledgedVersion: control.commandVersion,
+              runtimeState: 'COUNTDOWN',
+              elapsedSeconds: 0,
+            });
+          }
+        } else if (control.command === 'STOP') {
+          if (recording) {
+            stopRecording();
+            await api.updateControlStatus(stationToken, {
+              acknowledgedVersion: control.commandVersion,
+              runtimeState: 'SAVING',
+              elapsedSeconds: elapsedRef.current,
+            });
+          }
+        } else if (control.command === 'PAUSE') {
+          if (recording && !paused && cameraRef.current && typeof cameraRef.current.toggleRecordingAsync === 'function') {
+            await cameraRef.current.toggleRecordingAsync();
+            setPaused(true);
+            setRuntimeState('PAUSED');
+            await api.updateControlStatus(stationToken, {
+              acknowledgedVersion: control.commandVersion,
+              runtimeState: 'PAUSED',
+              elapsedSeconds: elapsedRef.current,
+            });
+          } else {
+            setMessage('La pause vidéo n’est pas disponible sur cette configuration caméra Android.');
+            await api.updateControlStatus(stationToken, {
+              acknowledgedVersion: control.commandVersion,
+              runtimeState: recording ? 'RECORDING' : 'IDLE',
+              elapsedSeconds: elapsedRef.current,
+            });
+          }
+        } else if (control.command === 'RESUME') {
+          if (recording && paused && cameraRef.current && typeof cameraRef.current.toggleRecordingAsync === 'function') {
+            await cameraRef.current.toggleRecordingAsync();
+            setPaused(false);
+            setRuntimeState('RECORDING');
+            await api.updateControlStatus(stationToken, {
+              acknowledgedVersion: control.commandVersion,
+              runtimeState: 'RECORDING',
+              elapsedSeconds: elapsedRef.current,
+            });
+          }
+        }
+      } catch {
+        // Remote control is best-effort. Local recording must remain usable if the network drops.
+      }
+    };
+
+    void poll();
+    const timer = setInterval(() => void poll(), 800);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [api, cameraPermission?.granted, microphonePermission?.granted, paused, ready, recording, starting, stationToken]);
+
+  useEffect(() => {
+    if (!cameraPermission?.granted || !microphonePermission?.granted) return;
+    const heartbeat = setInterval(() => {
+      void api.updateControlStatus(stationToken, {
+        runtimeState: runtimeStateRef.current,
+        elapsedSeconds: elapsedRef.current,
+      }).catch(() => undefined);
+    }, 2000);
+    return () => clearInterval(heartbeat);
+  }, [api, cameraPermission?.granted, microphonePermission?.granted, stationToken]);
 
   async function requestPermissions(): Promise<void> {
     setMessage('');
@@ -111,6 +218,7 @@ export function CameraCapture({ eventId, store, onClose, onCaptured }: CameraCap
     if (!cameraRef.current || !ready || recording || starting) return;
     setMessage('');
     setStarting(true);
+    setRuntimeState('COUNTDOWN');
     try {
       for (let value = 5; value >= 1; value -= 1) {
         setCountdown(value);
@@ -119,8 +227,13 @@ export function CameraCapture({ eventId, store, onClose, onCaptured }: CameraCap
       setCountdown(null);
       setElapsedSeconds(0);
       setRecording(true);
+      setPaused(false);
+      setRuntimeState('RECORDING');
+      void api.updateControlStatus(stationToken, { runtimeState: 'RECORDING', elapsedSeconds: 0 }).catch(() => undefined);
       const result = await cameraRef.current.recordAsync({ maxDuration: 60 });
+      setRuntimeState('SAVING');
       if (!result?.uri) {
+        setRuntimeState('ERROR');
         setMessage('Enregistrement interrompu avant la création du fichier vidéo.');
         return;
       }
@@ -129,17 +242,38 @@ export function CameraCapture({ eventId, store, onClose, onCaptured }: CameraCap
       setMessage(
         `Vidéo conservée hors ligne (${format}). Elle ne sera pas supprimée avant synchronisation confirmée.`,
       );
+      setRuntimeState('IDLE');
+      void api.updateControlStatus(stationToken, { runtimeState: 'IDLE', elapsedSeconds: 0 }).catch(() => undefined);
     } catch (error) {
+      setRuntimeState('ERROR');
       setMessage(error instanceof Error ? error.message : 'Échec de l’enregistrement vidéo.');
+      void api.updateControlStatus(stationToken, { runtimeState: 'ERROR', elapsedSeconds: elapsedRef.current }).catch(() => undefined);
     } finally {
       setCountdown(null);
       setStarting(false);
       setRecording(false);
+      setPaused(false);
     }
   }
 
   function stopRecording(): void {
     cameraRef.current?.stopRecording();
+  }
+
+  async function toggleLocalPause(): Promise<void> {
+    if (!cameraRef.current || !recording || typeof cameraRef.current.toggleRecordingAsync !== 'function') return;
+    try {
+      await cameraRef.current.toggleRecordingAsync();
+      const nextPaused = !paused;
+      setPaused(nextPaused);
+      setRuntimeState(nextPaused ? 'PAUSED' : 'RECORDING');
+      void api.updateControlStatus(stationToken, {
+        runtimeState: nextPaused ? 'PAUSED' : 'RECORDING',
+        elapsedSeconds: elapsedRef.current,
+      }).catch(() => undefined);
+    } catch {
+      setMessage('La pause/reprise n’est pas supportée par cette tablette.');
+    }
   }
 
   const controlsLocked = recording || starting;
@@ -172,9 +306,22 @@ export function CameraCapture({ eventId, store, onClose, onCaptured }: CameraCap
         mode="video"
         ratio={format === '1:1' ? '1:1' : '16:9'}
         videoQuality="1080p"
-        onCameraReady={() => setReady(true)}
-        onMountError={(event) => setMessage(event.message)}
+        onCameraReady={() => {
+          setReady(true);
+          setRuntimeState('IDLE');
+          void api.updateControlStatus(stationToken, { runtimeState: 'IDLE', elapsedSeconds: 0 }).catch(() => undefined);
+        }}
+        onMountError={(event) => {
+          setRuntimeState('ERROR');
+          setMessage(event.message);
+        }}
       />
+      <View pointerEvents="none" style={[styles.effectOverlay, { backgroundColor: effectOverlay[selectedEffect] }]} />
+      {selectedEffect !== 'NONE' ? (
+        <View pointerEvents="none" style={styles.effectBadge}>
+          <Text style={styles.effectBadgeText}>EFFET {selectedEffect}</Text>
+        </View>
+      ) : null}
 
       {countdown !== null ? (
         <View pointerEvents="none" style={styles.countdownOverlay}>
@@ -188,7 +335,7 @@ export function CameraCapture({ eventId, store, onClose, onCaptured }: CameraCap
       {recording ? (
         <View pointerEvents="none" style={styles.recordingTimer}>
           <View style={styles.recordingDot} />
-          <Text style={styles.recordingTimerText}>REC {formatDuration(elapsedSeconds)}</Text>
+          <Text style={styles.recordingTimerText}>{paused ? 'PAUSE' : 'REC'} {formatDuration(elapsedSeconds)}</Text>
         </View>
       ) : null}
 
@@ -219,28 +366,34 @@ export function CameraCapture({ eventId, store, onClose, onCaptured }: CameraCap
         </View>
         <Text style={styles.status}>
           {recording
-            ? `Enregistrement • ${formatDuration(elapsedSeconds)}`
+            ? `${paused ? 'Pause' : 'Enregistrement'} • ${formatDuration(elapsedSeconds)}`
             : starting
               ? `Départ dans ${countdown ?? 1} s…`
               : ready
                 ? `Prêt • ${format}`
                 : 'Initialisation caméra…'}
         </Text>
-        <Pressable
-          disabled={!ready || starting}
-          style={[styles.recordButton, recording && styles.stopButton, starting && styles.disabledButton]}
-          onPress={() => (recording ? stopRecording() : void startRecording())}
-        >
-          <Text style={styles.recordText}>
-            {recording ? `ARRÊTER • ${formatDuration(elapsedSeconds)}` : starting ? 'PRÉPAREZ-VOUS…' : 'ENREGISTRER'}
-          </Text>
-        </Pressable>
+        {recording ? (
+          <View style={styles.recordingControls}>
+            <Pressable style={styles.pauseButton} onPress={() => void toggleLocalPause()}>
+              <Text style={styles.recordText}>{paused ? 'REPRENDRE' : 'PAUSE'}</Text>
+            </Pressable>
+            <Pressable style={[styles.recordButton, styles.stopButton]} onPress={stopRecording}>
+              <Text style={styles.recordText}>ARRÊTER • {formatDuration(elapsedSeconds)}</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <Pressable
+            disabled={!ready || starting}
+            style={[styles.recordButton, starting && styles.disabledButton]}
+            onPress={() => void startRecording()}
+          >
+            <Text style={styles.recordText}>{starting ? 'PRÉPAREZ-VOUS…' : 'ENREGISTRER'}</Text>
+          </Pressable>
+        )}
         <Text style={styles.policy}>
-          Décompte automatique de 5 secondes avant chaque capture. Les vidéos sont ensuite copiées dans le stockage permanent de la tablette puis ajoutées à la file de synchronisation.
+          Décompte automatique de 5 secondes. La tablette SHARING peut piloter REC, Pause/Reprendre, Stop et l’effet visuel quand cette caméra reste ouverte.
         </Text>
-        {format === '1:1' ? (
-          <Text style={styles.policy}>Le cadrage 1:1 sera normalisé lors du pipeline d’export MP4.</Text>
-        ) : null}
         {message ? <Text style={styles.message}>{message}</Text> : null}
       </View>
     </View>
@@ -250,6 +403,9 @@ export function CameraCapture({ eventId, store, onClose, onCaptured }: CameraCap
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#000000' },
   camera: { flex: 1 },
+  effectOverlay: { ...StyleSheet.absoluteFillObject },
+  effectBadge: { position: 'absolute', top: 82, left: 18, backgroundColor: 'rgba(0,0,0,0.68)', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 7 },
+  effectBadgeText: { color: '#ffffff', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
   permissionPage: { flex: 1, backgroundColor: '#101010', padding: 28, justifyContent: 'center', gap: 16 },
   brand: { color: '#ffffff', fontSize: 14, letterSpacing: 3, fontWeight: '800' },
   title: { color: '#ffffff', fontSize: 30, fontWeight: '800' },
@@ -275,7 +431,9 @@ const styles = StyleSheet.create({
   formatText: { color: '#ffffff', fontWeight: '800' },
   formatTextActive: { color: '#111111', fontWeight: '800' },
   status: { color: '#ffffff', textAlign: 'center', fontWeight: '700' },
-  recordButton: { backgroundColor: '#ffffff', borderRadius: 16, padding: 18, alignItems: 'center' },
+  recordingControls: { flexDirection: 'row', gap: 8 },
+  pauseButton: { flex: 1, backgroundColor: '#f2f2f2', borderRadius: 16, padding: 18, alignItems: 'center' },
+  recordButton: { flex: 1, backgroundColor: '#ffffff', borderRadius: 16, padding: 18, alignItems: 'center' },
   stopButton: { backgroundColor: '#d9d9d9' },
   disabledButton: { opacity: 0.7 },
   recordText: { color: '#111111', fontWeight: '900', letterSpacing: 1 },
