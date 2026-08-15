@@ -261,7 +261,7 @@ const styles = StyleSheet.create({
   topControls: { position: 'absolute', left: 18, right: 18, top: 28, flexDirection: 'row', justifyContent: 'space-between' },
   control: { backgroundColor: 'rgba(0,0,0,0.65)', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 10 },
   controlText: { color: '#ffffff', fontWeight: '700' },
-  countdownOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.18)' },
+  countdownOverlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.18)' },
   countdownCircle: { width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(0,0,0,0.72)', borderWidth: 4, borderColor: '#ffffff', alignItems: 'center', justifyContent: 'center' },
   countdownText: { color: '#ffffff', fontSize: 84, lineHeight: 96, fontWeight: '900' },
   countdownLabel: { marginTop: 18, color: '#ffffff', fontSize: 20, fontWeight: '800', backgroundColor: 'rgba(0,0,0,0.65)', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12 },
