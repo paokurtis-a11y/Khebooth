@@ -16,6 +16,15 @@ export type MediaSyncState = (typeof MEDIA_SYNC_STATES)[number];
 export const UPLOAD_STATES = ['INITIALIZED', 'IN_PROGRESS', 'COMPLETED', 'FAILED'] as const;
 export type UploadState = (typeof UPLOAD_STATES)[number];
 
+export const REMOTE_CAPTURE_COMMANDS = ['NONE', 'START', 'PAUSE', 'RESUME', 'STOP'] as const;
+export type RemoteCaptureCommand = (typeof REMOTE_CAPTURE_COMMANDS)[number];
+
+export const REMOTE_CAPTURE_STATES = ['IDLE', 'COUNTDOWN', 'RECORDING', 'PAUSED', 'SAVING', 'ERROR'] as const;
+export type RemoteCaptureState = (typeof REMOTE_CAPTURE_STATES)[number];
+
+export const VISUAL_EFFECTS = ['NONE', 'WARM', 'COOL', 'GOLD', 'PARTY'] as const;
+export type VisualEffect = (typeof VISUAL_EFFECTS)[number];
+
 export interface AuthUserContract {
   id: string;
   organizationId: string;
@@ -99,6 +108,29 @@ export interface StationRedeemResponseContract {
   stationToken: string;
   session: StationSessionContract;
   manifest: EventManifestContract;
+}
+
+export interface StationControlContract {
+  eventId: string;
+  command: RemoteCaptureCommand;
+  commandVersion: number;
+  acknowledgedVersion: number;
+  runtimeState: RemoteCaptureState;
+  selectedEffect: VisualEffect;
+  elapsedSeconds: number;
+  captureSeenAt: string | Date | null;
+  updatedAt: string | Date;
+}
+
+export interface StationControlCommandContract {
+  command?: Exclude<RemoteCaptureCommand, 'NONE'>;
+  selectedEffect?: VisualEffect;
+}
+
+export interface StationControlStatusContract {
+  acknowledgedVersion?: number;
+  runtimeState?: RemoteCaptureState;
+  elapsedSeconds?: number;
 }
 
 export interface SyntheticMediaCreateContract {
