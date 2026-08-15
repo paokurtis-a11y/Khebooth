@@ -1,4 +1,10 @@
-import type { AspectRatio, RemoteCaptureState, VisualEffect } from '@khe/contracts';
+import type {
+  AspectRatio,
+  CaptureDurationSeconds,
+  RemoteCaptureState,
+  VisualEffect,
+} from '@khe/contracts';
+import { CAPTURE_DURATIONS } from '@khe/contracts';
 import {
   CameraView,
   useCameraPermissions,
@@ -20,9 +26,6 @@ interface CameraCaptureProps {
   onClose: () => void;
   onCaptured: (media: LocalMediaRecord, format: AspectRatio) => void;
 }
-
-const CAPTURE_DURATIONS = [10, 15, 20, 25, 30] as const;
-type CaptureDuration = (typeof CAPTURE_DURATIONS)[number];
 
 function makeLocalId(): string {
   return `media-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
@@ -51,11 +54,12 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
   const handledCommandVersion = useRef(0);
   const runtimeStateRef = useRef<RemoteCaptureState>('IDLE');
   const elapsedRef = useRef(0);
+  const durationRef = useRef<CaptureDurationSeconds>(15);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [microphonePermission, requestMicrophonePermission] = useMicrophonePermissions();
   const [facing, setFacing] = useState<CameraType>('back');
   const [format, setFormat] = useState<AspectRatio>('9:16');
-  const [captureDuration, setCaptureDuration] = useState<CaptureDuration>(15);
+  const [captureDuration, setCaptureDuration] = useState<CaptureDurationSeconds>(15);
   const [ready, setReady] = useState(false);
   const [recording, setRecording] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -69,15 +73,20 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
     runtimeStateRef.current = next;
   }
 
+  function applyDuration(seconds: CaptureDurationSeconds): void {
+    durationRef.current = seconds;
+    setCaptureDuration(seconds);
+  }
+
   useEffect(() => {
     elapsedRef.current = elapsedSeconds;
   }, [elapsedSeconds]);
 
   useEffect(() => {
     if (!recording || paused) return;
-    const timer = setInterval(() => setElapsedSeconds((current) => Math.min(captureDuration, current + 1)), 1000);
+    const timer = setInterval(() => setElapsedSeconds((current) => Math.min(durationRef.current, current + 1)), 1000);
     return () => clearInterval(timer);
-  }, [captureDuration, paused, recording]);
+  }, [paused, recording]);
 
   useEffect(() => {
     if (!cameraPermission?.granted || !microphonePermission?.granted) return;
@@ -87,16 +96,21 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
         const control = await api.control(stationToken);
         if (cancelled) return;
         setSelectedEffect(control.selectedEffect);
+        if (!recording && !starting && control.maxDurationSeconds !== durationRef.current) {
+          applyDuration(control.maxDurationSeconds);
+        }
         if (control.commandVersion <= handledCommandVersion.current) return;
         handledCommandVersion.current = control.commandVersion;
 
         if (control.command === 'START') {
           if (ready && !recording && !starting) {
-            void startRecording();
+            applyDuration(control.maxDurationSeconds);
+            void startRecording(control.maxDurationSeconds);
             await api.updateControlStatus(stationToken, {
               acknowledgedVersion: control.commandVersion,
               runtimeState: 'COUNTDOWN',
               elapsedSeconds: 0,
+              maxDurationSeconds: control.maxDurationSeconds,
             });
           }
         } else if (control.command === 'STOP') {
@@ -106,6 +120,7 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
               acknowledgedVersion: control.commandVersion,
               runtimeState: 'SAVING',
               elapsedSeconds: elapsedRef.current,
+              maxDurationSeconds: durationRef.current,
             });
           }
         } else if (control.command === 'PAUSE') {
@@ -117,6 +132,7 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
               acknowledgedVersion: control.commandVersion,
               runtimeState: 'PAUSED',
               elapsedSeconds: elapsedRef.current,
+              maxDurationSeconds: durationRef.current,
             });
           } else {
             setMessage('La pause vidéo n’est pas disponible sur cette configuration caméra Android.');
@@ -124,6 +140,7 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
               acknowledgedVersion: control.commandVersion,
               runtimeState: recording ? 'RECORDING' : 'IDLE',
               elapsedSeconds: elapsedRef.current,
+              maxDurationSeconds: durationRef.current,
             });
           }
         } else if (control.command === 'RESUME') {
@@ -135,6 +152,7 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
               acknowledgedVersion: control.commandVersion,
               runtimeState: 'RECORDING',
               elapsedSeconds: elapsedRef.current,
+              maxDurationSeconds: durationRef.current,
             });
           }
         }
@@ -157,6 +175,7 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
       void api.updateControlStatus(stationToken, {
         runtimeState: runtimeStateRef.current,
         elapsedSeconds: elapsedRef.current,
+        maxDurationSeconds: durationRef.current,
       }).catch(() => undefined);
     }, 2000);
     return () => clearInterval(heartbeat);
@@ -211,8 +230,10 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
     return media;
   }
 
-  async function startRecording(): Promise<void> {
+  async function startRecording(durationOverride?: CaptureDurationSeconds): Promise<void> {
     if (!cameraRef.current || !ready || recording || starting) return;
+    const duration = durationOverride ?? durationRef.current;
+    applyDuration(duration);
     setMessage('');
     setStarting(true);
     setRuntimeState('COUNTDOWN');
@@ -226,8 +247,12 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
       setRecording(true);
       setPaused(false);
       setRuntimeState('RECORDING');
-      void api.updateControlStatus(stationToken, { runtimeState: 'RECORDING', elapsedSeconds: 0 }).catch(() => undefined);
-      const result = await cameraRef.current.recordAsync({ maxDuration: captureDuration });
+      void api.updateControlStatus(stationToken, {
+        runtimeState: 'RECORDING',
+        elapsedSeconds: 0,
+        maxDurationSeconds: duration,
+      }).catch(() => undefined);
+      const result = await cameraRef.current.recordAsync({ maxDuration: duration });
       setRuntimeState('SAVING');
       if (!result?.uri) {
         setRuntimeState('ERROR');
@@ -236,13 +261,21 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
       }
       const media = await persistRecording(result.uri);
       onCaptured(media, format);
-      setMessage(`Vidéo ${captureDuration} s max conservée hors ligne (${format}). Elle ne sera pas supprimée avant synchronisation confirmée.`);
+      setMessage(`Vidéo ${duration} s max conservée hors ligne (${format}). Elle ne sera pas supprimée avant synchronisation confirmée.`);
       setRuntimeState('IDLE');
-      void api.updateControlStatus(stationToken, { runtimeState: 'IDLE', elapsedSeconds: 0 }).catch(() => undefined);
+      void api.updateControlStatus(stationToken, {
+        runtimeState: 'IDLE',
+        elapsedSeconds: 0,
+        maxDurationSeconds: duration,
+      }).catch(() => undefined);
     } catch (error) {
       setRuntimeState('ERROR');
       setMessage(error instanceof Error ? error.message : 'Échec de l’enregistrement vidéo.');
-      void api.updateControlStatus(stationToken, { runtimeState: 'ERROR', elapsedSeconds: elapsedRef.current }).catch(() => undefined);
+      void api.updateControlStatus(stationToken, {
+        runtimeState: 'ERROR',
+        elapsedSeconds: elapsedRef.current,
+        maxDurationSeconds: durationRef.current,
+      }).catch(() => undefined);
     } finally {
       setCountdown(null);
       setStarting(false);
@@ -265,10 +298,20 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
       void api.updateControlStatus(stationToken, {
         runtimeState: nextPaused ? 'PAUSED' : 'RECORDING',
         elapsedSeconds: elapsedRef.current,
+        maxDurationSeconds: durationRef.current,
       }).catch(() => undefined);
     } catch {
       setMessage('La pause/reprise n’est pas supportée par cette tablette.');
     }
+  }
+
+  function selectLocalDuration(seconds: CaptureDurationSeconds): void {
+    applyDuration(seconds);
+    void api.updateControlStatus(stationToken, {
+      runtimeState: runtimeStateRef.current,
+      elapsedSeconds: elapsedRef.current,
+      maxDurationSeconds: seconds,
+    }).catch(() => undefined);
   }
 
   const controlsLocked = recording || starting;
@@ -302,7 +345,11 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
         onCameraReady={() => {
           setReady(true);
           setRuntimeState('IDLE');
-          void api.updateControlStatus(stationToken, { runtimeState: 'IDLE', elapsedSeconds: 0 }).catch(() => undefined);
+          void api.updateControlStatus(stationToken, {
+            runtimeState: 'IDLE',
+            elapsedSeconds: 0,
+            maxDurationSeconds: durationRef.current,
+          }).catch(() => undefined);
         }}
         onMountError={(event) => {
           setRuntimeState('ERROR');
@@ -348,13 +395,13 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
           ))}
         </View>
 
-        <Text style={styles.durationLabel}>DURÉE MAXIMUM</Text>
+        <Text style={styles.durationLabel}>DURÉE MAXIMUM · SYNCHRONISÉE AVEC SHARING</Text>
         <View style={styles.durationRow}>
           {CAPTURE_DURATIONS.map((seconds) => (
             <Pressable
               key={seconds}
               disabled={controlsLocked}
-              onPress={() => setCaptureDuration(seconds)}
+              onPress={() => selectLocalDuration(seconds)}
               style={[styles.durationButton, captureDuration === seconds && styles.durationButtonActive]}
             >
               <Text style={captureDuration === seconds ? styles.durationTextActive : styles.durationText}>{seconds}s</Text>
@@ -383,7 +430,7 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
           </Pressable>
         )}
 
-        <Text style={styles.policy}>Décompte automatique de 5 secondes, puis arrêt automatique à la durée choisie (10 à 30 secondes maximum). Stop manuel et pause/reprise restent disponibles.</Text>
+        <Text style={styles.policy}>Décompte automatique de 5 secondes, puis arrêt automatique à la durée choisie (10 à 30 secondes maximum). La durée peut être réglée depuis CAPTURE ou SHARING avant chaque prise.</Text>
         {message ? <Text style={styles.message}>{message}</Text> : null}
       </View>
     </View>
