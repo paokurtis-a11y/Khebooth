@@ -1,5 +1,7 @@
 import { RemoteCaptureState } from '@prisma/client';
-import { IsEnum, IsInt, IsOptional, Min } from 'class-validator';
+import { IsEnum, IsIn, IsInt, IsOptional, Min } from 'class-validator';
+
+const CAPTURE_DURATIONS = [10, 15, 20, 25, 30] as const;
 
 export class UpdateStationStatusDto {
   @IsOptional()
@@ -15,4 +17,8 @@ export class UpdateStationStatusDto {
   @IsInt()
   @Min(0)
   elapsedSeconds?: number;
+
+  @IsOptional()
+  @IsIn(CAPTURE_DURATIONS)
+  maxDurationSeconds?: 10 | 15 | 20 | 25 | 30;
 }
