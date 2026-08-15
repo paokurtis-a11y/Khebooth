@@ -25,6 +25,12 @@ export class StationsController {
   }
 
   @UseGuards(StationAuthGuard)
+  @Get('live-session')
+  liveSession(@CurrentStation() station: AuthenticatedStation) {
+    return this.stations.liveSession(station);
+  }
+
+  @UseGuards(StationAuthGuard)
   @Get('control')
   control(@CurrentStation() station: AuthenticatedStation) {
     return this.stations.getControl(station);
