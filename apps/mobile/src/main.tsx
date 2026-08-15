@@ -18,6 +18,7 @@ import { MediaGallery } from './gallery/media-gallery';
 import { SQLiteLocalStore } from './offline/sqlite-store';
 import type { LocalMediaRecord, PersistedStationContext } from './offline/types';
 import { SecureStoreCredentialVault } from './security/secure-store-vault';
+import { StandbyScreen } from './security/standby-screen';
 import { RemoteControlPanel } from './sharing/remote-control-panel';
 import { StationBootstrapService } from './station/station-bootstrap';
 
@@ -55,6 +56,10 @@ function App() {
   const [cameraOpen, setCameraOpen] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [keepAwakeEnabled, setKeepAwakeEnabled] = useState(true);
+  const [standbyLocked, setStandbyLocked] = useState(false);
+  const [lockConfigured, setLockConfigured] = useState(false);
+  const [newLockPassword, setNewLockPassword] = useState('');
+  const [confirmLockPassword, setConfirmLockPassword] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -63,12 +68,17 @@ function App() {
         await store.init();
         const cached = await bootstrap.getCachedContext();
         const cachedToken = await vault.getStationToken();
+        const savedPassword = await vault.getEventLockPassword();
+        const savedStandbyLocked = await vault.getStandbyLocked();
         if (cached && !(await vault.getInstallationId())) {
           await vault.saveInstallationId(cached.installationId);
         }
         if (cancelled) return;
         setStation(cached);
         setStationToken(cachedToken);
+        setLockConfigured(Boolean(savedPassword));
+        setStandbyLocked(Boolean(cached && savedPassword && savedStandbyLocked));
+        setKeepAwakeEnabled(!(cached && savedPassword && savedStandbyLocked));
         if (cached) {
           const manifest = await store.getManifest(cached.session.eventId);
           if (!cancelled) setEventName(manifest?.event.name ?? null);
@@ -119,6 +129,8 @@ function App() {
       setStationToken(response.stationToken);
       setEventName(response.manifest.event.name);
       setKeepAwakeEnabled(true);
+      setStandbyLocked(false);
+      await vault.saveStandbyLocked(false);
       setMessage(`Station activée pour « ${response.manifest.event.name} ». L’événement a été identifié automatiquement.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Activation impossible.');
@@ -144,6 +156,51 @@ function App() {
     }
   }
 
+  async function saveLockPassword(): Promise<void> {
+    if (station?.mode !== 'SHARING') return;
+    const password = newLockPassword.trim();
+    if (password.length < 4) {
+      setMessage('Le mot de passe KHE doit contenir au minimum 4 caractères.');
+      return;
+    }
+    if (password !== confirmLockPassword.trim()) {
+      setMessage('Les deux saisies du mot de passe KHE ne correspondent pas.');
+      return;
+    }
+    await vault.saveEventLockPassword(password);
+    setLockConfigured(true);
+    setNewLockPassword('');
+    setConfirmLockPassword('');
+    setMessage('Mot de passe de veille KHE enregistré. Vous pouvez le modifier ici à tout moment lorsque la régie est déverrouillée.');
+  }
+
+  async function allowSecureStandby(): Promise<void> {
+    if (station?.mode !== 'SHARING') {
+      setMessage('La veille sécurisée est administrée depuis la régie SHARING.');
+      return;
+    }
+    if (!(await vault.getEventLockPassword())) {
+      setLockConfigured(false);
+      setMessage('Définissez d’abord le mot de passe KHE avant d’autoriser la veille.');
+      return;
+    }
+    setKeepAwakeEnabled(false);
+    setStandbyLocked(true);
+    await vault.saveStandbyLocked(true);
+  }
+
+  async function unlockStandby(): Promise<void> {
+    await vault.saveStandbyLocked(false);
+    setStandbyLocked(false);
+    setKeepAwakeEnabled(true);
+    setMessage('Régie KHE déverrouillée. Écran toujours actif rétabli.');
+  }
+
+  async function verifyLockPassword(password: string): Promise<boolean> {
+    const expected = await vault.getEventLockPassword();
+    return Boolean(expected && expected === password);
+  }
+
   function handleCaptured(media: LocalMediaRecord, format: AspectRatio): void {
     setMessage(
       `Capture ${format} conservée localement (${Math.max(1, Math.round(media.byteSize / 1024 / 1024))} Mo) et placée en attente de synchronisation.`,
@@ -157,6 +214,10 @@ function App() {
         <Text style={styles.muted}>Initialisation du stockage offline…</Text>
       </SafeAreaView>
     );
+  }
+
+  if (station && standbyLocked) {
+    return <StandbyScreen verifyPassword={verifyLockPassword} onUnlocked={unlockStandby} />;
   }
 
   if (cameraOpen && station?.mode === 'CAPTURE' && stationToken) {
@@ -197,20 +258,59 @@ function App() {
                 <Text style={styles.awakeTitle}>ÉTAT DE VEILLE</Text>
                 <Text style={styles.awakeStatus}>{keepAwakeEnabled ? 'Écran toujours actif' : 'Veille autorisée'}</Text>
                 <Text style={styles.awakeHelp}>
-                  {keepAwakeEnabled
-                    ? 'La tablette ne se mettra pas automatiquement en veille pendant l’événement.'
-                    : 'Les réglages Android habituels de mise en veille sont de nouveau autorisés.'}
+                  {station.mode === 'SHARING'
+                    ? keepAwakeEnabled
+                      ? 'La régie reste éveillée. La veille sécurisée exige un mot de passe KHE et accepte aussi la sécurité Android compatible.'
+                      : 'Le mode veille sécurisé KHE est actif.'
+                    : 'La station CAPTURE reste éveillée pendant l’événement. La sécurité de veille est administrée depuis SHARING.'}
                 </Text>
               </View>
-              <Pressable
-                onPress={() => setKeepAwakeEnabled((current) => !current)}
-                style={[styles.awakeButton, keepAwakeEnabled && styles.awakeButtonActive]}
-              >
-                <Text style={keepAwakeEnabled ? styles.awakeButtonTextActive : styles.awakeButtonText}>
-                  {keepAwakeEnabled ? 'AUTORISER VEILLE' : 'BLOQUER VEILLE'}
-                </Text>
-              </Pressable>
+              {station.mode === 'SHARING' ? (
+                <Pressable onPress={() => void allowSecureStandby()} style={[styles.awakeButton, styles.awakeButtonActive]}>
+                  <Text style={styles.awakeButtonTextActive}>AUTORISER VEILLE SÉCURISÉE</Text>
+                </Pressable>
+              ) : null}
             </View>
+
+            {station.mode === 'SHARING' ? (
+              <View style={styles.securityCard}>
+                <Text style={styles.awakeTitle}>SÉCURITÉ DE LA RÉGIE</Text>
+                <Text style={styles.securityTitle}>{lockConfigured ? 'Mot de passe KHE configuré' : 'Créer le mot de passe KHE'}</Text>
+                <Text style={styles.awakeHelp}>
+                  {lockConfigured
+                    ? 'Saisissez un nouveau mot de passe ci-dessous pour le remplacer. Le changement est possible uniquement lorsque la régie est déverrouillée.'
+                    : 'Avant la première mise en veille, choisissez votre mot de passe de secours KHE.'}
+                </Text>
+                <TextInput
+                  value={newLockPassword}
+                  onChangeText={setNewLockPassword}
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  placeholder={lockConfigured ? 'Nouveau mot de passe' : 'Mot de passe KHE'}
+                  style={styles.input}
+                />
+                <TextInput
+                  value={confirmLockPassword}
+                  onChangeText={setConfirmLockPassword}
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  placeholder="Confirmer le mot de passe"
+                  style={styles.input}
+                />
+                <Pressable
+                  disabled={!newLockPassword || !confirmLockPassword}
+                  onPress={() => void saveLockPassword()}
+                  style={styles.securityButton}
+                >
+                  <Text style={styles.securityButtonText}>{lockConfigured ? 'MODIFIER LE MOT DE PASSE' : 'ENREGISTRER LE MOT DE PASSE'}</Text>
+                </Pressable>
+                <Text style={styles.securityNote}>
+                  Au déverrouillage, KHE proposera l’empreinte, le visage ou le verrouillage système Android (PIN/schéma/mot de passe) lorsque la tablette le permet, avec le mot de passe KHE en secours.
+                </Text>
+              </View>
+            ) : null}
 
             {station.mode === 'SHARING' && stationToken ? (
               <RemoteControlPanel
@@ -308,8 +408,12 @@ const styles = StyleSheet.create({
   awakeHelp: { fontSize: 11, lineHeight: 16, opacity: 0.62 },
   awakeButton: { borderWidth: 1, borderColor: '#111111', borderRadius: 11, paddingVertical: 11, alignItems: 'center' },
   awakeButtonActive: { backgroundColor: '#111111' },
-  awakeButtonText: { color: '#111111', fontWeight: '900', fontSize: 11 },
   awakeButtonTextActive: { color: '#ffffff', fontWeight: '900', fontSize: 11 },
+  securityCard: { borderWidth: 1, borderColor: '#d5d5d5', borderRadius: 16, padding: 14, gap: 9 },
+  securityTitle: { fontSize: 16, fontWeight: '900' },
+  securityButton: { backgroundColor: '#ededed', borderRadius: 11, paddingVertical: 12, alignItems: 'center' },
+  securityButtonText: { fontWeight: '900', fontSize: 11 },
+  securityNote: { fontSize: 10, lineHeight: 15, opacity: 0.58 },
   captureActions: { flexDirection: 'row', gap: 10 },
   captureButton: { flex: 1, borderWidth: 1, borderColor: '#111111', borderRadius: 12, padding: 14, alignItems: 'center' },
   captureButtonText: { color: '#111111', fontWeight: '800' },
