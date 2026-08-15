@@ -5,6 +5,7 @@ import type {
   StationControlCommandContract,
   StationControlContract,
   StationControlStatusContract,
+  StationLiveSessionContract,
   StationRedeemRequestContract,
   StationRedeemResponseContract,
   SyntheticMediaCreateContract,
@@ -14,6 +15,7 @@ import type {
 export interface StationApi {
   redeem(request: StationRedeemRequestContract): Promise<StationRedeemResponseContract>;
   manifest(stationToken: string): Promise<EventManifestContract>;
+  liveSession(stationToken: string): Promise<StationLiveSessionContract>;
   control(stationToken: string): Promise<StationControlContract>;
   updateControlCommand(stationToken: string, command: StationControlCommandContract): Promise<StationControlContract>;
   updateControlStatus(stationToken: string, status: StationControlStatusContract): Promise<StationControlContract>;
@@ -65,6 +67,10 @@ export class HttpStationApi implements StationApi {
 
   manifest(stationToken: string): Promise<EventManifestContract> {
     return this.request('/stations/manifest', { headers: this.stationHeaders(stationToken) });
+  }
+
+  liveSession(stationToken: string): Promise<StationLiveSessionContract> {
+    return this.request('/stations/live-session', { headers: this.stationHeaders(stationToken) });
   }
 
   control(stationToken: string): Promise<StationControlContract> {
