@@ -10,4 +10,6 @@ Before real camera capture is started, the deployment gate requires:
 - production runtime must have no new fatal/error cluster;
 - station activation/sync routes must be present in the deployed API.
 
+A fresh production deployment retry was triggered on 2026-08-15 after the previous Vercel build-rate limit was reported as cleared.
+
 Real camera/video capture remains blocked until this production gate is fully green.
