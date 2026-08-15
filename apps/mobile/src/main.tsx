@@ -17,6 +17,7 @@ import { MediaGallery } from './gallery/media-gallery';
 import { SQLiteLocalStore } from './offline/sqlite-store';
 import type { LocalMediaRecord, PersistedStationContext } from './offline/types';
 import { SecureStoreCredentialVault } from './security/secure-store-vault';
+import { RemoteControlPanel } from './sharing/remote-control-panel';
 import { StationBootstrapService } from './station/station-bootstrap';
 
 function makeInstallationId(): string {
@@ -43,6 +44,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [station, setStation] = useState<PersistedStationContext | null>(null);
+  const [stationToken, setStationToken] = useState<string | null>(null);
   const [eventName, setEventName] = useState<string | null>(null);
   const [code, setCode] = useState('');
   const [mode, setMode] = useState<StationMode>('CAPTURE');
@@ -56,11 +58,13 @@ function App() {
       try {
         await store.init();
         const cached = await bootstrap.getCachedContext();
+        const cachedToken = await vault.getStationToken();
         if (cached && !(await vault.getInstallationId())) {
           await vault.saveInstallationId(cached.installationId);
         }
         if (cancelled) return;
         setStation(cached);
+        setStationToken(cachedToken);
         if (cached) {
           const manifest = await store.getManifest(cached.session.eventId);
           if (!cancelled) setEventName(manifest?.event.name ?? null);
@@ -95,6 +99,7 @@ function App() {
       });
       const cached = await bootstrap.getCachedContext();
       setStation(cached);
+      setStationToken(response.stationToken);
       setEventName(response.manifest.event.name);
       setMessage(`Station activée pour « ${response.manifest.event.name} ». L’événement a été identifié automatiquement.`);
     } catch (error) {
@@ -136,11 +141,13 @@ function App() {
     );
   }
 
-  if (cameraOpen && station?.mode === 'CAPTURE') {
+  if (cameraOpen && station?.mode === 'CAPTURE' && stationToken) {
     return (
       <CameraCapture
         eventId={station.session.eventId}
         store={store}
+        api={api}
+        stationToken={stationToken}
         onClose={() => setCameraOpen(false)}
         onCaptured={handleCaptured}
       />
@@ -167,19 +174,25 @@ function App() {
 
         {station ? (
           <View style={styles.section}>
-            <Text style={styles.label}>Station active</Text>
-            <Text style={styles.value}>{station.mode}</Text>
-            <Text style={styles.label}>Événement</Text>
-            <Text style={styles.value}>{eventName ?? station.session.eventId}</Text>
-            <Text style={styles.label}>Session</Text>
-            <Text style={styles.small}>{station.session.id}</Text>
-            <Pressable disabled={busy} style={styles.primaryButton} onPress={() => void refreshManifest()}>
-              <Text style={styles.primaryButtonText}>{busy ? 'Synchronisation…' : 'Actualiser le manifest'}</Text>
-            </Pressable>
-            {station.mode === 'CAPTURE' ? (
+            {station.mode === 'SHARING' && stationToken ? (
+              <RemoteControlPanel
+                eventName={eventName ?? 'Événement KHE Booth'}
+                api={api}
+                stationToken={stationToken}
+              />
+            ) : (
               <>
+                <Text style={styles.label}>Station active</Text>
+                <Text style={styles.value}>{station.mode}</Text>
+                <Text style={styles.label}>Événement</Text>
+                <Text style={styles.value}>{eventName ?? station.session.eventId}</Text>
+                <Text style={styles.label}>Session</Text>
+                <Text style={styles.small}>{station.session.id}</Text>
+                <Pressable disabled={busy} style={styles.primaryButton} onPress={() => void refreshManifest()}>
+                  <Text style={styles.primaryButtonText}>{busy ? 'Synchronisation…' : 'Actualiser le manifest'}</Text>
+                </Pressable>
                 <View style={styles.captureActions}>
-                  <Pressable disabled={busy} style={styles.captureButton} onPress={() => setCameraOpen(true)}>
+                  <Pressable disabled={busy || !stationToken} style={styles.captureButton} onPress={() => setCameraOpen(true)}>
                     <Text style={styles.captureButtonText}>Ouvrir la caméra</Text>
                   </Pressable>
                   <Pressable disabled={busy} style={styles.galleryButton} onPress={() => setGalleryOpen(true)}>
@@ -187,11 +200,9 @@ function App() {
                   </Pressable>
                 </View>
                 <Text style={styles.notice}>
-                  Capture locale 9:16 / 1:1 avec décompte de 5 secondes et chronomètre d’enregistrement. Les vidéos restent disponibles dans la Galerie KHE Booth tant qu’elles sont conservées sur la tablette.
+                  Laisse la caméra CAPTURE ouverte pendant l’événement pour permettre à la tablette SHARING de piloter REC, Pause/Reprendre, Stop et les effets.
                 </Text>
               </>
-            ) : (
-              <Text style={styles.notice}>Cette tablette reste dédiée à la station SHARING.</Text>
             )}
           </View>
         ) : (
