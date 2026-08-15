@@ -1,5 +1,7 @@
 import { RemoteCaptureCommand, VisualEffect } from '@prisma/client';
-import { IsEnum, IsOptional } from 'class-validator';
+import { IsEnum, IsIn, IsOptional } from 'class-validator';
+
+const CAPTURE_DURATIONS = [10, 15, 20, 25, 30] as const;
 
 export class UpdateStationCommandDto {
   @IsOptional()
@@ -9,4 +11,8 @@ export class UpdateStationCommandDto {
   @IsOptional()
   @IsEnum(VisualEffect)
   selectedEffect?: VisualEffect;
+
+  @IsOptional()
+  @IsIn(CAPTURE_DURATIONS)
+  maxDurationSeconds?: 10 | 15 | 20 | 25 | 30;
 }
