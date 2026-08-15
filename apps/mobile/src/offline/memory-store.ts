@@ -43,6 +43,13 @@ export class MemoryLocalStore implements LocalStore {
     return media ? structuredClone(media) : null;
   }
 
+  async listMedia(eventId: string): Promise<LocalMediaRecord[]> {
+    return [...this.media.values()]
+      .filter((item) => item.eventId === eventId)
+      .sort((a, b) => b.capturedAt.localeCompare(a.capturedAt))
+      .map((item) => structuredClone(item));
+  }
+
   async listPendingMedia(eventId: string): Promise<LocalMediaRecord[]> {
     return [...this.media.values()]
       .filter((item) => item.eventId === eventId && item.syncState !== 'SYNCED')
