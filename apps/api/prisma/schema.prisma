@@ -232,6 +232,7 @@ model StationRemoteControl {
   acknowledgedVersion Int                  @default(0)
   runtimeState        RemoteCaptureState   @default(IDLE)
   selectedEffect      VisualEffect         @default(NONE)
+  maxDurationSeconds  Int                  @default(15)
   elapsedSeconds      Int                  @default(0)
   captureSeenAt       DateTime?
   createdAt           DateTime             @default(now())
