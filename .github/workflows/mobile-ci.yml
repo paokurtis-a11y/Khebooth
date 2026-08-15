@@ -1,0 +1,56 @@
+name: KHE Booth Mobile CI
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'apps/mobile/**'
+      - 'packages/contracts/**'
+      - 'pnpm-workspace.yaml'
+      - 'package.json'
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps/mobile/**'
+      - 'packages/contracts/**'
+      - 'pnpm-workspace.yaml'
+      - 'package.json'
+
+concurrency:
+  group: khe-booth-mobile-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-mobile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.6.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Build shared contracts
+        run: pnpm --filter @khe/contracts build
+
+      - name: Typecheck mobile
+        run: pnpm --filter @khe/mobile lint
+
+      - name: Test offline foundation
+        run: pnpm --filter @khe/mobile test
+
+      - name: Build mobile TypeScript
+        run: pnpm --filter @khe/mobile build

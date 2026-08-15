@@ -1,4 +1,4 @@
-name: Phase 1 CI
+name: KHE Booth CI
 
 on:
   push:
@@ -9,12 +9,13 @@ on:
       - main
 
 concurrency:
-  group: phase1-ci-${{ github.ref }}
+  group: khe-booth-ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:16-alpine
@@ -33,7 +34,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://khe:khe@localhost:5432/khe_booth_test?schema=public
       TEST_DATABASE_URL: postgresql://khe:khe@localhost:5432/khe_booth_test?schema=public
-      JWT_SECRET: phase1-ci-secret-not-for-production
+      JWT_SECRET: ci-secret-not-for-production
       JWT_EXPIRES_IN_SECONDS: 3600
 
     steps:

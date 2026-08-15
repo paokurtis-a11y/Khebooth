@@ -130,3 +130,8 @@ export interface UploadSessionContract {
   totalBytes: number;
   updatedAt: string | Date;
 }
+
+export interface FinalizeUploadResponseContract {
+  media: MediaAssetContract;
+  upload: UploadSessionContract;
+}

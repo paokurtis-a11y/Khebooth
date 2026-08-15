@@ -1,0 +1,27 @@
+{
+  "name": "@khe/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/main.tsx",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "pnpm build && node --test dist/apps/mobile/test/*.test.js"
+  },
+  "dependencies": {
+    "@khe/contracts": "workspace:*",
+    "expo": "~56.0.12",
+    "expo-secure-store": "~56.0.4",
+    "expo-sqlite": "~56.0.5",
+    "react": "19.2.3",
+    "react-native": "0.85.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.2.0",
+    "typescript": "^5.7.2"
+  }
+}
