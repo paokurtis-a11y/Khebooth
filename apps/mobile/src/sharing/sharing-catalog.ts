@@ -2,6 +2,10 @@ import type { StationApi } from '../api/station-api';
 import type { LocalStore } from '../offline/local-store';
 import type { SharedMediaRecord } from '../offline/types';
 
+function toIso(value: string | Date): string {
+  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+}
+
 export class SharingCatalogService {
   constructor(
     private readonly api: StationApi,
@@ -25,8 +29,8 @@ export class SharingCatalogService {
         contentHash: item.contentHash,
         byteSize: item.byteSize,
         mimeType: item.mimeType,
-        capturedAt: item.capturedAt ? new Date(item.capturedAt).toISOString() : null,
-        acknowledgedAt: new Date(item.acknowledgedAt as string | Date).toISOString(),
+        capturedAt: item.capturedAt ? toIso(item.capturedAt) : null,
+        acknowledgedAt: toIso(item.acknowledgedAt as string | Date),
         cachedAt: now,
       }));
 
