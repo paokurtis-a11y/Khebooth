@@ -204,6 +204,15 @@ export class SQLiteLocalStore implements LocalStore {
     return (await db.getFirstAsync<MediaRow>('SELECT * FROM local_media WHERE localId = ?', localId)) ?? null;
   }
 
+  async listMedia(eventId: string): Promise<LocalMediaRecord[]> {
+    return this.withNativeRecovery(async (db) =>
+      db.getAllAsync<MediaRow>(
+        'SELECT * FROM local_media WHERE eventId = ? ORDER BY capturedAt DESC',
+        eventId,
+      ),
+    );
+  }
+
   async listPendingMedia(eventId: string): Promise<LocalMediaRecord[]> {
     const db = await this.database();
     return db.getAllAsync<MediaRow>(
