@@ -47,11 +47,15 @@ export function CameraCapture({ eventId, store, onClose, onCaptured }: CameraCap
     const localId = makeLocalId();
     const capturedAt = new Date().toISOString();
     const directory = new Directory(Paths.document, 'captures', eventId);
-    directory.create({ idempotent: true, intermediates: true });
+    await directory.create({ idempotent: true, intermediates: true });
 
     const source = new File(uri);
     const destination = new File(directory, `${localId}.mp4`);
-    source.copy(destination);
+
+    // expo-file-system SDK 56 performs relocation asynchronously. Waiting for
+    // the copy is critical: checking destination.exists immediately after
+    // starting the copy can falsely report that persistence failed on Android.
+    await source.copy(destination);
 
     if (!destination.exists || destination.size <= 0) {
       throw new Error('La vidéo n’a pas pu être conservée dans le stockage permanent.');
