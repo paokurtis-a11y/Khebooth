@@ -4,7 +4,7 @@ import type {
   VisualEffect,
 } from '@khe/contracts';
 import { VISUAL_EFFECTS } from '@khe/contracts';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { StationApi } from '../api/station-api';
 
@@ -30,6 +30,8 @@ const effectLabels: Record<VisualEffect, string> = {
 
 export function RemoteControlPanel({ eventName, api, stationToken }: RemoteControlPanelProps) {
   const [control, setControl] = useState<StationControlContract | null>(null);
+  const [displaySeconds, setDisplaySeconds] = useState(0);
+  const lastServerSeconds = useRef(0);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -42,6 +44,8 @@ export function RemoteControlPanel({ eventName, api, stationToken }: RemoteContr
         const next = await api.control(stationToken);
         if (!cancelled) {
           setControl(next);
+          lastServerSeconds.current = next.elapsedSeconds;
+          setDisplaySeconds(next.elapsedSeconds);
           setMessage('');
         }
       } catch (error) {
@@ -56,6 +60,17 @@ export function RemoteControlPanel({ eventName, api, stationToken }: RemoteContr
       if (timer) clearInterval(timer);
     };
   }, [api, stationToken]);
+
+  useEffect(() => {
+    if (control?.runtimeState !== 'RECORDING') {
+      setDisplaySeconds(control?.elapsedSeconds ?? 0);
+      return;
+    }
+    const timer = setInterval(() => {
+      setDisplaySeconds((current) => Math.max(current + 1, lastServerSeconds.current));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [control?.runtimeState, control?.elapsedSeconds]);
 
   async function command(commandName: Exclude<RemoteCaptureCommand, 'NONE'>): Promise<void> {
     setBusy(true);
@@ -97,6 +112,7 @@ export function RemoteControlPanel({ eventName, api, stationToken }: RemoteContr
     : false;
   const paused = control.runtimeState === 'PAUSED';
   const active = ['COUNTDOWN', 'RECORDING', 'PAUSED', 'SAVING'].includes(control.runtimeState);
+  const timerLabel = control.runtimeState === 'PAUSED' ? 'PAUSE' : control.runtimeState === 'RECORDING' ? '● REC' : 'TEMPS';
 
   return (
     <View style={styles.container}>
@@ -118,9 +134,16 @@ export function RemoteControlPanel({ eventName, api, stationToken }: RemoteContr
       </View>
 
       <View style={styles.statusCard}>
-        <Text style={styles.statusLabel}>ÉTAT</Text>
+        <Text style={styles.statusLabel}>ÉTAT CAPTURE · SYNCHRONISÉ</Text>
         <Text style={styles.statusValue}>{control.runtimeState}</Text>
-        <Text style={styles.timer}>{formatDuration(control.elapsedSeconds)}</Text>
+        <View style={styles.timerRow}>
+          {control.runtimeState === 'RECORDING' ? <View style={styles.recordingDot} /> : null}
+          <Text style={styles.timerLabel}>{timerLabel}</Text>
+          <Text style={styles.timer}>{formatDuration(displaySeconds)}</Text>
+        </View>
+        <Text style={styles.timerHint}>
+          Le minuteur suit l’écoulement de la station CAPTURE et se fige automatiquement pendant une pause.
+        </Text>
         <Text style={styles.ack}>Commande #{control.commandVersion} · acquittée #{control.acknowledgedVersion}</Text>
       </View>
 
@@ -187,7 +210,11 @@ const styles = StyleSheet.create({
   statusCard: { borderWidth: 1, borderColor: '#d5d5d5', borderRadius: 16, padding: 16 },
   statusLabel: { fontSize: 10, fontWeight: '800', opacity: 0.5 },
   statusValue: { fontSize: 20, fontWeight: '900', marginTop: 4 },
-  timer: { fontSize: 36, fontWeight: '900', marginTop: 6 },
+  timerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
+  recordingDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#d62424' },
+  timerLabel: { fontSize: 12, fontWeight: '900', letterSpacing: 1 },
+  timer: { fontSize: 36, fontWeight: '900' },
+  timerHint: { fontSize: 10, opacity: 0.55, marginTop: 2 },
   ack: { fontSize: 10, opacity: 0.5, marginTop: 4 },
   commandRow: { flexDirection: 'row', gap: 8 },
   commandButton: { flex: 1, backgroundColor: '#111111', borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
