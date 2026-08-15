@@ -6,7 +6,7 @@ const STATION_TOKEN_KEY = 'khe.station.token.v1';
 export class SecureStoreCredentialVault implements CredentialVault {
   saveStationToken(token: string): Promise<void> {
     return SecureStore.setItemAsync(STATION_TOKEN_KEY, token, {
-      keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
+      keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
     });
   }
 
