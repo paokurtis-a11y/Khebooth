@@ -1,4 +1,4 @@
-trigger=2026-08-15T23:49:00+02:00
-reason=livekit-peer-aligned-expo-config-validated
+trigger=2026-08-15T23:55:00+02:00
+reason=webrtc-config-plugin-15.0.2
 api_commit=5df5b4e31aeb80460e5ab039d2a4b20619bb8af2
-mobile_commit=7293bbaea9a80428d81446b761cef7be710c28ad
+mobile_commit=0ad19f900fec9108b1776e9b43e0b5ae4bfee4b5
