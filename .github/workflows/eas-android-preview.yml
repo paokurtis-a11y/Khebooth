@@ -37,6 +37,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
+      - name: Validate Expo configuration
+        working-directory: apps/mobile
+        run: pnpm exec expo config --json
+
       - name: Setup Expo and EAS
         uses: expo/expo-github-action@v8
         with:
@@ -45,6 +49,8 @@ jobs:
 
       - name: Link existing Expo project
         working-directory: apps/mobile
+        env:
+          EXPO_DEBUG: '1'
         run: eas init --account kurtis-hypnotic-event --non-interactive --force
 
       - name: Validate EAS project
