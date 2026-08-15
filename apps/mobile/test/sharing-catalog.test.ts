@@ -42,7 +42,7 @@ test('SHARING discovers only server-acknowledged media and keeps an offline cach
 
   assert.deepEqual(await sharing.refresh(), []);
 
-  await capture.drain(new Date('2026-08-15T06:40:00.000Z'));
+  await capture.drain(new Date('2030-01-01T00:00:00.000Z'));
   const online = await sharing.refresh();
   assert.equal(online.length, 1);
   assert.equal(online[0]?.localId, 'share-me');
