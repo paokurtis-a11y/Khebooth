@@ -1,34 +1,19 @@
 import type { EventManifestContract } from '@khe/contracts';
 import * as SQLite from 'expo-sqlite';
 import type { LocalStore } from './local-store';
-import type { LocalMediaRecord, OfflineSnapshot, PersistedStationContext, SyncQueueItem } from './types';
+import type {
+  LocalMediaRecord,
+  OfflineSnapshot,
+  PersistedStationContext,
+  SharedMediaRecord,
+  SyncQueueItem,
+} from './types';
 
 type JsonRow = { value: string };
 
-type MediaRow = {
-  localId: string;
-  eventId: string;
-  idempotencyKey: string;
-  contentHash: string;
-  byteSize: number;
-  mimeType: string;
-  localUri: string;
-  capturedAt: string;
-  syncState: LocalMediaRecord['syncState'];
-  remoteId: string | null;
-  uploadedBytes: number;
-  acknowledgedAt: string | null;
-  retryCount: number;
-  lastError: string | null;
-  updatedAt: string;
-};
-
-type QueueRow = {
-  localId: string;
-  nextAttemptAt: string;
-  retryCount: number;
-  lastError: string | null;
-};
+type MediaRow = LocalMediaRecord;
+type QueueRow = SyncQueueItem;
+type SharedMediaRow = SharedMediaRecord;
 
 export class SQLiteLocalStore implements LocalStore {
   private db: SQLite.SQLiteDatabase | null = null;
@@ -76,6 +61,18 @@ export class SQLiteLocalStore implements LocalStore {
         lastError TEXT,
         FOREIGN KEY(localId) REFERENCES local_media(localId) ON DELETE RESTRICT
       );
+      CREATE TABLE IF NOT EXISTS shared_media (
+        id TEXT PRIMARY KEY NOT NULL,
+        eventId TEXT NOT NULL,
+        localId TEXT NOT NULL,
+        contentHash TEXT NOT NULL,
+        byteSize INTEGER NOT NULL,
+        mimeType TEXT NOT NULL,
+        capturedAt TEXT,
+        acknowledgedAt TEXT NOT NULL,
+        cachedAt TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS shared_media_event_idx ON shared_media(eventId, acknowledgedAt);
     `);
   }
 
@@ -196,12 +193,43 @@ export class SQLiteLocalStore implements LocalStore {
     await db.runAsync('DELETE FROM sync_queue WHERE localId = ?', localId);
   }
 
+  async replaceSharedMedia(eventId: string, media: SharedMediaRecord[]): Promise<void> {
+    const db = await this.database();
+    await db.withTransactionAsync(async () => {
+      await db.runAsync('DELETE FROM shared_media WHERE eventId = ?', eventId);
+      for (const item of media) {
+        await db.runAsync(
+          `INSERT INTO shared_media(id,eventId,localId,contentHash,byteSize,mimeType,capturedAt,acknowledgedAt,cachedAt)
+           VALUES(?,?,?,?,?,?,?,?,?)`,
+          item.id,
+          item.eventId,
+          item.localId,
+          item.contentHash,
+          item.byteSize,
+          item.mimeType,
+          item.capturedAt,
+          item.acknowledgedAt,
+          item.cachedAt,
+        );
+      }
+    });
+  }
+
+  async listSharedMedia(eventId: string): Promise<SharedMediaRecord[]> {
+    const db = await this.database();
+    return db.getAllAsync<SharedMediaRow>(
+      'SELECT * FROM shared_media WHERE eventId = ? ORDER BY acknowledgedAt ASC',
+      eventId,
+    );
+  }
+
   async snapshot(eventId: string): Promise<OfflineSnapshot> {
     return {
       station: await this.getStation(),
       manifest: await this.getManifest(eventId),
       pendingMedia: await this.listPendingMedia(eventId),
       queue: await this.listQueue(),
+      sharedMedia: await this.listSharedMedia(eventId),
     };
   }
 }
