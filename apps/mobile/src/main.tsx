@@ -9,11 +9,12 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import type { StationMode } from '@khe/contracts';
+import type { AspectRatio, StationMode } from '@khe/contracts';
 import { HttpStationApi } from './api/station-api';
+import { CameraCapture } from './capture/camera-capture';
 import { API_BASE_URL } from './config';
 import { SQLiteLocalStore } from './offline/sqlite-store';
-import type { PersistedStationContext } from './offline/types';
+import type { LocalMediaRecord, PersistedStationContext } from './offline/types';
 import { SecureStoreCredentialVault } from './security/secure-store-vault';
 import { StationBootstrapService } from './station/station-bootstrap';
 
@@ -46,6 +47,7 @@ function App() {
   const [code, setCode] = useState('');
   const [mode, setMode] = useState<StationMode>('CAPTURE');
   const [message, setMessage] = useState('');
+  const [cameraOpen, setCameraOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -119,12 +121,29 @@ function App() {
     }
   }
 
+  function handleCaptured(media: LocalMediaRecord, format: AspectRatio): void {
+    setMessage(
+      `Capture ${format} conservée localement (${Math.max(1, Math.round(media.byteSize / 1024 / 1024))} Mo) et placée en attente de synchronisation.`,
+    );
+  }
+
   if (loading) {
     return (
       <SafeAreaView style={styles.center}>
         <ActivityIndicator />
         <Text style={styles.muted}>Initialisation du stockage offline…</Text>
       </SafeAreaView>
+    );
+  }
+
+  if (cameraOpen && station?.mode === 'CAPTURE') {
+    return (
+      <CameraCapture
+        eventId={station.session.eventId}
+        store={store}
+        onClose={() => setCameraOpen(false)}
+        onCaptured={handleCaptured}
+      />
     );
   }
 
@@ -146,9 +165,18 @@ function App() {
             <Pressable disabled={busy} style={styles.primaryButton} onPress={() => void refreshManifest()}>
               <Text style={styles.primaryButtonText}>{busy ? 'Synchronisation…' : 'Actualiser le manifest'}</Text>
             </Pressable>
-            <Text style={styles.notice}>
-              La caméra reste volontairement désactivée jusqu’à validation complète du gate Phase 2C–E.
-            </Text>
+            {station.mode === 'CAPTURE' ? (
+              <>
+                <Pressable disabled={busy} style={styles.captureButton} onPress={() => setCameraOpen(true)}>
+                  <Text style={styles.captureButtonText}>Ouvrir la caméra</Text>
+                </Pressable>
+                <Text style={styles.notice}>
+                  Gate matériel validé : capture locale 9:16 / 1:1 activée. Aucun média non synchronisé n’est supprimé automatiquement.
+                </Text>
+              </>
+            ) : (
+              <Text style={styles.notice}>Cette tablette reste dédiée à la station SHARING.</Text>
+            )}
           </View>
         ) : (
           <View style={styles.section}>
@@ -213,6 +241,8 @@ const styles = StyleSheet.create({
   input: { borderWidth: 1, borderColor: '#d6d6d6', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 },
   primaryButton: { marginTop: 8, backgroundColor: '#111111', borderRadius: 12, padding: 14, alignItems: 'center' },
   primaryButtonText: { color: '#ffffff', fontWeight: '800' },
+  captureButton: { borderWidth: 1, borderColor: '#111111', borderRadius: 12, padding: 14, alignItems: 'center' },
+  captureButtonText: { color: '#111111', fontWeight: '800' },
   notice: { marginTop: 8, fontSize: 12, lineHeight: 18, opacity: 0.65 },
   message: { marginTop: 14, fontSize: 13, lineHeight: 18 },
 });
