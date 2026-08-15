@@ -1,3 +1,3 @@
-trigger=2026-08-15T17:00:00+02:00
-reason=permanent-video-persistence-fix
-commit=101507b1e4125c876c618e0f14973f68e19b27c9
+trigger=2026-08-15T18:56:00+02:00
+reason=sqlite-station-recovery-fix
+commit=621d173f065820f313c1e4bb1bd929c4ee90d960
