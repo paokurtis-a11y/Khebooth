@@ -9,7 +9,7 @@
     "ios": "expo start --ios",
     "lint": "tsc -p tsconfig.json --noEmit",
     "build": "tsc -p tsconfig.build.json",
-    "test": "pnpm build && node --test dist/test/*.test.js"
+    "test": "pnpm build && node --test dist/apps/mobile/test/*.test.js"
   },
   "dependencies": {
     "@khe/contracts": "workspace:*",
