@@ -26,6 +26,18 @@ export interface LocalMediaRecord {
   updatedAt: string;
 }
 
+export interface SharedMediaRecord {
+  id: string;
+  eventId: string;
+  localId: string;
+  contentHash: string;
+  byteSize: number;
+  mimeType: string;
+  capturedAt: string | null;
+  acknowledgedAt: string;
+  cachedAt: string;
+}
+
 export interface SyncQueueItem {
   localId: string;
   nextAttemptAt: string;
@@ -38,4 +50,5 @@ export interface OfflineSnapshot {
   manifest: EventManifestContract | null;
   pendingMedia: LocalMediaRecord[];
   queue: SyncQueueItem[];
+  sharedMedia: SharedMediaRecord[];
 }
