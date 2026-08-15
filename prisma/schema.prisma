@@ -46,20 +46,46 @@ enum UploadState {
   FAILED
 }
 
+enum RemoteCaptureCommand {
+  NONE
+  START
+  PAUSE
+  RESUME
+  STOP
+}
+
+enum RemoteCaptureState {
+  IDLE
+  COUNTDOWN
+  RECORDING
+  PAUSED
+  SAVING
+  ERROR
+}
+
+enum VisualEffect {
+  NONE
+  WARM
+  COOL
+  GOLD
+  PARTY
+}
+
 model Organization {
-  id              String            @id @default(uuid()) @db.Uuid
-  name            String
-  users           User[]
-  clients         Client[]
-  events          Event[]
-  presets         Preset[]
-  activations     EventActivation[]
-  auditLogs       AuditLog[]
-  devices         Device[]
-  stationSessions StationSession[]
-  mediaAssets     MediaAsset[]
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  id                    String                 @id @default(uuid()) @db.Uuid
+  name                  String
+  users                 User[]
+  clients               Client[]
+  events                Event[]
+  presets               Preset[]
+  activations           EventActivation[]
+  auditLogs             AuditLog[]
+  devices               Device[]
+  stationSessions       StationSession[]
+  mediaAssets           MediaAsset[]
+  stationRemoteControls StationRemoteControl[]
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
 }
 
 model User {
@@ -97,25 +123,26 @@ model Client {
 }
 
 model Event {
-  id              String            @id @default(uuid()) @db.Uuid
-  organizationId  String            @db.Uuid
-  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  clientId        String?           @db.Uuid
-  client          Client?           @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  presetId        String?           @db.Uuid
-  preset          Preset?           @relation(fields: [presetId], references: [id], onDelete: SetNull)
+  id              String                 @id @default(uuid()) @db.Uuid
+  organizationId  String                 @db.Uuid
+  organization    Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clientId        String?                @db.Uuid
+  client          Client?                @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  presetId        String?                @db.Uuid
+  preset          Preset?                @relation(fields: [presetId], references: [id], onDelete: SetNull)
   name            String
   description     String?
   startsAt        DateTime
   endsAt          DateTime?
   venueName       String?
   venueAddress    String?
-  status          EventStatus       @default(DRAFT)
+  status          EventStatus            @default(DRAFT)
   activations     EventActivation[]
   stationSessions StationSession[]
   mediaAssets     MediaAsset[]
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  remoteControl   StationRemoteControl?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
 
   @@index([organizationId])
   @@index([organizationId, startsAt])
@@ -192,6 +219,25 @@ model StationSession {
   @@index([organizationId, eventId])
   @@index([deviceId])
   @@index([expiresAt])
+}
+
+model StationRemoteControl {
+  id                  String               @id @default(uuid()) @db.Uuid
+  organizationId      String               @db.Uuid
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  eventId             String               @unique @db.Uuid
+  event               Event                @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  command             RemoteCaptureCommand @default(NONE)
+  commandVersion      Int                  @default(0)
+  acknowledgedVersion Int                  @default(0)
+  runtimeState        RemoteCaptureState   @default(IDLE)
+  selectedEffect      VisualEffect         @default(NONE)
+  elapsedSeconds      Int                  @default(0)
+  captureSeenAt       DateTime?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  @@index([organizationId, eventId])
 }
 
 model MediaAsset {
