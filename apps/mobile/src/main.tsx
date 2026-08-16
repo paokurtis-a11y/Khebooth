@@ -17,6 +17,14 @@ import {
 import { HttpStationApi } from './api/station-api';
 import { CameraCapture } from './capture/camera-capture';
 import { API_BASE_URL } from './config';
+import {
+  LanguageAndRegion,
+  UserGuide,
+  getDeviceLocaleInfo,
+  languageLabel,
+  loadLanguagePreference,
+  type AppLanguage,
+} from './experience/user-guide-and-language';
 import { MediaGallery } from './gallery/media-gallery';
 import { APP_VERSION, AboutAndTerms, TermsGate, fetchReleaseInfo, type ReleaseInfo } from './legal/legal-and-info';
 import { SQLiteLocalStore } from './offline/sqlite-store';
@@ -59,12 +67,17 @@ function App() {
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
+  const [languageOpen, setLanguageOpen] = useState(false);
+  const [appLanguage, setAppLanguage] = useState<AppLanguage>(getDeviceLocaleInfo().suggestedLanguage);
   const [release, setRelease] = useState<ReleaseInfo>({ latestVersion: APP_VERSION, updateAvailable: false });
   const [keepAwakeEnabled, setKeepAwakeEnabled] = useState(true);
   const [standbyLocked, setStandbyLocked] = useState(false);
   const [lockConfigured, setLockConfigured] = useState(false);
   const [newLockPassword, setNewLockPassword] = useState('');
   const [confirmLockPassword, setConfirmLockPassword] = useState('');
+  const [showLockPassword, setShowLockPassword] = useState(false);
+  const [securityOptionsHidden, setSecurityOptionsHidden] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -75,6 +88,7 @@ function App() {
         const cachedToken = await vault.getStationToken();
         const savedPassword = await vault.getEventLockPassword();
         const savedStandbyLocked = await vault.getStandbyLocked();
+        const savedLanguage = await loadLanguagePreference();
         if (cached && !(await vault.getInstallationId())) await vault.saveInstallationId(cached.installationId);
         if (cancelled) return;
         setStation(cached);
@@ -82,6 +96,7 @@ function App() {
         setLockConfigured(Boolean(savedPassword));
         setStandbyLocked(Boolean(cached && savedPassword && savedStandbyLocked));
         setKeepAwakeEnabled(!(cached && savedPassword && savedStandbyLocked));
+        if (savedLanguage) setAppLanguage(savedLanguage);
         if (cached) {
           const manifest = await store.getManifest(cached.session.eventId);
           if (!cancelled) setEventName(manifest?.event.name ?? null);
@@ -117,7 +132,7 @@ function App() {
       });
       const cached = await bootstrap.getCachedContext();
       setStation(cached); setStationToken(response.stationToken); setEventName(response.manifest.event.name);
-      setKeepAwakeEnabled(true); setStandbyLocked(false); setCode('');
+      setKeepAwakeEnabled(true); setStandbyLocked(false); setCode(''); setSecurityOptionsHidden(false);
       await vault.saveStandbyLocked(false);
       setMessage(`Station activée pour « ${response.manifest.event.name} ». L’événement a été identifié automatiquement.`);
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Activation impossible.'); }
@@ -140,7 +155,7 @@ function App() {
   async function deactivateStation(): Promise<void> {
     setBusy(true);
     try {
-      setCameraOpen(false); setGalleryOpen(false); setMenuOpen(false); setAboutOpen(false);
+      setCameraOpen(false); setGalleryOpen(false); setMenuOpen(false); setAboutOpen(false); setGuideOpen(false); setLanguageOpen(false);
       await vault.clearStationToken();
       await vault.saveStandbyLocked(false);
       await store.clearStation();
@@ -164,12 +179,12 @@ function App() {
     if (password !== confirmLockPassword.trim()) { setMessage('Les deux saisies du mot de passe KHE ne correspondent pas.'); return; }
     await vault.saveEventLockPassword(password);
     setLockConfigured(true); setNewLockPassword(''); setConfirmLockPassword('');
-    setMessage('Mot de passe de veille KHE enregistré. Vous pouvez le modifier ici à tout moment lorsque la régie est déverrouillée.');
+    setMessage('Mot de passe de veille KHE enregistré. Cette option reste facultative et peut être ignorée.');
   }
 
   async function allowSecureStandby(): Promise<void> {
     if (station?.mode !== 'SHARING') { setMessage('La veille sécurisée est administrée depuis la régie SHARING.'); return; }
-    if (!(await vault.getEventLockPassword())) { setLockConfigured(false); setMessage('Définissez d’abord le mot de passe KHE avant d’autoriser la veille.'); return; }
+    if (!(await vault.getEventLockPassword())) { setLockConfigured(false); setSecurityOptionsHidden(false); setMessage('Si vous souhaitez utiliser la veille sécurisée, définissez d’abord un mot de passe KHE. Vous pouvez aussi ignorer cette option.'); return; }
     setKeepAwakeEnabled(false); setStandbyLocked(true); await vault.saveStandbyLocked(true);
   }
 
@@ -190,6 +205,8 @@ function App() {
   if (loading) return <SafeAreaView style={styles.center}><ActivityIndicator /><Text style={styles.muted}>Initialisation du stockage offline…</Text></SafeAreaView>;
   if (station && standbyLocked) return <StandbyScreen verifyPassword={verifyLockPassword} onUnlocked={unlockStandby} />;
   if (aboutOpen) return <AboutAndTerms onClose={() => setAboutOpen(false)} />;
+  if (guideOpen) return <UserGuide onClose={() => setGuideOpen(false)} />;
+  if (languageOpen) return <LanguageAndRegion onClose={() => setLanguageOpen(false)} onChanged={setAppLanguage} />;
   if (cameraOpen && station?.mode === 'CAPTURE' && stationToken) return <CameraCapture eventId={station.session.eventId} store={store} api={api} stationToken={stationToken} onClose={() => setCameraOpen(false)} onCaptured={handleCaptured} />;
   if (galleryOpen && station?.mode === 'CAPTURE') return <MediaGallery eventId={station.session.eventId} eventName={eventName ?? station.session.eventId} store={store} onClose={() => setGalleryOpen(false)} />;
 
@@ -207,8 +224,11 @@ function App() {
                 <View style={styles.menuPanel}>
                   <Text style={styles.menuBrand}>KHE BOOTH</Text>
                   <Text style={styles.menuSession}>{station.mode} • {eventName ?? 'Événement'}</Text>
+                  <Pressable style={styles.menuItem} onPress={() => { setMenuOpen(false); setGuideOpen(true); }}><Text style={styles.menuItemText}>Mode d’emploi</Text></Pressable>
+                  <Pressable style={styles.menuItem} onPress={() => { setMenuOpen(false); setLanguageOpen(true); }}><Text style={styles.menuItemText}>Langues • {languageLabel(appLanguage)}</Text></Pressable>
                   <Pressable style={styles.menuItem} onPress={() => { setMenuOpen(false); setAboutOpen(true); }}><Text style={styles.menuItemText}>Conditions d’utilisation</Text></Pressable>
                   <Pressable style={styles.menuItem} onPress={() => { setMenuOpen(false); setAboutOpen(true); }}><Text style={styles.menuItemText}>Version {APP_VERSION}{release.updateAvailable ? ` • Mise à jour ${release.latestVersion}` : ' • À jour'}</Text></Pressable>
+                  {station.mode === 'SHARING' && securityOptionsHidden ? <Pressable style={styles.menuItem} onPress={() => { setSecurityOptionsHidden(false); setMenuOpen(false); }}><Text style={styles.menuItemText}>Afficher les options veille & sécurité</Text></Pressable> : null}
                   <Pressable style={styles.menuItemDanger} onPress={confirmDeactivate}><Text style={styles.menuItemDangerText}>Désactiver / fermer la session</Text></Pressable>
                 </View>
               ) : null}
@@ -222,24 +242,29 @@ function App() {
 
           {station ? (
             <View style={styles.section}>
-              <View style={styles.awakeCard}>
-                <View style={styles.awakeCopy}>
-                  <Text style={styles.awakeTitle}>ÉTAT DE VEILLE</Text>
-                  <Text style={styles.awakeStatus}>{keepAwakeEnabled ? 'Écran toujours actif' : 'Veille autorisée'}</Text>
-                  <Text style={styles.awakeHelp}>{station.mode === 'SHARING' ? keepAwakeEnabled ? 'La régie reste éveillée. La veille sécurisée exige un mot de passe KHE et accepte aussi la sécurité Android compatible.' : 'Le mode veille sécurisé KHE est actif.' : 'La station CAPTURE reste éveillée pendant l’événement. La sécurité de veille est administrée depuis SHARING.'}</Text>
+              {!securityOptionsHidden ? (
+                <View style={styles.awakeCard}>
+                  <View style={styles.awakeCopy}>
+                    <Text style={styles.awakeTitle}>ÉTAT DE VEILLE • FACULTATIF</Text>
+                    <Text style={styles.awakeStatus}>{keepAwakeEnabled ? 'Écran toujours actif' : 'Veille autorisée'}</Text>
+                    <Text style={styles.awakeHelp}>{station.mode === 'SHARING' ? 'Vous pouvez utiliser la veille sécurisée ou ignorer entièrement cette configuration.' : 'La station CAPTURE reste éveillée pendant l’événement. Les options de sécurité avancées sont gérées depuis SHARING.'}</Text>
+                  </View>
+                  {station.mode === 'SHARING' ? <Pressable onPress={() => void allowSecureStandby()} style={[styles.awakeButton, styles.awakeButtonActive]}><Text style={styles.awakeButtonTextActive}>AUTORISER VEILLE SÉCURISÉE</Text></Pressable> : null}
+                  {station.mode === 'SHARING' ? <Pressable style={styles.skipButton} onPress={() => setSecurityOptionsHidden(true)}><Text style={styles.skipButtonText}>Ignorer ces options pour l’instant</Text></Pressable> : null}
                 </View>
-                {station.mode === 'SHARING' ? <Pressable onPress={() => void allowSecureStandby()} style={[styles.awakeButton, styles.awakeButtonActive]}><Text style={styles.awakeButtonTextActive}>AUTORISER VEILLE SÉCURISÉE</Text></Pressable> : null}
-              </View>
+              ) : null}
 
-              {station.mode === 'SHARING' ? (
+              {station.mode === 'SHARING' && !securityOptionsHidden ? (
                 <View style={styles.securityCard}>
-                  <Text style={styles.awakeTitle}>SÉCURITÉ DE LA RÉGIE</Text>
-                  <Text style={styles.securityTitle}>{lockConfigured ? 'Mot de passe KHE configuré' : 'Créer le mot de passe KHE'}</Text>
-                  <Text style={styles.awakeHelp}>{lockConfigured ? 'Saisissez un nouveau mot de passe ci-dessous pour le remplacer.' : 'Avant la première mise en veille, choisissez votre mot de passe de secours KHE.'}</Text>
-                  <TextInput value={newLockPassword} onChangeText={setNewLockPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} placeholder={lockConfigured ? 'Nouveau mot de passe' : 'Mot de passe KHE'} style={styles.input} />
-                  <TextInput value={confirmLockPassword} onChangeText={setConfirmLockPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} placeholder="Confirmer le mot de passe" style={styles.input} />
+                  <Text style={styles.awakeTitle}>SÉCURITÉ DE LA RÉGIE • FACULTATIF</Text>
+                  <Text style={styles.securityTitle}>{lockConfigured ? 'Mot de passe KHE configuré' : 'Créer un mot de passe KHE'}</Text>
+                  <Text style={styles.awakeHelp}>{lockConfigured ? 'Vous pouvez le remplacer ou ignorer cette section.' : 'Le mot de passe n’est nécessaire que si vous souhaitez utiliser la veille sécurisée KHE.'}</Text>
+                  <TextInput value={newLockPassword} onChangeText={setNewLockPassword} secureTextEntry={!showLockPassword} autoCapitalize="none" autoCorrect={false} placeholder={lockConfigured ? 'Nouveau mot de passe' : 'Mot de passe KHE'} style={styles.input} />
+                  <TextInput value={confirmLockPassword} onChangeText={setConfirmLockPassword} secureTextEntry={!showLockPassword} autoCapitalize="none" autoCorrect={false} placeholder="Confirmer le mot de passe" style={styles.input} />
+                  <Pressable style={styles.visibilityButton} onPress={() => setShowLockPassword((current) => !current)}><Text style={styles.visibilityText}>{showLockPassword ? '🙈 Masquer les mots de passe' : '👁 Afficher les mots de passe'}</Text></Pressable>
                   <Pressable disabled={!newLockPassword || !confirmLockPassword} onPress={() => void saveLockPassword()} style={styles.securityButton}><Text style={styles.securityButtonText}>{lockConfigured ? 'MODIFIER LE MOT DE PASSE' : 'ENREGISTRER LE MOT DE PASSE'}</Text></Pressable>
-                  <Text style={styles.securityNote}>Au déverrouillage, KHE proposera la biométrie ou le verrouillage système Android compatible, avec le mot de passe KHE en secours.</Text>
+                  <Pressable style={styles.skipButton} onPress={() => setSecurityOptionsHidden(true)}><Text style={styles.skipButtonText}>Passer cette configuration</Text></Pressable>
+                  <Text style={styles.securityNote}>Si vous activez cette fonction, KHE pourra proposer la biométrie ou le verrouillage système Android compatible, avec le mot de passe KHE en secours.</Text>
                 </View>
               ) : null}
 
@@ -294,19 +319,57 @@ const styles = StyleSheet.create({
   muted: { opacity: 0.6, lineHeight: 18 },
   section: { marginTop: 18, gap: 10 },
   label: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', opacity: 0.55 },
-  value: { fontSize: 18, fontWeight: '700' }, small: { fontSize: 12, opacity: 0.65 },
-  modeRow: { flexDirection: 'row', gap: 10 }, modeButton: { flex: 1, borderWidth: 1, borderColor: '#c9c9c9', borderRadius: 12, padding: 12, alignItems: 'center' },
-  modeButtonActive: { backgroundColor: '#111111', borderColor: '#111111' }, modeText: { fontWeight: '700' }, modeTextActive: { color: '#ffffff', fontWeight: '700' },
+  value: { fontSize: 18, fontWeight: '700' },
+  small: { fontSize: 12, opacity: 0.65 },
+  modeRow: { flexDirection: 'row', gap: 10 },
+  modeButton: { flex: 1, borderWidth: 1, borderColor: '#c9c9c9', borderRadius: 12, padding: 12, alignItems: 'center' },
+  modeButtonActive: { backgroundColor: '#111111', borderColor: '#111111' },
+  modeText: { fontWeight: '700' },
+  modeTextActive: { color: '#ffffff', fontWeight: '700' },
   input: { borderWidth: 1, borderColor: '#d6d6d6', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: '#ffffff' },
-  activationHelp: { fontSize: 12, lineHeight: 17, opacity: 0.6 }, primaryButton: { marginTop: 8, backgroundColor: '#111111', borderRadius: 12, padding: 14, alignItems: 'center' }, primaryButtonText: { color: '#ffffff', fontWeight: '800' },
-  awakeCard: { borderWidth: 1, borderColor: '#d5d5d5', borderRadius: 16, padding: 14, gap: 10 }, awakeCopy: { gap: 3 }, awakeTitle: { fontSize: 10, fontWeight: '900', letterSpacing: 1.5, opacity: 0.55 },
-  awakeStatus: { fontSize: 17, fontWeight: '900' }, awakeHelp: { fontSize: 11, lineHeight: 16, opacity: 0.62 }, awakeButton: { borderWidth: 1, borderColor: '#111111', borderRadius: 11, paddingVertical: 11, alignItems: 'center' }, awakeButtonActive: { backgroundColor: '#111111' }, awakeButtonTextActive: { color: '#ffffff', fontWeight: '900', fontSize: 11 },
-  securityCard: { borderWidth: 1, borderColor: '#d5d5d5', borderRadius: 16, padding: 14, gap: 9 }, securityTitle: { fontSize: 16, fontWeight: '900' }, securityButton: { backgroundColor: '#ededed', borderRadius: 11, paddingVertical: 12, alignItems: 'center' }, securityButtonText: { fontWeight: '900', fontSize: 11 }, securityNote: { fontSize: 10, lineHeight: 15, opacity: 0.58 },
-  captureActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, captureButton: { flexGrow: 1, minWidth: 160, borderWidth: 1, borderColor: '#111111', borderRadius: 12, padding: 14, alignItems: 'center' }, captureButtonText: { color: '#111111', fontWeight: '800' }, galleryButton: { flexGrow: 1, minWidth: 140, backgroundColor: '#111111', borderRadius: 12, padding: 14, alignItems: 'center' }, galleryButtonText: { color: '#ffffff', fontWeight: '800' },
-  notice: { marginTop: 8, fontSize: 12, lineHeight: 18, opacity: 0.65 }, message: { marginTop: 14, fontSize: 13, lineHeight: 18 },
-  menuAnchor: { alignSelf: 'flex-start', zIndex: 20, marginBottom: 8 }, menuButton: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: '#111111', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9 }, menuButtonText: { color: '#ffffff', fontSize: 18, fontWeight: '900' }, menuButtonLabel: { color: '#ffffff', fontSize: 12, fontWeight: '900' }, updateDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#ffd35c' },
-  menuPanel: { position: 'absolute', top: 48, left: 0, width: 280, backgroundColor: '#111111', borderRadius: 16, padding: 12, gap: 5, elevation: 10 }, menuBrand: { color: '#ffffff', fontWeight: '900', letterSpacing: 2 }, menuSession: { color: '#a9a9a9', fontSize: 11, marginBottom: 6 }, menuItem: { backgroundColor: '#222225', borderRadius: 10, padding: 12 }, menuItemText: { color: '#ffffff', fontSize: 12, fontWeight: '800', lineHeight: 17 }, menuItemDanger: { borderWidth: 1, borderColor: '#7d3d3d', borderRadius: 10, padding: 12, marginTop: 3 }, menuItemDangerText: { color: '#ffb6b6', fontSize: 12, fontWeight: '900' },
-  updateBanner: { backgroundColor: '#fff1bd', borderRadius: 12, padding: 10, marginTop: 7 }, updateBannerText: { color: '#4a3900', fontSize: 11, lineHeight: 16, fontWeight: '800' }, termsLink: { alignItems: 'center', padding: 10 }, termsLinkText: { fontSize: 11, fontWeight: '700', textDecorationLine: 'underline', opacity: 0.65 },
+  activationHelp: { fontSize: 12, lineHeight: 17, opacity: 0.6 },
+  primaryButton: { marginTop: 8, backgroundColor: '#111111', borderRadius: 12, padding: 14, alignItems: 'center' },
+  primaryButtonText: { color: '#ffffff', fontWeight: '800' },
+  awakeCard: { borderWidth: 1, borderColor: '#d5d5d5', borderRadius: 16, padding: 14, gap: 10 },
+  awakeCopy: { gap: 3 },
+  awakeTitle: { fontSize: 10, fontWeight: '900', letterSpacing: 1.5, opacity: 0.55 },
+  awakeStatus: { fontSize: 17, fontWeight: '900' },
+  awakeHelp: { fontSize: 11, lineHeight: 16, opacity: 0.62 },
+  awakeButton: { borderWidth: 1, borderColor: '#111111', borderRadius: 11, paddingVertical: 11, alignItems: 'center' },
+  awakeButtonActive: { backgroundColor: '#111111' },
+  awakeButtonTextActive: { color: '#ffffff', fontWeight: '900', fontSize: 11 },
+  securityCard: { borderWidth: 1, borderColor: '#d5d5d5', borderRadius: 16, padding: 14, gap: 9 },
+  securityTitle: { fontSize: 16, fontWeight: '900' },
+  securityButton: { backgroundColor: '#ededed', borderRadius: 11, paddingVertical: 12, alignItems: 'center' },
+  securityButtonText: { fontWeight: '900', fontSize: 11 },
+  securityNote: { fontSize: 10, lineHeight: 15, opacity: 0.58 },
+  visibilityButton: { borderWidth: 1, borderColor: '#d6d6d6', borderRadius: 10, padding: 10, alignItems: 'center' },
+  visibilityText: { fontWeight: '800', fontSize: 11 },
+  skipButton: { paddingVertical: 9, alignItems: 'center' },
+  skipButtonText: { fontSize: 11, fontWeight: '800', textDecorationLine: 'underline', opacity: 0.65 },
+  captureActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  captureButton: { flexGrow: 1, minWidth: 160, borderWidth: 1, borderColor: '#111111', borderRadius: 12, padding: 14, alignItems: 'center' },
+  captureButtonText: { color: '#111111', fontWeight: '800' },
+  galleryButton: { flexGrow: 1, minWidth: 140, backgroundColor: '#111111', borderRadius: 12, padding: 14, alignItems: 'center' },
+  galleryButtonText: { color: '#ffffff', fontWeight: '800' },
+  notice: { marginTop: 8, fontSize: 12, lineHeight: 18, opacity: 0.65 },
+  message: { marginTop: 14, fontSize: 13, lineHeight: 18 },
+  menuAnchor: { alignSelf: 'flex-start', zIndex: 20, marginBottom: 8 },
+  menuButton: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: '#111111', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9 },
+  menuButtonText: { color: '#ffffff', fontSize: 18, fontWeight: '900' },
+  menuButtonLabel: { color: '#ffffff', fontSize: 12, fontWeight: '900' },
+  updateDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#ffd35c' },
+  menuPanel: { position: 'absolute', top: 48, left: 0, width: 290, backgroundColor: '#111111', borderRadius: 16, padding: 12, gap: 5, elevation: 10 },
+  menuBrand: { color: '#ffffff', fontWeight: '900', letterSpacing: 2 },
+  menuSession: { color: '#a9a9a9', fontSize: 11, marginBottom: 6 },
+  menuItem: { backgroundColor: '#222225', borderRadius: 10, padding: 12 },
+  menuItemText: { color: '#ffffff', fontSize: 12, fontWeight: '800', lineHeight: 17 },
+  menuItemDanger: { borderWidth: 1, borderColor: '#7d3d3d', borderRadius: 10, padding: 12, marginTop: 3 },
+  menuItemDangerText: { color: '#ffb6b6', fontSize: 12, fontWeight: '900' },
+  updateBanner: { backgroundColor: '#fff1bd', borderRadius: 12, padding: 10, marginTop: 7 },
+  updateBannerText: { color: '#4a3900', fontSize: 11, lineHeight: 16, fontWeight: '800' },
+  termsLink: { alignItems: 'center', padding: 10 },
+  termsLinkText: { fontSize: 11, fontWeight: '700', textDecorationLine: 'underline', opacity: 0.65 },
 });
 
 registerRootComponent(Root);
