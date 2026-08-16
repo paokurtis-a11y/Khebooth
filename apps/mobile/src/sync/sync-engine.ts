@@ -121,35 +121,53 @@ export class SyncEngine {
     };
     await this.store.upsertMedia(working);
 
-    const upload = await this.api.initializeUpload(stationToken, remote.id);
-    const resumeFrom = Math.max(working.uploadedBytes, upload.uploadedBytes);
-    if (resumeFrom > working.byteSize) throw new Error('Server resume checkpoint exceeds local media size');
-
-    if (resumeFrom !== working.uploadedBytes) {
-      working = { ...working, uploadedBytes: resumeFrom, updatedAt: new Date().toISOString() };
-      await this.store.upsertMedia(working);
+    const ticket = await this.api.prepareBlobUpload(stationToken, remote.id);
+    if (ticket.mediaId !== remote.id || ticket.byteSize !== working.byteSize || ticket.contentType !== working.mimeType) {
+      throw new Error('Signed upload ticket does not match local media metadata');
     }
 
-    await this.transfer.transfer(working, resumeFrom, async (uploadedBytes) => {
-      if (uploadedBytes < working.uploadedBytes) throw new Error('Upload progress cannot move backwards');
-      if (uploadedBytes > working.byteSize) throw new Error('Upload progress exceeds local media size');
-      const updated = await this.api.updateUpload(stationToken, remote.id, uploadedBytes);
+    if (ticket.alreadyUploaded) {
       working = {
         ...working,
-        uploadedBytes: updated.uploadedBytes,
-        syncState: 'UPLOADING',
+        uploadedBytes: working.byteSize,
         updatedAt: new Date().toISOString(),
       };
       await this.store.upsertMedia(working);
-    });
+    } else {
+      if (!ticket.uploadUrl) throw new Error('Server did not provide a signed upload URL');
 
-    if (working.uploadedBytes < working.byteSize) {
-      const status = await this.api.initializeUpload(stationToken, remote.id);
-      working = { ...working, uploadedBytes: status.uploadedBytes, updatedAt: new Date().toISOString() };
+      // A signed PUT is atomic at object level. On retry we start its progress at zero,
+      // but if a previous PUT actually completed the API detects the existing Blob and
+      // returns alreadyUploaded so the file is not transferred twice.
+      working = {
+        ...working,
+        uploadedBytes: 0,
+        updatedAt: new Date().toISOString(),
+      };
       await this.store.upsertMedia(working);
-    }
-    if (working.uploadedBytes !== working.byteSize) throw new Error('Transfer ended before all bytes were acknowledged');
 
+      let lastReported = 0;
+      await this.transfer.transfer(working, ticket.uploadUrl, async (uploadedBytes) => {
+        if (uploadedBytes < lastReported) throw new Error('Upload progress cannot move backwards');
+        if (uploadedBytes > working.byteSize) throw new Error('Upload progress exceeds local media size');
+        if (uploadedBytes === lastReported) return;
+        lastReported = uploadedBytes;
+        const updated = await this.api.updateUpload(stationToken, remote.id, uploadedBytes);
+        working = {
+          ...working,
+          uploadedBytes: updated.uploadedBytes,
+          syncState: 'UPLOADING',
+          updatedAt: new Date().toISOString(),
+        };
+        await this.store.upsertMedia(working);
+      });
+    }
+
+    if (working.uploadedBytes !== working.byteSize) {
+      throw new Error('Transfer ended before all bytes were acknowledged');
+    }
+
+    // The server performs a Blob HEAD and validates exact size + MIME before this can succeed.
     const finalized = await this.api.finalizeUpload(stationToken, remote.id);
     if (finalized.media.syncState !== 'SYNCED' || !finalized.media.acknowledgedAt) {
       throw new Error('Server did not acknowledge synchronized media');
