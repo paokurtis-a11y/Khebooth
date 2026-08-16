@@ -4,17 +4,21 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { HttpStationApi } from './api/station-api';
 import { CameraCapture } from './capture/camera-capture';
 import { API_BASE_URL } from './config';
 import { MediaGallery } from './gallery/media-gallery';
+import { APP_VERSION, AboutAndTerms, TermsGate, fetchReleaseInfo, type ReleaseInfo } from './legal/legal-and-info';
 import { SQLiteLocalStore } from './offline/sqlite-store';
 import type { LocalMediaRecord, PersistedStationContext } from './offline/types';
 import { SecureStoreCredentialVault } from './security/secure-store-vault';
@@ -30,16 +34,14 @@ function makeInstallationId(): string {
 
 function refreshErrorMessage(error: unknown): string {
   const detail = error instanceof Error ? error.message : String(error ?? '');
-  if (/fetch failed|network request failed|unknownhost|unable to resolve host|timed?\s*out/i.test(detail)) {
-    return `Réseau indisponible : le cache local reste conservé. ${detail}`.trim();
-  }
-  if (/NativeDatabase|prepareAsync|SQLite|NullPointerException|database/i.test(detail)) {
-    return `Stockage local indisponible : le cache existant reste conservé. ${detail}`.trim();
-  }
+  if (/fetch failed|network request failed|unknownhost|unable to resolve host|timed?\s*out/i.test(detail)) return `Réseau indisponible : le cache local reste conservé. ${detail}`.trim();
+  if (/NativeDatabase|prepareAsync|SQLite|NullPointerException|database/i.test(detail)) return `Stockage local indisponible : le cache existant reste conservé. ${detail}`.trim();
   return `Actualisation impossible : le cache local reste conservé. ${detail}`.trim();
 }
 
 function App() {
+  const { width, height } = useWindowDimensions();
+  const landscape = width > height;
   const store = useMemo(() => new SQLiteLocalStore(), []);
   const vault = useMemo(() => new SecureStoreCredentialVault(), []);
   const api = useMemo(() => new HttpStationApi(API_BASE_URL), []);
@@ -55,6 +57,9 @@ function App() {
   const [message, setMessage] = useState('');
   const [cameraOpen, setCameraOpen] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
+  const [release, setRelease] = useState<ReleaseInfo>({ latestVersion: APP_VERSION, updateAvailable: false });
   const [keepAwakeEnabled, setKeepAwakeEnabled] = useState(true);
   const [standbyLocked, setStandbyLocked] = useState(false);
   const [lockConfigured, setLockConfigured] = useState(false);
@@ -70,9 +75,7 @@ function App() {
         const cachedToken = await vault.getStationToken();
         const savedPassword = await vault.getEventLockPassword();
         const savedStandbyLocked = await vault.getStandbyLocked();
-        if (cached && !(await vault.getInstallationId())) {
-          await vault.saveInstallationId(cached.installationId);
-        }
+        if (cached && !(await vault.getInstallationId())) await vault.saveInstallationId(cached.installationId);
         if (cancelled) return;
         setStation(cached);
         setStationToken(cachedToken);
@@ -83,15 +86,15 @@ function App() {
           const manifest = await store.getManifest(cached.session.eventId);
           if (!cancelled) setEventName(manifest?.event.name ?? null);
         }
+        const releaseInfo = await fetchReleaseInfo();
+        if (!cancelled) setRelease(releaseInfo);
       } catch (error) {
         if (!cancelled) setMessage(error instanceof Error ? error.message : 'Impossible d’ouvrir le stockage local.');
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [bootstrap, store, vault]);
 
   useEffect(() => {
@@ -99,49 +102,30 @@ function App() {
       void deactivateKeepAwake(EVENT_KEEP_AWAKE_TAG).catch(() => undefined);
       return;
     }
-    void activateKeepAwakeAsync(EVENT_KEEP_AWAKE_TAG).catch(() => {
-      setMessage('Impossible d’empêcher automatiquement la mise en veille sur cette tablette.');
-    });
-    return () => {
-      void deactivateKeepAwake(EVENT_KEEP_AWAKE_TAG).catch(() => undefined);
-    };
+    void activateKeepAwakeAsync(EVENT_KEEP_AWAKE_TAG).catch(() => setMessage('Impossible d’empêcher automatiquement la mise en veille sur cette tablette.'));
+    return () => { void deactivateKeepAwake(EVENT_KEEP_AWAKE_TAG).catch(() => undefined); };
   }, [keepAwakeEnabled, station]);
 
   async function activate(): Promise<void> {
-    setBusy(true);
-    setMessage('');
+    setBusy(true); setMessage('');
     try {
       let installationId = await vault.getInstallationId();
-      if (!installationId) {
-        installationId = makeInstallationId();
-        await vault.saveInstallationId(installationId);
-      }
-
+      if (!installationId) { installationId = makeInstallationId(); await vault.saveInstallationId(installationId); }
       const response = await bootstrap.redeem({
-        code: code.trim().toUpperCase(),
-        installationId,
-        mode,
-        platform: 'react-native',
+        code: code.trim().toUpperCase(), installationId, mode, platform: 'react-native',
         deviceName: mode === 'CAPTURE' ? 'KHE Booth Capture' : 'KHE Booth Sharing',
       });
       const cached = await bootstrap.getCachedContext();
-      setStation(cached);
-      setStationToken(response.stationToken);
-      setEventName(response.manifest.event.name);
-      setKeepAwakeEnabled(true);
-      setStandbyLocked(false);
+      setStation(cached); setStationToken(response.stationToken); setEventName(response.manifest.event.name);
+      setKeepAwakeEnabled(true); setStandbyLocked(false); setCode('');
       await vault.saveStandbyLocked(false);
       setMessage(`Station activée pour « ${response.manifest.event.name} ». L’événement a été identifié automatiquement.`);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Activation impossible.');
-    } finally {
-      setBusy(false);
-    }
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Activation impossible.'); }
+    finally { setBusy(false); }
   }
 
   async function refreshManifest(): Promise<void> {
-    setBusy(true);
-    setMessage('');
+    setBusy(true); setMessage('');
     try {
       await bootstrap.refreshManifest();
       if (station) {
@@ -149,50 +133,48 @@ function App() {
         setEventName(manifest?.event.name ?? null);
       }
       setMessage('Manifest actualisé et remis en cache.');
-    } catch (error) {
-      setMessage(refreshErrorMessage(error));
-    } finally {
-      setBusy(false);
-    }
+    } catch (error) { setMessage(refreshErrorMessage(error)); }
+    finally { setBusy(false); }
+  }
+
+  async function deactivateStation(): Promise<void> {
+    setBusy(true);
+    try {
+      setCameraOpen(false); setGalleryOpen(false); setMenuOpen(false); setAboutOpen(false);
+      await vault.clearStationToken();
+      await vault.saveStandbyLocked(false);
+      await store.clearStation();
+      setStation(null); setStationToken(null); setEventName(null); setStandbyLocked(false); setKeepAwakeEnabled(false);
+      setMessage('Station désactivée sur cette tablette. Les vidéos locales ont été conservées. Entrez un code d’activation pour ouvrir une nouvelle session.');
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Impossible de fermer la station.'); }
+    finally { setBusy(false); }
+  }
+
+  function confirmDeactivate(): void {
+    Alert.alert('Désactiver cette station ?', 'Le token et la session active seront retirés de cette tablette. Les vidéos locales ne seront pas supprimées.', [
+      { text: 'Annuler', style: 'cancel' },
+      { text: 'Désactiver', style: 'destructive', onPress: () => void deactivateStation() },
+    ]);
   }
 
   async function saveLockPassword(): Promise<void> {
     if (station?.mode !== 'SHARING') return;
     const password = newLockPassword.trim();
-    if (password.length < 4) {
-      setMessage('Le mot de passe KHE doit contenir au minimum 4 caractères.');
-      return;
-    }
-    if (password !== confirmLockPassword.trim()) {
-      setMessage('Les deux saisies du mot de passe KHE ne correspondent pas.');
-      return;
-    }
+    if (password.length < 4) { setMessage('Le mot de passe KHE doit contenir au minimum 4 caractères.'); return; }
+    if (password !== confirmLockPassword.trim()) { setMessage('Les deux saisies du mot de passe KHE ne correspondent pas.'); return; }
     await vault.saveEventLockPassword(password);
-    setLockConfigured(true);
-    setNewLockPassword('');
-    setConfirmLockPassword('');
+    setLockConfigured(true); setNewLockPassword(''); setConfirmLockPassword('');
     setMessage('Mot de passe de veille KHE enregistré. Vous pouvez le modifier ici à tout moment lorsque la régie est déverrouillée.');
   }
 
   async function allowSecureStandby(): Promise<void> {
-    if (station?.mode !== 'SHARING') {
-      setMessage('La veille sécurisée est administrée depuis la régie SHARING.');
-      return;
-    }
-    if (!(await vault.getEventLockPassword())) {
-      setLockConfigured(false);
-      setMessage('Définissez d’abord le mot de passe KHE avant d’autoriser la veille.');
-      return;
-    }
-    setKeepAwakeEnabled(false);
-    setStandbyLocked(true);
-    await vault.saveStandbyLocked(true);
+    if (station?.mode !== 'SHARING') { setMessage('La veille sécurisée est administrée depuis la régie SHARING.'); return; }
+    if (!(await vault.getEventLockPassword())) { setLockConfigured(false); setMessage('Définissez d’abord le mot de passe KHE avant d’autoriser la veille.'); return; }
+    setKeepAwakeEnabled(false); setStandbyLocked(true); await vault.saveStandbyLocked(true);
   }
 
   async function unlockStandby(): Promise<void> {
-    await vault.saveStandbyLocked(false);
-    setStandbyLocked(false);
-    setKeepAwakeEnabled(true);
+    await vault.saveStandbyLocked(false); setStandbyLocked(false); setKeepAwakeEnabled(true);
     setMessage('Régie KHE déverrouillée. Écran toujours actif rétabli.');
   }
 
@@ -202,225 +184,129 @@ function App() {
   }
 
   function handleCaptured(media: LocalMediaRecord, format: AspectRatio): void {
-    setMessage(
-      `Capture ${format} conservée localement (${Math.max(1, Math.round(media.byteSize / 1024 / 1024))} Mo) et placée en attente de synchronisation.`,
-    );
+    setMessage(`Capture ${format} conservée localement (${Math.max(1, Math.round(media.byteSize / 1024 / 1024))} Mo) et placée en attente de synchronisation.`);
   }
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.center}>
-        <ActivityIndicator />
-        <Text style={styles.muted}>Initialisation du stockage offline…</Text>
-      </SafeAreaView>
-    );
-  }
-
-  if (station && standbyLocked) {
-    return <StandbyScreen verifyPassword={verifyLockPassword} onUnlocked={unlockStandby} />;
-  }
-
-  if (cameraOpen && station?.mode === 'CAPTURE' && stationToken) {
-    return (
-      <CameraCapture
-        eventId={station.session.eventId}
-        store={store}
-        api={api}
-        stationToken={stationToken}
-        onClose={() => setCameraOpen(false)}
-        onCaptured={handleCaptured}
-      />
-    );
-  }
-
-  if (galleryOpen && station?.mode === 'CAPTURE') {
-    return (
-      <MediaGallery
-        eventId={station.session.eventId}
-        eventName={eventName ?? station.session.eventId}
-        store={store}
-        onClose={() => setGalleryOpen(false)}
-      />
-    );
-  }
+  if (loading) return <SafeAreaView style={styles.center}><ActivityIndicator /><Text style={styles.muted}>Initialisation du stockage offline…</Text></SafeAreaView>;
+  if (station && standbyLocked) return <StandbyScreen verifyPassword={verifyLockPassword} onUnlocked={unlockStandby} />;
+  if (aboutOpen) return <AboutAndTerms onClose={() => setAboutOpen(false)} />;
+  if (cameraOpen && station?.mode === 'CAPTURE' && stationToken) return <CameraCapture eventId={station.session.eventId} store={store} api={api} stationToken={stationToken} onClose={() => setCameraOpen(false)} onCaptured={handleCaptured} />;
+  if (galleryOpen && station?.mode === 'CAPTURE') return <MediaGallery eventId={station.session.eventId} eventName={eventName ?? station.session.eventId} store={store} onClose={() => setGalleryOpen(false)} />;
 
   return (
     <SafeAreaView style={styles.page}>
-      <View style={styles.card}>
-        <Text style={styles.brand}>KHE BOOTH</Text>
-        <Text style={styles.title}>Station événement</Text>
-        <Text style={styles.muted}>Offline-first • Capture et Sharing séparés</Text>
-
-        {station ? (
-          <View style={styles.section}>
-            <View style={styles.awakeCard}>
-              <View style={styles.awakeCopy}>
-                <Text style={styles.awakeTitle}>ÉTAT DE VEILLE</Text>
-                <Text style={styles.awakeStatus}>{keepAwakeEnabled ? 'Écran toujours actif' : 'Veille autorisée'}</Text>
-                <Text style={styles.awakeHelp}>
-                  {station.mode === 'SHARING'
-                    ? keepAwakeEnabled
-                      ? 'La régie reste éveillée. La veille sécurisée exige un mot de passe KHE et accepte aussi la sécurité Android compatible.'
-                      : 'Le mode veille sécurisé KHE est actif.'
-                    : 'La station CAPTURE reste éveillée pendant l’événement. La sécurité de veille est administrée depuis SHARING.'}
-                </Text>
-              </View>
-              {station.mode === 'SHARING' ? (
-                <Pressable onPress={() => void allowSecureStandby()} style={[styles.awakeButton, styles.awakeButtonActive]}>
-                  <Text style={styles.awakeButtonTextActive}>AUTORISER VEILLE SÉCURISÉE</Text>
-                </Pressable>
+      <ScrollView style={styles.pageScroll} contentContainerStyle={[styles.pageContent, landscape && styles.pageContentLandscape]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator>
+        <View style={[styles.card, landscape && styles.cardLandscape]}>
+          {station ? (
+            <View style={styles.menuAnchor}>
+              <Pressable style={styles.menuButton} onPress={() => setMenuOpen((current) => !current)}>
+                <Text style={styles.menuButtonText}>☰</Text><Text style={styles.menuButtonLabel}>Menu</Text>
+                {release.updateAvailable ? <View style={styles.updateDot} /> : null}
+              </Pressable>
+              {menuOpen ? (
+                <View style={styles.menuPanel}>
+                  <Text style={styles.menuBrand}>KHE BOOTH</Text>
+                  <Text style={styles.menuSession}>{station.mode} • {eventName ?? 'Événement'}</Text>
+                  <Pressable style={styles.menuItem} onPress={() => { setMenuOpen(false); setAboutOpen(true); }}><Text style={styles.menuItemText}>Conditions d’utilisation</Text></Pressable>
+                  <Pressable style={styles.menuItem} onPress={() => { setMenuOpen(false); setAboutOpen(true); }}><Text style={styles.menuItemText}>Version {APP_VERSION}{release.updateAvailable ? ` • Mise à jour ${release.latestVersion}` : ' • À jour'}</Text></Pressable>
+                  <Pressable style={styles.menuItemDanger} onPress={confirmDeactivate}><Text style={styles.menuItemDangerText}>Désactiver / fermer la session</Text></Pressable>
+                </View>
               ) : null}
             </View>
+          ) : null}
 
-            {station.mode === 'SHARING' ? (
-              <View style={styles.securityCard}>
-                <Text style={styles.awakeTitle}>SÉCURITÉ DE LA RÉGIE</Text>
-                <Text style={styles.securityTitle}>{lockConfigured ? 'Mot de passe KHE configuré' : 'Créer le mot de passe KHE'}</Text>
-                <Text style={styles.awakeHelp}>
-                  {lockConfigured
-                    ? 'Saisissez un nouveau mot de passe ci-dessous pour le remplacer. Le changement est possible uniquement lorsque la régie est déverrouillée.'
-                    : 'Avant la première mise en veille, choisissez votre mot de passe de secours KHE.'}
-                </Text>
-                <TextInput
-                  value={newLockPassword}
-                  onChangeText={setNewLockPassword}
-                  secureTextEntry
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  placeholder={lockConfigured ? 'Nouveau mot de passe' : 'Mot de passe KHE'}
-                  style={styles.input}
-                />
-                <TextInput
-                  value={confirmLockPassword}
-                  onChangeText={setConfirmLockPassword}
-                  secureTextEntry
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  placeholder="Confirmer le mot de passe"
-                  style={styles.input}
-                />
-                <Pressable
-                  disabled={!newLockPassword || !confirmLockPassword}
-                  onPress={() => void saveLockPassword()}
-                  style={styles.securityButton}
-                >
-                  <Text style={styles.securityButtonText}>{lockConfigured ? 'MODIFIER LE MOT DE PASSE' : 'ENREGISTRER LE MOT DE PASSE'}</Text>
-                </Pressable>
-                <Text style={styles.securityNote}>
-                  Au déverrouillage, KHE proposera l’empreinte, le visage ou le verrouillage système Android (PIN/schéma/mot de passe) lorsque la tablette le permet, avec le mot de passe KHE en secours.
-                </Text>
-              </View>
-            ) : null}
+          <Text style={styles.brand}>KHE BOOTH</Text>
+          <Text style={styles.title}>Station événement</Text>
+          <Text style={styles.muted}>Offline-first • Capture et Sharing séparés</Text>
+          {release.updateAvailable ? <View style={styles.updateBanner}><Text style={styles.updateBannerText}>Mise à jour KHE Booth {release.latestVersion} disponible. Ouvrez Menu → Version.</Text></View> : null}
 
-            {station.mode === 'SHARING' && stationToken ? (
-              <RemoteControlPanel
-                eventName={eventName ?? 'Événement KHE Booth'}
-                api={api}
-                stationToken={stationToken}
-              />
-            ) : (
-              <>
-                <Text style={styles.label}>Station active</Text>
-                <Text style={styles.value}>{station.mode}</Text>
-                <Text style={styles.label}>Événement</Text>
-                <Text style={styles.value}>{eventName ?? station.session.eventId}</Text>
-                <Text style={styles.label}>Session</Text>
-                <Text style={styles.small}>{station.session.id}</Text>
-                <Pressable disabled={busy} style={styles.primaryButton} onPress={() => void refreshManifest()}>
-                  <Text style={styles.primaryButtonText}>{busy ? 'Synchronisation…' : 'Actualiser le manifest'}</Text>
-                </Pressable>
-                <View style={styles.captureActions}>
-                  <Pressable disabled={busy || !stationToken} style={styles.captureButton} onPress={() => setCameraOpen(true)}>
-                    <Text style={styles.captureButtonText}>Ouvrir la caméra</Text>
-                  </Pressable>
-                  <Pressable disabled={busy} style={styles.galleryButton} onPress={() => setGalleryOpen(true)}>
-                    <Text style={styles.galleryButtonText}>Galerie</Text>
-                  </Pressable>
+          {station ? (
+            <View style={styles.section}>
+              <View style={styles.awakeCard}>
+                <View style={styles.awakeCopy}>
+                  <Text style={styles.awakeTitle}>ÉTAT DE VEILLE</Text>
+                  <Text style={styles.awakeStatus}>{keepAwakeEnabled ? 'Écran toujours actif' : 'Veille autorisée'}</Text>
+                  <Text style={styles.awakeHelp}>{station.mode === 'SHARING' ? keepAwakeEnabled ? 'La régie reste éveillée. La veille sécurisée exige un mot de passe KHE et accepte aussi la sécurité Android compatible.' : 'Le mode veille sécurisé KHE est actif.' : 'La station CAPTURE reste éveillée pendant l’événement. La sécurité de veille est administrée depuis SHARING.'}</Text>
                 </View>
-                <Text style={styles.notice}>
-                  Laisse la caméra CAPTURE ouverte pendant l’événement pour permettre à la tablette SHARING de piloter REC, Pause/Reprendre, Stop et les effets.
-                </Text>
-              </>
-            )}
-          </View>
-        ) : (
-          <View style={styles.section}>
-            <Text style={styles.label}>Mode de la tablette</Text>
-            <View style={styles.modeRow}>
-              {(['CAPTURE', 'SHARING'] as const).map((candidate) => (
-                <Pressable
-                  key={candidate}
-                  onPress={() => setMode(candidate)}
-                  style={[styles.modeButton, mode === candidate && styles.modeButtonActive]}
-                >
-                  <Text style={mode === candidate ? styles.modeTextActive : styles.modeText}>{candidate}</Text>
-                </Pressable>
-              ))}
-            </View>
-            <Text style={styles.label}>Code d’activation</Text>
-            <TextInput
-              autoCapitalize="characters"
-              autoCorrect={false}
-              value={code}
-              onChangeText={setCode}
-              placeholder="KHE-123456"
-              style={styles.input}
-            />
-            <Text style={styles.activationHelp}>
-              Aucun Event ID à saisir : KHE Booth retrouve automatiquement l’événement lié à ce code.
-            </Text>
-            <Pressable disabled={busy || !code.trim()} style={styles.primaryButton} onPress={() => void activate()}>
-              <Text style={styles.primaryButtonText}>{busy ? 'Activation…' : 'Activer cette station'}</Text>
-            </Pressable>
-          </View>
-        )}
+                {station.mode === 'SHARING' ? <Pressable onPress={() => void allowSecureStandby()} style={[styles.awakeButton, styles.awakeButtonActive]}><Text style={styles.awakeButtonTextActive}>AUTORISER VEILLE SÉCURISÉE</Text></Pressable> : null}
+              </View>
 
-        {message ? <Text style={styles.message}>{message}</Text> : null}
-      </View>
+              {station.mode === 'SHARING' ? (
+                <View style={styles.securityCard}>
+                  <Text style={styles.awakeTitle}>SÉCURITÉ DE LA RÉGIE</Text>
+                  <Text style={styles.securityTitle}>{lockConfigured ? 'Mot de passe KHE configuré' : 'Créer le mot de passe KHE'}</Text>
+                  <Text style={styles.awakeHelp}>{lockConfigured ? 'Saisissez un nouveau mot de passe ci-dessous pour le remplacer.' : 'Avant la première mise en veille, choisissez votre mot de passe de secours KHE.'}</Text>
+                  <TextInput value={newLockPassword} onChangeText={setNewLockPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} placeholder={lockConfigured ? 'Nouveau mot de passe' : 'Mot de passe KHE'} style={styles.input} />
+                  <TextInput value={confirmLockPassword} onChangeText={setConfirmLockPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} placeholder="Confirmer le mot de passe" style={styles.input} />
+                  <Pressable disabled={!newLockPassword || !confirmLockPassword} onPress={() => void saveLockPassword()} style={styles.securityButton}><Text style={styles.securityButtonText}>{lockConfigured ? 'MODIFIER LE MOT DE PASSE' : 'ENREGISTRER LE MOT DE PASSE'}</Text></Pressable>
+                  <Text style={styles.securityNote}>Au déverrouillage, KHE proposera la biométrie ou le verrouillage système Android compatible, avec le mot de passe KHE en secours.</Text>
+                </View>
+              ) : null}
+
+              {station.mode === 'SHARING' && stationToken ? (
+                <RemoteControlPanel eventName={eventName ?? 'Événement KHE Booth'} api={api} stationToken={stationToken} />
+              ) : (
+                <>
+                  <Text style={styles.label}>Station active</Text><Text style={styles.value}>{station.mode}</Text>
+                  <Text style={styles.label}>Événement</Text><Text style={styles.value}>{eventName ?? station.session.eventId}</Text>
+                  <Text style={styles.label}>Session</Text><Text style={styles.small}>{station.session.id}</Text>
+                  <Pressable disabled={busy} style={styles.primaryButton} onPress={() => void refreshManifest()}><Text style={styles.primaryButtonText}>{busy ? 'Synchronisation…' : 'Actualiser le manifest'}</Text></Pressable>
+                  <View style={styles.captureActions}>
+                    <Pressable disabled={busy || !stationToken} style={styles.captureButton} onPress={() => setCameraOpen(true)}><Text style={styles.captureButtonText}>Ouvrir la caméra</Text></Pressable>
+                    <Pressable disabled={busy} style={styles.galleryButton} onPress={() => setGalleryOpen(true)}><Text style={styles.galleryButtonText}>Galerie</Text></Pressable>
+                  </View>
+                  <Text style={styles.notice}>Laisse la caméra CAPTURE ouverte pendant l’événement pour permettre à SHARING de piloter REC, Pause/Reprendre, Stop, durée et effets.</Text>
+                </>
+              )}
+            </View>
+          ) : (
+            <View style={styles.section}>
+              <Text style={styles.label}>Mode de la tablette</Text>
+              <View style={styles.modeRow}>{(['CAPTURE', 'SHARING'] as const).map((candidate) => <Pressable key={candidate} onPress={() => setMode(candidate)} style={[styles.modeButton, mode === candidate && styles.modeButtonActive]}><Text style={mode === candidate ? styles.modeTextActive : styles.modeText}>{candidate}</Text></Pressable>)}</View>
+              <Text style={styles.label}>Code d’activation</Text>
+              <TextInput autoCapitalize="characters" autoCorrect={false} value={code} onChangeText={setCode} placeholder="KHE-123456" style={styles.input} />
+              <Text style={styles.activationHelp}>Aucun Event ID à saisir : KHE Booth retrouve automatiquement l’événement lié à ce code.</Text>
+              <Pressable disabled={busy || !code.trim()} style={styles.primaryButton} onPress={() => void activate()}><Text style={styles.primaryButtonText}>{busy ? 'Activation…' : 'Activer cette station'}</Text></Pressable>
+              <Pressable style={styles.termsLink} onPress={() => setAboutOpen(true)}><Text style={styles.termsLinkText}>Conditions d’utilisation • Version {APP_VERSION}</Text></Pressable>
+            </View>
+          )}
+          {message ? <Text style={styles.message}>{message}</Text> : null}
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
+function Root() {
+  return <TermsGate><App /></TermsGate>;
+}
+
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#101010', padding: 24, justifyContent: 'center' },
+  page: { flex: 1, backgroundColor: '#101010' },
+  pageScroll: { flex: 1 },
+  pageContent: { flexGrow: 1, justifyContent: 'center', padding: 20, paddingBottom: 44 },
+  pageContentLandscape: { justifyContent: 'flex-start', paddingVertical: 16 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
-  card: { backgroundColor: '#ffffff', borderRadius: 24, padding: 24, gap: 8 },
-  brand: { fontSize: 13, letterSpacing: 3, fontWeight: '800' },
-  title: { fontSize: 30, fontWeight: '800' },
-  muted: { opacity: 0.6 },
+  card: { width: '100%', maxWidth: 760, alignSelf: 'center', backgroundColor: '#ffffff', borderRadius: 24, padding: 22, gap: 8 },
+  cardLandscape: { maxWidth: 980 },
+  brand: { fontSize: 13, letterSpacing: 3, fontWeight: '800', paddingTop: 4 },
+  title: { fontSize: 30, lineHeight: 36, fontWeight: '800' },
+  muted: { opacity: 0.6, lineHeight: 18 },
   section: { marginTop: 18, gap: 10 },
   label: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', opacity: 0.55 },
-  value: { fontSize: 18, fontWeight: '700' },
-  small: { fontSize: 12, opacity: 0.65 },
-  modeRow: { flexDirection: 'row', gap: 10 },
-  modeButton: { flex: 1, borderWidth: 1, borderColor: '#c9c9c9', borderRadius: 12, padding: 12, alignItems: 'center' },
-  modeButtonActive: { backgroundColor: '#111111', borderColor: '#111111' },
-  modeText: { fontWeight: '700' },
-  modeTextActive: { color: '#ffffff', fontWeight: '700' },
-  input: { borderWidth: 1, borderColor: '#d6d6d6', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 },
-  activationHelp: { fontSize: 12, lineHeight: 17, opacity: 0.6 },
-  primaryButton: { marginTop: 8, backgroundColor: '#111111', borderRadius: 12, padding: 14, alignItems: 'center' },
-  primaryButtonText: { color: '#ffffff', fontWeight: '800' },
-  awakeCard: { borderWidth: 1, borderColor: '#d5d5d5', borderRadius: 16, padding: 14, gap: 10 },
-  awakeCopy: { gap: 3 },
-  awakeTitle: { fontSize: 10, fontWeight: '900', letterSpacing: 1.5, opacity: 0.55 },
-  awakeStatus: { fontSize: 17, fontWeight: '900' },
-  awakeHelp: { fontSize: 11, lineHeight: 16, opacity: 0.62 },
-  awakeButton: { borderWidth: 1, borderColor: '#111111', borderRadius: 11, paddingVertical: 11, alignItems: 'center' },
-  awakeButtonActive: { backgroundColor: '#111111' },
-  awakeButtonTextActive: { color: '#ffffff', fontWeight: '900', fontSize: 11 },
-  securityCard: { borderWidth: 1, borderColor: '#d5d5d5', borderRadius: 16, padding: 14, gap: 9 },
-  securityTitle: { fontSize: 16, fontWeight: '900' },
-  securityButton: { backgroundColor: '#ededed', borderRadius: 11, paddingVertical: 12, alignItems: 'center' },
-  securityButtonText: { fontWeight: '900', fontSize: 11 },
-  securityNote: { fontSize: 10, lineHeight: 15, opacity: 0.58 },
-  captureActions: { flexDirection: 'row', gap: 10 },
-  captureButton: { flex: 1, borderWidth: 1, borderColor: '#111111', borderRadius: 12, padding: 14, alignItems: 'center' },
-  captureButtonText: { color: '#111111', fontWeight: '800' },
-  galleryButton: { flex: 1, backgroundColor: '#111111', borderRadius: 12, padding: 14, alignItems: 'center' },
-  galleryButtonText: { color: '#ffffff', fontWeight: '800' },
-  notice: { marginTop: 8, fontSize: 12, lineHeight: 18, opacity: 0.65 },
-  message: { marginTop: 14, fontSize: 13, lineHeight: 18 },
+  value: { fontSize: 18, fontWeight: '700' }, small: { fontSize: 12, opacity: 0.65 },
+  modeRow: { flexDirection: 'row', gap: 10 }, modeButton: { flex: 1, borderWidth: 1, borderColor: '#c9c9c9', borderRadius: 12, padding: 12, alignItems: 'center' },
+  modeButtonActive: { backgroundColor: '#111111', borderColor: '#111111' }, modeText: { fontWeight: '700' }, modeTextActive: { color: '#ffffff', fontWeight: '700' },
+  input: { borderWidth: 1, borderColor: '#d6d6d6', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: '#ffffff' },
+  activationHelp: { fontSize: 12, lineHeight: 17, opacity: 0.6 }, primaryButton: { marginTop: 8, backgroundColor: '#111111', borderRadius: 12, padding: 14, alignItems: 'center' }, primaryButtonText: { color: '#ffffff', fontWeight: '800' },
+  awakeCard: { borderWidth: 1, borderColor: '#d5d5d5', borderRadius: 16, padding: 14, gap: 10 }, awakeCopy: { gap: 3 }, awakeTitle: { fontSize: 10, fontWeight: '900', letterSpacing: 1.5, opacity: 0.55 },
+  awakeStatus: { fontSize: 17, fontWeight: '900' }, awakeHelp: { fontSize: 11, lineHeight: 16, opacity: 0.62 }, awakeButton: { borderWidth: 1, borderColor: '#111111', borderRadius: 11, paddingVertical: 11, alignItems: 'center' }, awakeButtonActive: { backgroundColor: '#111111' }, awakeButtonTextActive: { color: '#ffffff', fontWeight: '900', fontSize: 11 },
+  securityCard: { borderWidth: 1, borderColor: '#d5d5d5', borderRadius: 16, padding: 14, gap: 9 }, securityTitle: { fontSize: 16, fontWeight: '900' }, securityButton: { backgroundColor: '#ededed', borderRadius: 11, paddingVertical: 12, alignItems: 'center' }, securityButtonText: { fontWeight: '900', fontSize: 11 }, securityNote: { fontSize: 10, lineHeight: 15, opacity: 0.58 },
+  captureActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, captureButton: { flexGrow: 1, minWidth: 160, borderWidth: 1, borderColor: '#111111', borderRadius: 12, padding: 14, alignItems: 'center' }, captureButtonText: { color: '#111111', fontWeight: '800' }, galleryButton: { flexGrow: 1, minWidth: 140, backgroundColor: '#111111', borderRadius: 12, padding: 14, alignItems: 'center' }, galleryButtonText: { color: '#ffffff', fontWeight: '800' },
+  notice: { marginTop: 8, fontSize: 12, lineHeight: 18, opacity: 0.65 }, message: { marginTop: 14, fontSize: 13, lineHeight: 18 },
+  menuAnchor: { alignSelf: 'flex-start', zIndex: 20, marginBottom: 8 }, menuButton: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: '#111111', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9 }, menuButtonText: { color: '#ffffff', fontSize: 18, fontWeight: '900' }, menuButtonLabel: { color: '#ffffff', fontSize: 12, fontWeight: '900' }, updateDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#ffd35c' },
+  menuPanel: { position: 'absolute', top: 48, left: 0, width: 280, backgroundColor: '#111111', borderRadius: 16, padding: 12, gap: 5, elevation: 10 }, menuBrand: { color: '#ffffff', fontWeight: '900', letterSpacing: 2 }, menuSession: { color: '#a9a9a9', fontSize: 11, marginBottom: 6 }, menuItem: { backgroundColor: '#222225', borderRadius: 10, padding: 12 }, menuItemText: { color: '#ffffff', fontSize: 12, fontWeight: '800', lineHeight: 17 }, menuItemDanger: { borderWidth: 1, borderColor: '#7d3d3d', borderRadius: 10, padding: 12, marginTop: 3 }, menuItemDangerText: { color: '#ffb6b6', fontSize: 12, fontWeight: '900' },
+  updateBanner: { backgroundColor: '#fff1bd', borderRadius: 12, padding: 10, marginTop: 7 }, updateBannerText: { color: '#4a3900', fontSize: 11, lineHeight: 16, fontWeight: '800' }, termsLink: { alignItems: 'center', padding: 10 }, termsLinkText: { fontSize: 11, fontWeight: '700', textDecorationLine: 'underline', opacity: 0.65 },
 });
 
-registerRootComponent(App);
+registerRootComponent(Root);
