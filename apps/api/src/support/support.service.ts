@@ -10,6 +10,7 @@ import type { AuthenticatedUser } from '../auth/auth.types';
 import { PrismaService } from '../prisma/prisma.service';
 
 const AGENT_ROLES: UserRole[] = [UserRole.OWNER, UserRole.ADMIN, UserRole.OPERATOR];
+const ADMIN_ROLES: UserRole[] = [UserRole.OWNER, UserRole.ADMIN];
 const SUPPORT_CONVERSATION_URL_PREFIX = '/help?conversation=';
 
 @Injectable()
@@ -172,7 +173,7 @@ export class SupportService {
     user: AuthenticatedUser,
     input: { title: string; body: string; kind?: NotificationKind; actionUrl?: string },
   ) {
-    if (![UserRole.OWNER, UserRole.ADMIN].includes(user.role)) throw new ForbiddenException();
+    if (!ADMIN_ROLES.includes(user.role)) throw new ForbiddenException();
     return this.prisma.appNotification.create({
       data: {
         organizationId: user.organizationId,
