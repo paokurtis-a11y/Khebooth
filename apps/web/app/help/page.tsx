@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
 import { PortalShell } from '@/components/portal-shell';
 import { apiRequest, getSessionUser } from '@/lib/api';
 
@@ -33,7 +32,6 @@ const TASK_LABELS: Record<Task['status'], string> = {
 };
 
 export default function HelpPage() {
-  const searchParams = useSearchParams();
   const user = getSessionUser();
   const isAgent = ['OWNER', 'ADMIN', 'OPERATOR'].includes(user?.role ?? '');
   const [mine, setMine] = useState<Conv[]>([]);
@@ -72,7 +70,7 @@ export default function HelpPage() {
   };
 
   useEffect(() => {
-    const requestedConversation = searchParams.get('conversation');
+    const requestedConversation = new URLSearchParams(window.location.search).get('conversation');
     refresh(requestedConversation ?? undefined);
   }, []);
 
