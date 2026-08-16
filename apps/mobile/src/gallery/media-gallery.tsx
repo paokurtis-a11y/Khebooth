@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import type { LocalStore } from '../offline/local-store';
 import type { LocalMediaRecord } from '../offline/types';
+import { shareMediaNatively } from '../sharing/native-share';
 
 interface MediaGalleryProps {
   eventId: string;
@@ -99,6 +100,7 @@ export function MediaGallery({ eventId, eventName, store, onClose }: MediaGaller
   const landscape = width >= 760;
   const [loading, setLoading] = useState(true);
   const [printing, setPrinting] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const [media, setMedia] = useState<LocalMediaRecord[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<MediaFilter>('ALL');
@@ -129,6 +131,19 @@ export function MediaGallery({ eventId, eventName, store, onClose }: MediaGaller
   useEffect(() => {
     if (filteredMedia.length > 0 && !filteredMedia.some((item) => item.localId === selectedId)) setSelectedId(filteredMedia[0]?.localId ?? null);
   }, [filter, filteredMedia, selectedId]);
+
+  async function shareSelected(item: LocalMediaRecord): Promise<void> {
+    setSharing(true);
+    setMessage('');
+    try {
+      await shareMediaNatively(item);
+      setMessage('Menu de partage Android ouvert. Choisissez WhatsApp, Bluetooth, Quick Share ou toute autre option compatible disponible sur cette tablette.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Impossible de partager ce moment.');
+    } finally {
+      setSharing(false);
+    }
+  }
 
   async function printPhoto(item: LocalMediaRecord): Promise<void> {
     if (!isPhoto(item)) {
@@ -216,6 +231,10 @@ export function MediaGallery({ eventId, eventName, store, onClose }: MediaGaller
               {selected ? <GalleryPlayer key={selected.localId} media={selected} /> : null}
               {selected ? (
                 <View style={styles.actionRow}>
+                  <Pressable disabled={sharing} style={[styles.shareButton, sharing && styles.disabledButton]} onPress={() => void shareSelected(selected)}>
+                    <Text style={styles.shareText}>{sharing ? 'Ouverture…' : '↗ Partager ce moment'}</Text>
+                    <Text style={styles.shareHint}>WhatsApp · Bluetooth · Quick Share · apps compatibles</Text>
+                  </Pressable>
                   {isPhoto(selected) ? (
                     <Pressable disabled={printing} style={[styles.printButton, printing && styles.disabledButton]} onPress={() => void printPhoto(selected)}>
                       <Text style={styles.printText}>{printing ? 'Préparation…' : '🖨 Imprimer cette photo'}</Text>
@@ -293,6 +312,9 @@ const styles = StyleSheet.create({
   stateBadge: { backgroundColor: '#27272a', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 6 },
   stateBadgeText: { color: '#ffffff', fontSize: 10, fontWeight: '800' },
   actionRow: { gap: 9 },
+  shareButton: { backgroundColor: '#1f6feb', borderRadius: 14, padding: 13, alignItems: 'center', gap: 3 },
+  shareText: { color: '#ffffff', fontWeight: '900' },
+  shareHint: { color: '#d8e7ff', fontSize: 10, fontWeight: '700', textAlign: 'center' },
   printButton: { backgroundColor: '#ffffff', borderRadius: 14, padding: 13, alignItems: 'center' },
   printText: { color: '#111111', fontWeight: '900' },
   deleteButton: { borderWidth: 1, borderColor: '#713838', borderRadius: 14, padding: 13, alignItems: 'center' },
