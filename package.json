@@ -10,8 +10,8 @@
     "lint": "pnpm -r --if-present lint",
     "test": "pnpm -r --if-present test",
     "build": "pnpm -r --if-present build",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
+    "prisma:generate": "prisma generate --schema apps/api/prisma/schema.prisma",
+    "prisma:migrate": "prisma migrate dev --schema apps/api/prisma/schema.prisma",
     "prisma:seed": "pnpm --filter @khe/api exec ts-node prisma.seed.ts"
   },
   "prisma": {
