@@ -20,7 +20,7 @@ export class MobileController {
     return {
       latestVersion: LATEST_VERSION,
       updateAvailable: compareVersions(LATEST_VERSION, current) > 0,
-      releaseNotes: 'Interface responsive, menu de station, conditions d’utilisation, galerie interactive et améliorations de capture.',
+      releaseNotes: 'Version 0.2.0 : interface responsive, menu de station, conditions d’utilisation, galerie interactive et améliorations de capture.',
       installUrl: 'https://expo.dev/accounts/kurtis-hypnotic-event/projects/kurtis-hypnotic-events/builds',
     };
   }
