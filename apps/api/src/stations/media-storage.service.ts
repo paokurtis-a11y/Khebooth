@@ -40,7 +40,7 @@ export class MediaStorageService {
     const expiresAtMs = Date.now() + UPLOAD_TICKET_TTL_MS;
 
     try {
-      const existing = await head(pathname, { access: 'private' });
+      const existing = await head(pathname);
       if (existing.size === media.byteSize && existing.contentType === media.mimeType) {
         await this.ensureUploadSession(media.id, media.byteSize, media.byteSize);
         return {
@@ -98,7 +98,7 @@ export class MediaStorageService {
 
     let blob: Awaited<ReturnType<typeof head>>;
     try {
-      blob = await head(pathname, { access: 'private' });
+      blob = await head(pathname);
     } catch {
       throw new BadRequestException('Cloud media object is not available yet');
     }
@@ -141,7 +141,7 @@ export class MediaStorageService {
     }
     const pathname = this.pathnameFor(media);
     try {
-      const blob = await head(pathname, { access: 'private' });
+      const blob = await head(pathname);
       if (blob.size !== media.byteSize || blob.contentType !== media.mimeType) {
         throw new BadRequestException('Stored media verification failed');
       }
