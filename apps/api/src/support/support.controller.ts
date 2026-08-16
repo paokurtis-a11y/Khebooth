@@ -116,6 +116,12 @@ export class SupportController {
   }
 
   @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.OPERATOR)
+  @Post('conversations/:id/resolve')
+  resolve(@CurrentUser() user: AuthenticatedUser, @Param('id', new ParseUUIDPipe()) id: string) {
+    return this.support.resolveConversation(user, id);
+  }
+
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.OPERATOR)
   @Post('conversations/:id/tasks')
   createTask(
     @CurrentUser() user: AuthenticatedUser,
