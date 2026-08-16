@@ -152,7 +152,7 @@ export default function HelpPage() {
 
   return (
     <PortalShell>
-      <div className="header">
+      <div className="header" data-testid="help-header">
         <div>
           <h1>Help & Messagerie</h1>
           <p>KHE répond immédiatement. Si nécessaire, la conversation passe à l’équipe support sans perdre l’historique.</p>
