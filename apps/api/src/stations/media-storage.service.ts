@@ -13,6 +13,7 @@ import type { AuthenticatedStation } from './station-auth.types';
 const UPLOAD_TICKET_TTL_MS = 15 * 60 * 1000;
 const DOWNLOAD_TICKET_TTL_MS = 10 * 60 * 1000;
 const MAX_MEDIA_BYTES = 2 * 1024 * 1024 * 1024;
+const DEFAULT_BLOB_STORE_ID = 'store_UBIkUPi0TciEoO1f';
 
 function extensionForMimeType(mimeType: string): string {
   switch (mimeType) {
@@ -38,9 +39,10 @@ export class MediaStorageService {
 
     const pathname = this.pathnameFor(media);
     const expiresAtMs = Date.now() + UPLOAD_TICKET_TTL_MS;
+    const storeId = this.blobStoreId();
 
     try {
-      const existing = await head(pathname);
+      const existing = await head(pathname, { storeId });
       if (existing.size === media.byteSize && existing.contentType === media.mimeType) {
         await this.ensureUploadSession(media.id, media.byteSize, media.byteSize);
         return {
@@ -66,6 +68,7 @@ export class MediaStorageService {
         validUntil: expiresAtMs,
         maximumSizeInBytes: media.byteSize,
         allowedContentTypes: [media.mimeType],
+        storeId,
       });
       const { presignedUrl } = await presignUrl(signedToken, {
         access: 'private',
@@ -95,10 +98,11 @@ export class MediaStorageService {
     this.assertCapture(station);
     const media = await this.getEventMedia(station, mediaId, true);
     const pathname = this.pathnameFor(media);
+    const storeId = this.blobStoreId();
 
     let blob: Awaited<ReturnType<typeof head>>;
     try {
-      blob = await head(pathname);
+      blob = await head(pathname, { storeId });
     } catch {
       throw new BadRequestException('Cloud media object is not available yet');
     }
@@ -140,8 +144,9 @@ export class MediaStorageService {
       throw new BadRequestException('Media is not synchronized yet');
     }
     const pathname = this.pathnameFor(media);
+    const storeId = this.blobStoreId();
     try {
-      const blob = await head(pathname);
+      const blob = await head(pathname, { storeId });
       if (blob.size !== media.byteSize || blob.contentType !== media.mimeType) {
         throw new BadRequestException('Stored media verification failed');
       }
@@ -150,6 +155,7 @@ export class MediaStorageService {
         pathname,
         operations: ['get'],
         validUntil: expiresAtMs,
+        storeId,
       });
       const { presignedUrl } = await presignUrl(signedToken, {
         access: 'private',
@@ -163,6 +169,10 @@ export class MediaStorageService {
       const detail = error instanceof Error ? error.message : 'Blob access failed';
       throw new ServiceUnavailableException(`Media storage unavailable: ${detail}`);
     }
+  }
+
+  private blobStoreId(): string {
+    return process.env.BLOB_STORE_ID?.trim() || DEFAULT_BLOB_STORE_ID;
   }
 
   private async ensureUploadSession(mediaAssetId: string, totalBytes: number, uploadedBytes: number) {
