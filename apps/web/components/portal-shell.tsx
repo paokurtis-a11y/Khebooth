@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { apiRequest, clearAccessToken, getAccessToken, setSessionUser } from '@/lib/api';
+import { SupportCenterTools } from './support-center-tools';
 
 type CurrentUser = {
   id: string;
@@ -45,6 +46,7 @@ export function PortalShell({ children }: Readonly<{ children: React.ReactNode }
     ['/events', 'Événements'],
     ['/presets', 'Presets'],
     ['/events/new', 'Créer'],
+    ['/help', 'Help / Messagerie'],
   ] as const;
 
   return (
@@ -74,6 +76,7 @@ export function PortalShell({ children }: Readonly<{ children: React.ReactNode }
           </button>
         </div>
       </aside>
+      <SupportCenterTools />
       <main className="content">{children}</main>
     </div>
   );
