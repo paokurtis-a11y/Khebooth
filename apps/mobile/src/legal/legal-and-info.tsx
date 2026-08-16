@@ -4,8 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { API_BASE_URL } from '../config';
 
-export const APP_VERSION = '0.2.0';
-export const LEGAL_CONTENT_REVISION = '2026-08-16.1';
+export const APP_VERSION = '0.3.0';
+export const LEGAL_CONTENT_REVISION = '2026-08-16.2';
 const TERMS_ACCEPTED_KEY = 'khe.terms.accepted.revision.v2';
 const PUBLIC_APP_CONFIG_URL = 'https://raw.githubusercontent.com/paokurtis-a11y/Khebooth/main/apps/mobile/app.json';
 const EXPO_BUILDS_URL = 'https://expo.dev/accounts/kurtis-hypnotic-event/projects/kurtis-hypnotic-events/builds';
