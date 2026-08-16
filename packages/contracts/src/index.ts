@@ -170,9 +170,9 @@ export interface MediaAssetContract {
   syncState: MediaSyncState;
   capturedAt: string | Date | null;
   acknowledgedAt: string | Date | null;
-  /** Direct cloud URL when the media bytes have been durably stored. */
+  /** Short-lived signed cloud URL when the media bytes are durably stored. */
   downloadUrl?: string | null;
-  /** Public guest-facing URL encoded in the SHARING QR code. */
+  /** Guest-facing URL intended to be encoded in the SHARING QR code. */
   shareUrl?: string | null;
 }
 
@@ -183,6 +183,21 @@ export interface UploadSessionContract {
   uploadedBytes: number;
   totalBytes: number;
   updatedAt: string | Date;
+}
+
+export interface BlobUploadTicketContract {
+  mediaId: string;
+  pathname: string;
+  uploadUrl: string;
+  expiresAt: string | Date;
+  contentType: string;
+  byteSize: number;
+}
+
+export interface MediaDownloadTicketContract {
+  mediaId: string;
+  downloadUrl: string;
+  expiresAt: string | Date;
 }
 
 export interface FinalizeUploadResponseContract {
