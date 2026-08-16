@@ -1,4 +1,5 @@
 import { File } from 'expo-file-system';
+import * as Print from 'expo-print';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
@@ -97,6 +98,7 @@ export function MediaGallery({ eventId, eventName, store, onClose }: MediaGaller
   const { width } = useWindowDimensions();
   const landscape = width >= 760;
   const [loading, setLoading] = useState(true);
+  const [printing, setPrinting] = useState(false);
   const [media, setMedia] = useState<LocalMediaRecord[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<MediaFilter>('ALL');
@@ -127,6 +129,28 @@ export function MediaGallery({ eventId, eventName, store, onClose }: MediaGaller
   useEffect(() => {
     if (filteredMedia.length > 0 && !filteredMedia.some((item) => item.localId === selectedId)) setSelectedId(filteredMedia[0]?.localId ?? null);
   }, [filter, filteredMedia, selectedId]);
+
+  async function printPhoto(item: LocalMediaRecord): Promise<void> {
+    if (!isPhoto(item)) {
+      setMessage('L’impression directe est réservée aux photos.');
+      return;
+    }
+    setPrinting(true);
+    setMessage('');
+    try {
+      const file = new File(item.localUri);
+      if (!file.exists) throw new Error('Le fichier photo local est introuvable.');
+      const base64 = await file.base64();
+      const mime = item.mimeType || 'image/jpeg';
+      const html = `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"/><style>@page{margin:0}html,body{margin:0;padding:0;background:#fff}main{min-height:100vh;display:flex;align-items:center;justify-content:center}img{max-width:100%;max-height:100vh;object-fit:contain}</style></head><body><main><img src="data:${mime};base64,${base64}" /></main></body></html>`;
+      await Print.printAsync({ html });
+      setMessage('La fenêtre d’impression Android a été ouverte pour cette photo.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Impossible d’imprimer cette photo.');
+    } finally {
+      setPrinting(false);
+    }
+  }
 
   async function deleteSelected(item: LocalMediaRecord): Promise<void> {
     try {
@@ -191,9 +215,16 @@ export function MediaGallery({ eventId, eventName, store, onClose }: MediaGaller
             <View style={styles.viewerColumn}>
               {selected ? <GalleryPlayer key={selected.localId} media={selected} /> : null}
               {selected ? (
-                <Pressable style={styles.deleteButton} onPress={() => confirmDelete(selected)}>
-                  <Text style={styles.deleteText}>Supprimer ce moment</Text>
-                </Pressable>
+                <View style={styles.actionRow}>
+                  {isPhoto(selected) ? (
+                    <Pressable disabled={printing} style={[styles.printButton, printing && styles.disabledButton]} onPress={() => void printPhoto(selected)}>
+                      <Text style={styles.printText}>{printing ? 'Préparation…' : '🖨 Imprimer cette photo'}</Text>
+                    </Pressable>
+                  ) : null}
+                  <Pressable style={styles.deleteButton} onPress={() => confirmDelete(selected)}>
+                    <Text style={styles.deleteText}>Supprimer ce moment</Text>
+                  </Pressable>
+                </View>
               ) : null}
             </View>
 
@@ -261,8 +292,12 @@ const styles = StyleSheet.create({
   meta: { color: '#9d9d9d', fontSize: 12 },
   stateBadge: { backgroundColor: '#27272a', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 6 },
   stateBadgeText: { color: '#ffffff', fontSize: 10, fontWeight: '800' },
+  actionRow: { gap: 9 },
+  printButton: { backgroundColor: '#ffffff', borderRadius: 14, padding: 13, alignItems: 'center' },
+  printText: { color: '#111111', fontWeight: '900' },
   deleteButton: { borderWidth: 1, borderColor: '#713838', borderRadius: 14, padding: 13, alignItems: 'center' },
   deleteText: { color: '#ffb1b1', fontWeight: '900' },
+  disabledButton: { opacity: 0.5 },
   sectionTitle: { color: '#ffffff', fontSize: 20, fontWeight: '900' },
   sectionHint: { color: '#8d8d8d', fontSize: 12, marginTop: 3, marginBottom: 8, lineHeight: 17 },
   strip: { flexGrow: 0 },
