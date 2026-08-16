@@ -25,6 +25,10 @@ export class MemoryLocalStore implements LocalStore {
     return this.station ? structuredClone(this.station) : null;
   }
 
+  async clearStation(): Promise<void> {
+    this.station = null;
+  }
+
   async saveManifest(eventId: string, manifest: EventManifestContract): Promise<void> {
     this.manifests.set(eventId, structuredClone(manifest));
   }
@@ -54,6 +58,11 @@ export class MemoryLocalStore implements LocalStore {
     return [...this.media.values()]
       .filter((item) => item.eventId === eventId && item.syncState !== 'SYNCED')
       .map((item) => structuredClone(item));
+  }
+
+  async deleteMedia(localId: string): Promise<void> {
+    this.queue.delete(localId);
+    this.media.delete(localId);
   }
 
   async enqueue(item: SyncQueueItem): Promise<void> {
