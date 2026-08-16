@@ -17,6 +17,9 @@ describe('AuthService', () => {
     lastName: null,
     role: UserRole.OWNER,
     isActive: true,
+    notificationsEnabled: true,
+    productUpdatesEnabled: true,
+    supportNotificationsEnabled: true,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
