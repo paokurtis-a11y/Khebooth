@@ -1,0 +1,50 @@
+name: Temporary KHE Blob diagnostic
+
+on:
+  push:
+    branches:
+      - agent/blob-diagnostic-20260816
+    paths:
+      - .github/workflows/blob-diagnostic-temp.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Diagnose Blob signing response
+        shell: bash
+        run: |
+          set -euo pipefail
+          API='https://khebooth-api.vercel.app/api'
+          EVENT='bc5bf3e4-7893-4beb-9634-8c934693db05'
+          CODE='KHE-483279'
+          INSTALL='diag-capture-20260816'
+          HASH='431ced6916a2a21a156e38701afe55bbd7f88969fbbfc56d7fe099d47f265460'
+
+          curl -fSs -X POST "$API/stations/redeem" -H 'content-type: application/json' \
+            --data "{\"eventId\":\"$EVENT\",\"code\":\"$CODE\",\"installationId\":\"$INSTALL\",\"mode\":\"CAPTURE\",\"deviceName\":\"KHE Blob Diagnostic\",\"platform\":\"github-actions\"}" > capture.json
+          TOKEN="$(python3 -c 'import json; print(json.load(open("capture.json"))["stationToken"])')"
+          echo "::add-mask::$TOKEN"
+
+          curl -fSs -X POST "$API/stations/media" \
+            -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+            --data "{\"localId\":\"diag-20260816\",\"idempotencyKey\":\"diag-20260816\",\"contentHash\":\"$HASH\",\"byteSize\":68,\"mimeType\":\"image/png\"}" > media.json
+          MEDIA_ID="$(python3 -c 'import json; print(json.load(open("media.json"))["id"])')"
+
+          STATUS="$(curl -sS -o blob-response.json -w '%{http_code}' -X POST "$API/stations/media/$MEDIA_ID/blob-upload" -H "authorization: Bearer $TOKEN")"
+          echo "BLOB_STATUS=$STATUS"
+          python3 - <<'PY'
+          import json
+          try:
+              data=json.load(open('blob-response.json'))
+              print('BLOB_MESSAGE=' + str(data.get('message')))
+              print('BLOB_ERROR=' + str(data.get('error')))
+              print('BLOB_STATUS_CODE=' + str(data.get('statusCode')))
+          except Exception as e:
+              print('BLOB_RESPONSE_PARSE_ERROR=' + str(e))
+          PY
+          echo "MEDIA_ID=$MEDIA_ID"
