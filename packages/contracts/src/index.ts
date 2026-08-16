@@ -170,6 +170,10 @@ export interface MediaAssetContract {
   syncState: MediaSyncState;
   capturedAt: string | Date | null;
   acknowledgedAt: string | Date | null;
+  /** Direct cloud URL when the media bytes have been durably stored. */
+  downloadUrl?: string | null;
+  /** Public guest-facing URL encoded in the SHARING QR code. */
+  shareUrl?: string | null;
 }
 
 export interface UploadSessionContract {
