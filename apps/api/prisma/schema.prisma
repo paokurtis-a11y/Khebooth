@@ -71,6 +71,33 @@ enum VisualEffect {
   PARTY
 }
 
+enum NotificationKind {
+  UPDATE
+  NEWS
+  SUPPORT
+  SYSTEM
+}
+
+enum SupportConversationStatus {
+  BOT
+  HANDOFF_REQUESTED
+  ASSIGNED
+  RESOLVED
+}
+
+enum SupportMessageAuthor {
+  USER
+  KHE
+  AGENT
+  SYSTEM
+}
+
+enum SupportTaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
 model Organization {
   id                    String                 @id @default(uuid()) @db.Uuid
   name                  String
@@ -84,23 +111,35 @@ model Organization {
   stationSessions       StationSession[]
   mediaAssets           MediaAsset[]
   stationRemoteControls StationRemoteControl[]
+  notifications         AppNotification[]
+  supportConversations  SupportConversation[]
+  supportTasks          SupportTask[]
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
 }
 
 model User {
-  id             String       @id @default(uuid()) @db.Uuid
-  organizationId String       @db.Uuid
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  email          String       @unique
-  passwordHash   String
-  firstName      String?
-  lastName       String?
-  role           UserRole     @default(OPERATOR)
-  isActive       Boolean      @default(true)
-  auditLogs      AuditLog[]
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  id                       String                @id @default(uuid()) @db.Uuid
+  organizationId           String                @db.Uuid
+  organization             Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  email                    String                @unique
+  passwordHash             String
+  firstName                String?
+  lastName                 String?
+  role                     UserRole              @default(OPERATOR)
+  isActive                 Boolean               @default(true)
+  notificationsEnabled     Boolean               @default(true)
+  productUpdatesEnabled    Boolean               @default(true)
+  supportNotificationsEnabled Boolean            @default(true)
+  auditLogs                AuditLog[]
+  notificationReads        NotificationRead[]
+  supportConversations     SupportConversation[] @relation("SupportRequester")
+  assignedConversations    SupportConversation[] @relation("SupportAssignee")
+  supportMessages          SupportMessage[]       @relation("SupportAgentMessages")
+  assignedSupportTasks     SupportTask[]          @relation("SupportTaskAssignee")
+  createdSupportTasks      SupportTask[]          @relation("SupportTaskCreator")
+  createdAt                DateTime               @default(now())
+  updatedAt                DateTime               @updatedAt
 
   @@index([organizationId])
 }
@@ -278,6 +317,88 @@ model UploadSession {
   updatedAt     DateTime     @updatedAt
 
   @@index([state])
+}
+
+model AppNotification {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @db.Uuid
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  kind           NotificationKind @default(NEWS)
+  title          String
+  body           String
+  actionUrl      String?
+  publishedAt    DateTime         @default(now())
+  reads          NotificationRead[]
+  createdAt      DateTime         @default(now())
+
+  @@index([organizationId, publishedAt])
+}
+
+model NotificationRead {
+  id             String          @id @default(uuid()) @db.Uuid
+  notificationId String          @db.Uuid
+  notification   AppNotification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  userId         String          @db.Uuid
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  readAt         DateTime        @default(now())
+
+  @@unique([notificationId, userId])
+  @@index([userId, readAt])
+}
+
+model SupportConversation {
+  id               String                    @id @default(uuid()) @db.Uuid
+  organizationId   String                    @db.Uuid
+  organization     Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  requesterUserId  String                    @db.Uuid
+  requester        User                      @relation("SupportRequester", fields: [requesterUserId], references: [id], onDelete: Cascade)
+  assignedToUserId String?                   @db.Uuid
+  assignedTo       User?                     @relation("SupportAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  subject          String
+  status           SupportConversationStatus @default(BOT)
+  lastMessageAt    DateTime                  @default(now())
+  messages         SupportMessage[]
+  tasks            SupportTask[]
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
+
+  @@index([organizationId, status, lastMessageAt])
+  @@index([requesterUserId, lastMessageAt])
+  @@index([assignedToUserId, status])
+}
+
+model SupportMessage {
+  id             String               @id @default(uuid()) @db.Uuid
+  conversationId String               @db.Uuid
+  conversation   SupportConversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  author         SupportMessageAuthor
+  userId         String?              @db.Uuid
+  user           User?                @relation("SupportAgentMessages", fields: [userId], references: [id], onDelete: SetNull)
+  body           String
+  createdAt      DateTime             @default(now())
+
+  @@index([conversationId, createdAt])
+}
+
+model SupportTask {
+  id               String            @id @default(uuid()) @db.Uuid
+  organizationId   String            @db.Uuid
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  conversationId   String            @db.Uuid
+  conversation     SupportConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  title            String
+  status           SupportTaskStatus @default(TODO)
+  assignedToUserId String?           @db.Uuid
+  assignedTo       User?             @relation("SupportTaskAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  createdByUserId  String            @db.Uuid
+  createdBy        User              @relation("SupportTaskCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  dueAt            DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@index([organizationId, status])
+  @@index([conversationId])
+  @@index([assignedToUserId, status])
 }
 
 model AuditLog {
