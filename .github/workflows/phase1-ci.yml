@@ -58,7 +58,7 @@ jobs:
         run: pnpm prisma:generate
 
       - name: Apply migrations
-        run: pnpm exec prisma migrate deploy
+        run: pnpm exec prisma migrate deploy --schema apps/api/prisma/schema.prisma
 
       - name: Lint
         run: pnpm lint
