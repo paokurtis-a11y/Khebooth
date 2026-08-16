@@ -375,8 +375,8 @@ export function CameraCapture({ eventId, store, api, stationToken, onClose, onCa
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#000000' }, camera: { flex: 1 }, uiLayer: { ...StyleSheet.absoluteFillObject },
-  effectOverlay: { ...StyleSheet.absoluteFillObject },
+  page: { flex: 1, backgroundColor: '#000000' }, camera: { flex: 1 }, uiLayer: { ...StyleSheet.absoluteFill },
+  effectOverlay: { ...StyleSheet.absoluteFill },
   effectBadge: { position: 'absolute', top: 78, left: 14, backgroundColor: 'rgba(0,0,0,0.68)', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 7 },
   effectBadgeText: { color: '#ffffff', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
   liveBadge: { position: 'absolute', top: 116, left: 14, backgroundColor: 'rgba(0,0,0,0.72)', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 7 },
@@ -389,7 +389,7 @@ const styles = StyleSheet.create({
   topControlsLandscape: { right: '42%' },
   control: { minWidth: 0, flexShrink: 1, backgroundColor: 'rgba(0,0,0,0.72)', borderRadius: 11, paddingHorizontal: 10, paddingVertical: 9 },
   liveControl: { borderWidth: 1, borderColor: '#ffffff' }, controlText: { color: '#ffffff', fontSize: 11, fontWeight: '800' },
-  countdownOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.18)' },
+  countdownOverlay: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.18)' },
   countdownCircle: { width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(0,0,0,0.72)', borderWidth: 4, borderColor: '#ffffff', alignItems: 'center', justifyContent: 'center' },
   countdownText: { color: '#ffffff', fontSize: 76, lineHeight: 88, fontWeight: '900' }, countdownLabel: { marginTop: 14, color: '#ffffff', fontSize: 18, fontWeight: '800', backgroundColor: 'rgba(0,0,0,0.65)', paddingHorizontal: 14, paddingVertical: 7, borderRadius: 12 },
   recordingTimer: { position: 'absolute', top: 76, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(0,0,0,0.78)', borderRadius: 18, paddingHorizontal: 13, paddingVertical: 8 },
