@@ -3,7 +3,7 @@ import { selectMusicForCapture, renderSummary, type CaptureRenderJob } from './r
 import type { CreativePlan } from './creative-studio';
 
 const basePlan: CreativePlan = {
-  templateId: 'FREE',
+  template: 'CUSTOM',
   title: 'Heureux mariage',
   subtitle: 'KHE Booth',
   textPosition: 'BOTTOM',
