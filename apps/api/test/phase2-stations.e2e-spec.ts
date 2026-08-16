@@ -1,11 +1,19 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { EventStatus, StationMode, UserRole } from '@prisma/client';
+import { head } from '@vercel/blob';
 import * as argon2 from 'argon2';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 
+jest.mock('@vercel/blob', () => ({
+  head: jest.fn(),
+  issueSignedToken: jest.fn(),
+  presignUrl: jest.fn(),
+}));
+
+const mockHead = jest.mocked(head);
 const integrationEnabled = Boolean(process.env.TEST_DATABASE_URL);
 const suite = integrationEnabled ? describe : describe.skip;
 
@@ -68,6 +76,10 @@ suite('Phase 2 station and synchronization foundation', () => {
       .send({ email: owner.email, password })
       .expect(201);
     ownerToken = login.body.accessToken as string;
+  });
+
+  beforeEach(() => {
+    mockHead.mockReset();
   });
 
   afterAll(async () => {
@@ -264,6 +276,7 @@ suite('Phase 2 station and synchronization foundation', () => {
       .send({ uploadedBytes: 300 })
       .expect(409);
 
+    mockHead.mockRejectedValueOnce(new Error('Blob not found'));
     await request(app.getHttpServer())
       .post(`/api/stations/media/${mediaId}/finalize`)
       .set(stationAuth(captureToken))
@@ -274,6 +287,18 @@ suite('Phase 2 station and synchronization foundation', () => {
       .set(stationAuth(captureToken))
       .send({ uploadedBytes: 1000 })
       .expect(200);
+
+    mockHead.mockResolvedValue({
+      url: 'https://example.public.blob.vercel-storage.com/test-video.mp4',
+      downloadUrl: 'https://example.public.blob.vercel-storage.com/test-video.mp4?download=1',
+      pathname: `organizations/${organizationAId}/events/${eventAId}/media/${mediaId}.mp4`,
+      size: 1000,
+      uploadedAt: new Date('2026-08-12T18:31:00.000Z'),
+      contentType: 'video/mp4',
+      contentDisposition: 'inline',
+      cacheControl: 'public, max-age=31536000',
+      etag: 'test-etag',
+    });
 
     const finalized = await request(app.getHttpServer())
       .post(`/api/stations/media/${mediaId}/finalize`)
