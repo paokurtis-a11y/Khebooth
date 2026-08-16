@@ -10,6 +10,7 @@ import type { AuthenticatedUser } from '../auth/auth.types';
 import { PrismaService } from '../prisma/prisma.service';
 
 const AGENT_ROLES: UserRole[] = [UserRole.OWNER, UserRole.ADMIN, UserRole.OPERATOR];
+const SUPPORT_CONVERSATION_URL_PREFIX = '/help?conversation=';
 
 @Injectable()
 export class SupportService {
@@ -17,6 +18,10 @@ export class SupportService {
 
   private isAgent(user: AuthenticatedUser) {
     return AGENT_ROLES.includes(user.role);
+  }
+
+  private conversationActionUrl(conversationId: string) {
+    return `${SUPPORT_CONVERSATION_URL_PREFIX}${conversationId}`;
   }
 
   private kheAnswer(question: string): { answer: string; confident: boolean } {
@@ -79,6 +84,14 @@ export class SupportService {
     };
   }
 
+  private async visibleSupportActionUrls(user: AuthenticatedUser) {
+    const conversations = await this.prisma.supportConversation.findMany({
+      where: { organizationId: user.organizationId, requesterUserId: user.id },
+      select: { id: true },
+    });
+    return new Set(conversations.map((conversation) => this.conversationActionUrl(conversation.id)));
+  }
+
   async getNotifications(user: AuthenticatedUser) {
     const preferences = await this.prisma.user.findFirst({
       where: { id: user.id, organizationId: user.organizationId },
@@ -96,6 +109,7 @@ export class SupportService {
     if (!preferences.productUpdatesEnabled) excludedKinds.push(NotificationKind.UPDATE, NotificationKind.NEWS);
     if (!preferences.supportNotificationsEnabled) excludedKinds.push(NotificationKind.SUPPORT);
 
+    const privateSupportUrls = await this.visibleSupportActionUrls(user);
     const items = await this.prisma.appNotification.findMany({
       where: {
         organizationId: user.organizationId,
@@ -103,10 +117,17 @@ export class SupportService {
       },
       include: { reads: { where: { userId: user.id }, select: { id: true } } },
       orderBy: { publishedAt: 'desc' },
-      take: 30,
+      take: 100,
     });
 
-    const normalized = items.map(({ reads, ...item }) => ({ ...item, read: reads.length > 0 }));
+    const visibleItems = items.filter((item) => {
+      const isPrivateSupport =
+        item.kind === NotificationKind.SUPPORT && item.actionUrl?.startsWith(SUPPORT_CONVERSATION_URL_PREFIX);
+      return !isPrivateSupport || privateSupportUrls.has(item.actionUrl ?? '');
+    });
+    const normalized = visibleItems
+      .slice(0, 30)
+      .map(({ reads, ...item }) => ({ ...item, read: reads.length > 0 }));
     return { preferences, unreadCount: normalized.filter((item) => !item.read).length, items: normalized };
   }
 
@@ -128,9 +149,18 @@ export class SupportService {
   async markNotificationRead(user: AuthenticatedUser, notificationId: string) {
     const notification = await this.prisma.appNotification.findFirst({
       where: { id: notificationId, organizationId: user.organizationId },
-      select: { id: true },
+      select: { id: true, kind: true, actionUrl: true },
     });
     if (!notification) throw new NotFoundException('Notification introuvable');
+
+    if (
+      notification.kind === NotificationKind.SUPPORT &&
+      notification.actionUrl?.startsWith(SUPPORT_CONVERSATION_URL_PREFIX)
+    ) {
+      const visibleUrls = await this.visibleSupportActionUrls(user);
+      if (!visibleUrls.has(notification.actionUrl)) throw new NotFoundException('Notification introuvable');
+    }
+
     return this.prisma.notificationRead.upsert({
       where: { notificationId_userId: { notificationId, userId: user.id } },
       update: { readAt: new Date() },
@@ -158,7 +188,9 @@ export class SupportService {
     const subject = message.trim().slice(0, 80) || 'Demande KHE Booth';
     const bot = this.kheAnswer(message);
     const wantsAgent = /\b(agent|humain|conseiller|support)\b/i.test(message);
-    const status = !bot.confident || wantsAgent ? SupportConversationStatus.HANDOFF_REQUESTED : SupportConversationStatus.BOT;
+    const status = !bot.confident || wantsAgent
+      ? SupportConversationStatus.HANDOFF_REQUESTED
+      : SupportConversationStatus.BOT;
 
     return this.prisma.supportConversation.create({
       data: {
@@ -209,7 +241,10 @@ export class SupportService {
         requester: { select: { id: true, email: true, firstName: true, lastName: true } },
         assignedTo: { select: { id: true, email: true, firstName: true, lastName: true } },
         messages: { orderBy: { createdAt: 'asc' } },
-        tasks: { orderBy: { createdAt: 'desc' }, include: { assignedTo: { select: { id: true, email: true } } } },
+        tasks: {
+          orderBy: { createdAt: 'desc' },
+          include: { assignedTo: { select: { id: true, email: true } } },
+        },
       },
     });
     if (!conversation) throw new NotFoundException('Conversation introuvable');
@@ -222,17 +257,29 @@ export class SupportService {
     const fromAgent = conversation.requesterUserId !== user.id && this.isAgent(user);
 
     if (fromAgent) {
-      await this.prisma.supportMessage.create({
-        data: { conversationId, author: SupportMessageAuthor.AGENT, userId: user.id, body },
-      });
-      return this.prisma.supportConversation.update({
-        where: { id: conversationId },
-        data: {
-          status: SupportConversationStatus.ASSIGNED,
-          assignedToUserId: conversation.assignedToUserId ?? user.id,
-          lastMessageAt: new Date(),
-        },
-      });
+      await this.prisma.$transaction([
+        this.prisma.supportMessage.create({
+          data: { conversationId, author: SupportMessageAuthor.AGENT, userId: user.id, body },
+        }),
+        this.prisma.supportConversation.update({
+          where: { id: conversationId },
+          data: {
+            status: SupportConversationStatus.ASSIGNED,
+            assignedToUserId: conversation.assignedToUserId ?? user.id,
+            lastMessageAt: new Date(),
+          },
+        }),
+        this.prisma.appNotification.create({
+          data: {
+            organizationId: user.organizationId,
+            kind: NotificationKind.SUPPORT,
+            title: 'Nouvelle réponse du support KHE',
+            body: body.length > 180 ? `${body.slice(0, 177)}…` : body,
+            actionUrl: this.conversationActionUrl(conversationId),
+          },
+        }),
+      ]);
+      return this.getConversation(user, conversationId);
     }
 
     await this.prisma.supportMessage.create({
@@ -246,10 +293,22 @@ export class SupportService {
       });
       await this.prisma.supportConversation.update({
         where: { id: conversationId },
-        data: { status: bot.confident ? SupportConversationStatus.BOT : SupportConversationStatus.HANDOFF_REQUESTED, lastMessageAt: new Date() },
+        data: {
+          status: bot.confident ? SupportConversationStatus.BOT : SupportConversationStatus.HANDOFF_REQUESTED,
+          lastMessageAt: new Date(),
+        },
       });
     } else {
-      await this.prisma.supportConversation.update({ where: { id: conversationId }, data: { lastMessageAt: new Date() } });
+      await this.prisma.supportConversation.update({
+        where: { id: conversationId },
+        data: {
+          status:
+            conversation.status === SupportConversationStatus.RESOLVED
+              ? SupportConversationStatus.HANDOFF_REQUESTED
+              : conversation.status,
+          lastMessageAt: new Date(),
+        },
+      });
     }
     return this.getConversation(user, conversationId);
   }
@@ -278,7 +337,12 @@ export class SupportService {
   async assignConversation(user: AuthenticatedUser, conversationId: string, assignedToUserId: string) {
     if (!this.isAgent(user)) throw new ForbiddenException();
     const target = await this.prisma.user.findFirst({
-      where: { id: assignedToUserId, organizationId: user.organizationId, isActive: true, role: { in: AGENT_ROLES } },
+      where: {
+        id: assignedToUserId,
+        organizationId: user.organizationId,
+        isActive: true,
+        role: { in: AGENT_ROLES },
+      },
       select: { id: true },
     });
     if (!target) throw new NotFoundException('Agent introuvable');
@@ -293,6 +357,39 @@ export class SupportService {
     });
   }
 
+  async resolveConversation(user: AuthenticatedUser, conversationId: string) {
+    if (!this.isAgent(user)) throw new ForbiddenException();
+    const conversation = await this.prisma.supportConversation.findFirst({
+      where: { id: conversationId, organizationId: user.organizationId },
+      select: { id: true, requesterUserId: true },
+    });
+    if (!conversation) throw new NotFoundException('Conversation introuvable');
+
+    await this.prisma.$transaction([
+      this.prisma.supportMessage.create({
+        data: {
+          conversationId,
+          author: SupportMessageAuthor.SYSTEM,
+          body: 'Cette conversation a été marquée comme résolue par l’équipe KHE.',
+        },
+      }),
+      this.prisma.supportConversation.update({
+        where: { id: conversationId },
+        data: { status: SupportConversationStatus.RESOLVED, lastMessageAt: new Date() },
+      }),
+      this.prisma.appNotification.create({
+        data: {
+          organizationId: user.organizationId,
+          kind: NotificationKind.SUPPORT,
+          title: 'Demande KHE résolue',
+          body: 'L’équipe KHE a marqué votre demande comme résolue. Vous pouvez rouvrir la conversation en répondant.',
+          actionUrl: this.conversationActionUrl(conversationId),
+        },
+      }),
+    ]);
+    return this.getConversation(user, conversationId);
+  }
+
   async createTask(user: AuthenticatedUser, conversationId: string, title: string, assignedToUserId?: string) {
     if (!this.isAgent(user)) throw new ForbiddenException();
     const conversation = await this.prisma.supportConversation.findFirst({
@@ -301,17 +398,33 @@ export class SupportService {
     });
     if (!conversation) throw new NotFoundException('Conversation introuvable');
     if (assignedToUserId) {
-      const target = await this.prisma.user.findFirst({ where: { id: assignedToUserId, organizationId: user.organizationId, isActive: true } });
+      const target = await this.prisma.user.findFirst({
+        where: {
+          id: assignedToUserId,
+          organizationId: user.organizationId,
+          isActive: true,
+          role: { in: AGENT_ROLES },
+        },
+      });
       if (!target) throw new NotFoundException('Membre de l’équipe introuvable');
     }
     return this.prisma.supportTask.create({
-      data: { organizationId: user.organizationId, conversationId, title, assignedToUserId, createdByUserId: user.id },
+      data: {
+        organizationId: user.organizationId,
+        conversationId,
+        title,
+        assignedToUserId,
+        createdByUserId: user.id,
+      },
     });
   }
 
   async updateTask(user: AuthenticatedUser, taskId: string, status: SupportTaskStatus) {
     if (!this.isAgent(user)) throw new ForbiddenException();
-    const task = await this.prisma.supportTask.findFirst({ where: { id: taskId, organizationId: user.organizationId }, select: { id: true } });
+    const task = await this.prisma.supportTask.findFirst({
+      where: { id: taskId, organizationId: user.organizationId },
+      select: { id: true },
+    });
     if (!task) throw new NotFoundException('Tâche introuvable');
     return this.prisma.supportTask.update({ where: { id: taskId }, data: { status } });
   }
