@@ -27,6 +27,7 @@
     "expo-network": "~56.0.5",
     "expo-print": "~56.0.4",
     "expo-secure-store": "~56.0.4",
+    "expo-sharing": "~56.0.22",
     "expo-sqlite": "~56.0.5",
     "expo-video": "~56.1.4",
     "livekit-client": "2.20.1",
