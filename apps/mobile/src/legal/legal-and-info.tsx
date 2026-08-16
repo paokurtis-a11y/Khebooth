@@ -7,12 +7,25 @@ import { API_BASE_URL } from '../config';
 export const APP_VERSION = '0.2.0';
 export const TERMS_REVISION = `khe-terms-${APP_VERSION}`;
 const TERMS_ACCEPTED_KEY = 'khe.terms.accepted.revision.v1';
+const PUBLIC_APP_CONFIG_URL = 'https://raw.githubusercontent.com/paokurtis-a11y/Khebooth/main/apps/mobile/app.json';
+const EXPO_BUILDS_URL = 'https://expo.dev/accounts/kurtis-hypnotic-event/projects/kurtis-hypnotic-events/builds';
 
 export interface ReleaseInfo {
   latestVersion: string;
   updateAvailable: boolean;
   releaseNotes?: string;
   installUrl?: string;
+}
+
+function compareVersions(a: string, b: string): number {
+  const pa = a.split('.').map((value) => Number.parseInt(value, 10) || 0);
+  const pb = b.split('.').map((value) => Number.parseInt(value, 10) || 0);
+  const length = Math.max(pa.length, pb.length);
+  for (let index = 0; index < length; index += 1) {
+    const diff = (pa[index] ?? 0) - (pb[index] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
 }
 
 export async function hasAcceptedCurrentTerms(): Promise<boolean> {
@@ -25,13 +38,33 @@ export async function acceptCurrentTerms(): Promise<void> {
   });
 }
 
+async function fetchReleaseInfoFromGithub(): Promise<ReleaseInfo> {
+  const response = await fetch(PUBLIC_APP_CONFIG_URL);
+  if (!response.ok) throw new Error(`GitHub HTTP ${response.status}`);
+  const config = await response.json() as { expo?: { version?: string } };
+  const latestVersion = config.expo?.version?.trim();
+  if (!latestVersion) throw new Error('Version distante absente');
+  return {
+    latestVersion,
+    updateAvailable: compareVersions(latestVersion, APP_VERSION) > 0,
+    releaseNotes: compareVersions(latestVersion, APP_VERSION) > 0
+      ? 'Une nouvelle version de KHE Booth est disponible. Consultez les builds Expo pour installer la dernière version validée.'
+      : undefined,
+    installUrl: EXPO_BUILDS_URL,
+  };
+}
+
 export async function fetchReleaseInfo(): Promise<ReleaseInfo> {
   try {
     const response = await fetch(`${API_BASE_URL}/mobile/version?current=${encodeURIComponent(APP_VERSION)}`);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     return await response.json() as ReleaseInfo;
   } catch {
-    return { latestVersion: APP_VERSION, updateAvailable: false };
+    try {
+      return await fetchReleaseInfoFromGithub();
+    } catch {
+      return { latestVersion: APP_VERSION, updateAvailable: false, installUrl: EXPO_BUILDS_URL };
+    }
   }
 }
 
