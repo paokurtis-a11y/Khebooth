@@ -140,6 +140,12 @@ export class SQLiteLocalStore implements LocalStore {
     });
   }
 
+  async clearStation(): Promise<void> {
+    await this.withNativeRecovery(async (db) => {
+      await db.runAsync("DELETE FROM app_state WHERE key = 'station'");
+    });
+  }
+
   async saveManifest(eventId: string, manifest: EventManifestContract): Promise<void> {
     await this.withNativeRecovery(async (db) => {
       await db.runAsync(
@@ -219,6 +225,14 @@ export class SQLiteLocalStore implements LocalStore {
       "SELECT * FROM local_media WHERE eventId = ? AND syncState <> 'SYNCED' ORDER BY capturedAt ASC",
       eventId,
     );
+  }
+
+  async deleteMedia(localId: string): Promise<void> {
+    const db = await this.database();
+    await db.withTransactionAsync(async () => {
+      await db.runAsync('DELETE FROM sync_queue WHERE localId = ?', localId);
+      await db.runAsync('DELETE FROM local_media WHERE localId = ?', localId);
+    });
   }
 
   async enqueue(item: SyncQueueItem): Promise<void> {
