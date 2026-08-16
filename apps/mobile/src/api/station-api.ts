@@ -1,7 +1,9 @@
 import type {
+  BlobUploadTicketContract,
   EventManifestContract,
   FinalizeUploadResponseContract,
   MediaAssetContract,
+  MediaDownloadTicketContract,
   StationControlCommandContract,
   StationControlContract,
   StationControlStatusContract,
@@ -21,6 +23,8 @@ export interface StationApi {
   updateControlStatus(stationToken: string, status: StationControlStatusContract): Promise<StationControlContract>;
   listMedia(stationToken: string): Promise<MediaAssetContract[]>;
   createMedia(stationToken: string, media: SyntheticMediaCreateContract): Promise<MediaAssetContract>;
+  prepareBlobUpload(stationToken: string, mediaId: string): Promise<BlobUploadTicketContract & { alreadyUploaded?: boolean }>;
+  mediaDownload(stationToken: string, mediaId: string): Promise<MediaDownloadTicketContract>;
   initializeUpload(stationToken: string, mediaId: string): Promise<UploadSessionContract>;
   updateUpload(stationToken: string, mediaId: string, uploadedBytes: number): Promise<UploadSessionContract>;
   finalizeUpload(stationToken: string, mediaId: string): Promise<FinalizeUploadResponseContract>;
@@ -108,6 +112,19 @@ export class HttpStationApi implements StationApi {
       method: 'POST',
       headers: this.stationHeaders(stationToken),
       body: JSON.stringify(media),
+    });
+  }
+
+  prepareBlobUpload(stationToken: string, mediaId: string): Promise<BlobUploadTicketContract & { alreadyUploaded?: boolean }> {
+    return this.request(`/stations/media/${encodeURIComponent(mediaId)}/blob-upload`, {
+      method: 'POST',
+      headers: this.stationHeaders(stationToken),
+    });
+  }
+
+  mediaDownload(stationToken: string, mediaId: string): Promise<MediaDownloadTicketContract> {
+    return this.request(`/stations/media/${encodeURIComponent(mediaId)}/download`, {
+      headers: this.stationHeaders(stationToken),
     });
   }
 
