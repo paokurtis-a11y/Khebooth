@@ -7,8 +7,19 @@ import { MobileModule } from './mobile/mobile.module';
 import { PresetsModule } from './presets/presets.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { StationsModule } from './stations/stations.module';
+import { SupportModule } from './support/support.module';
 
 @Module({
-  imports: [PrismaModule, HealthModule, AuthModule, ClientsModule, EventsModule, PresetsModule, StationsModule, MobileModule],
+  imports: [
+    PrismaModule,
+    HealthModule,
+    AuthModule,
+    ClientsModule,
+    EventsModule,
+    PresetsModule,
+    StationsModule,
+    MobileModule,
+    SupportModule,
+  ],
 })
 export class AppModule {}
