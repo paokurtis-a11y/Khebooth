@@ -1,7 +1,9 @@
 import type {
+  BlobUploadTicketContract,
   EventManifestContract,
   FinalizeUploadResponseContract,
   MediaAssetContract,
+  MediaDownloadTicketContract,
   StationControlCommandContract,
   StationControlContract,
   StationControlStatusContract,
@@ -42,12 +44,18 @@ export function testManifest(): EventManifestContract {
   };
 }
 
-type ServerMedia = MediaAssetContract & { idempotencyKey: string; uploadedBytes: number };
+type ServerMedia = MediaAssetContract & {
+  idempotencyKey: string;
+  uploadedBytes: number;
+  blobStored: boolean;
+};
 
 export class FakeStationApi implements StationApi {
   readonly mediaByIdempotency = new Map<string, ServerMedia>();
   createCalls = 0;
+  prepareUploadCalls = 0;
   failListMedia = false;
+  failFinalizeOnce = false;
   private controlState: StationControlContract = {
     eventId: TEST_EVENT_ID,
     command: 'NONE',
@@ -147,9 +155,43 @@ export class FakeStationApi implements StationApi {
       capturedAt: input.capturedAt ?? null,
       acknowledgedAt: null,
       uploadedBytes: 0,
+      blobStored: false,
     };
     this.mediaByIdempotency.set(input.idempotencyKey, media);
     return media;
+  }
+
+  async prepareBlobUpload(
+    _stationToken: string,
+    mediaId: string,
+  ): Promise<BlobUploadTicketContract & { alreadyUploaded?: boolean }> {
+    this.prepareUploadCalls += 1;
+    const media = this.findMedia(mediaId);
+    return {
+      mediaId: media.id,
+      pathname: `test/${media.id}.mp4`,
+      uploadUrl: media.blobStored ? '' : 'https://blob.example.test/upload-signed',
+      expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+      contentType: media.mimeType,
+      byteSize: media.byteSize,
+      alreadyUploaded: media.blobStored,
+    };
+  }
+
+  markBlobStored(mediaId: string): void {
+    const media = this.findMedia(mediaId);
+    media.blobStored = true;
+    media.uploadedBytes = media.byteSize;
+  }
+
+  async mediaDownload(_stationToken: string, mediaId: string): Promise<MediaDownloadTicketContract> {
+    const media = this.findMedia(mediaId);
+    if (!media.blobStored || media.syncState !== 'SYNCED') throw new Error('Media not synchronized');
+    return {
+      mediaId,
+      downloadUrl: 'https://blob.example.test/download-signed',
+      expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+    };
   }
 
   async initializeUpload(_stationToken: string, mediaId: string): Promise<UploadSessionContract> {
@@ -166,7 +208,7 @@ export class FakeStationApi implements StationApi {
 
   async updateUpload(_stationToken: string, mediaId: string, uploadedBytes: number): Promise<UploadSessionContract> {
     const media = this.findMedia(mediaId);
-    if (uploadedBytes < media.uploadedBytes) throw new Error('progress backwards');
+    if (uploadedBytes < media.uploadedBytes && !media.blobStored) throw new Error('progress backwards');
     if (uploadedBytes > media.byteSize) throw new Error('progress too large');
     media.uploadedBytes = uploadedBytes;
     media.syncState = 'UPLOADING';
@@ -182,7 +224,12 @@ export class FakeStationApi implements StationApi {
 
   async finalizeUpload(_stationToken: string, mediaId: string): Promise<FinalizeUploadResponseContract> {
     const media = this.findMedia(mediaId);
-    if (media.uploadedBytes !== media.byteSize) throw new Error('Upload is incomplete');
+    if (!media.blobStored) throw new Error('Cloud media object is not available yet');
+    if (this.failFinalizeOnce) {
+      this.failFinalizeOnce = false;
+      throw new Error('simulated finalize response loss');
+    }
+    media.uploadedBytes = media.byteSize;
     media.syncState = 'SYNCED';
     media.acknowledgedAt = new Date().toISOString();
     return {
