@@ -48,17 +48,22 @@ export function UserGuide({ onClose }: { onClose: () => void }) {
           <View style={{ flex: 1 }}><Text style={styles.brand}>KHE BOOTH</Text><Text style={styles.slogan}>Votre événement, notre expertise !</Text></View>
           <Pressable style={styles.close} onPress={onClose}><Text style={styles.closeText}>Fermer</Text></Pressable>
         </View>
-        <Text style={styles.title}>Mode d’emploi</Text>
-        <Text style={styles.intro}>Ce guide fait partie de l’application et doit évoluer avec chaque fonction importante de KHE Booth.</Text>
+        <Text style={styles.title}>Mode d’emploi • 0.3.0</Text>
+        <Text style={styles.intro}>Ce guide fait partie de l’application et évolue avec les fonctions importantes de KHE Booth.</Text>
 
         <GuideSection title="1. Activer une station" body="Choisissez CAPTURE ou SHARING, saisissez uniquement le code d’activation puis validez. L’Event ID est retrouvé automatiquement. Une station peut être désactivée depuis Menu sans effacer les médias locaux." />
-        <GuideSection title="2. Station CAPTURE" body="Ouvrez la caméra, choisissez PHOTO ou VIDÉO selon les fonctions disponibles, sélectionnez le format et la durée puis lancez la prise. Les médias sont conservés localement avant synchronisation. Gardez CAPTURE ouverte pendant la prestation pour le pilotage SHARING." />
-        <GuideSection title="3. Station SHARING" body="Utilisez le bouton de connexion à CAPTURE. Le point vert signifie qu’une présence CAPTURE récente est réellement détectée ; le rouge signifie qu’elle n’est pas joignable. SHARING peut piloter les commandes autorisées et suivre le minuteur." />
-        <GuideSection title="4. Galerie" body="La galerie regroupe les moments de l’événement. Touchez un média pour le lire ou l’ouvrir, vérifiez son état de synchronisation avant suppression, et utilisez les fonctions d’impression lorsqu’elles sont proposées pour les photos." />
-        <GuideSection title="5. Offline-first" body="Une coupure Internet ne doit pas supprimer les prises locales. Évitez de désinstaller l’application, vider ses données ou supprimer un média non synchronisé tant que vous n’avez pas vérifié sa sauvegarde." />
-        <GuideSection title="6. Veille et sécurité" body="L’anti-veille et le verrouillage KHE sont des options de confort et de sécurité. Ils peuvent être ignorés. Si vous activez la veille sécurisée, configurez un mot de passe de secours et utilisez la biométrie ou la sécurité Android compatible si vous le souhaitez." />
-        <GuideSection title="7. Langues et région" body="KHE propose une langue à partir de la langue/région de la tablette. Vous restez libre de la modifier. Une localisation précise ne doit jamais être nécessaire pour prendre des photos ou vidéos." />
-        <GuideSection title="8. Mises à jour" body="Consultez régulièrement Menu → Version. Lorsqu’une nouvelle version modifie les fonctions ou les conditions d’utilisation, KHE peut demander une nouvelle lecture et acceptation avant de continuer." />
+        <GuideSection title="2. Station CAPTURE" body="Ouvrez la caméra puis choisissez PHOTO ou VIDÉO. Sélectionnez le format 9:16 ou 1:1. En vidéo, choisissez aussi la durée maximum. Le décompte de 5 secondes précède la prise. Les médias sont conservés localement avant synchronisation." />
+        <GuideSection title="3. Station SHARING" body="Appuyez sur « Connectez-vous à la station CAPTURE ». Le point vert « Connecté » signifie qu’une présence CAPTURE récente est réellement détectée ; le point rouge « Déconnecté » indique qu’elle n’est pas joignable. L’étoile filante signale une connexion en cours. Une fois connectée, SHARING peut piloter les commandes autorisées et suivre le minuteur." />
+        <GuideSection title="4. Galerie interactive" body="La galerie regroupe photos et vidéos. Les aperçus vidéo bougent silencieusement dans « Tous les moments ». Utilisez Tous, Vidéos ou Photos pour filtrer, ouvrez un média pour le visualiser et vérifiez son état de synchronisation avant suppression." />
+        <GuideSection title="5. Photos et impression" body="En mode PHOTO, KHE conserve un JPEG local après le décompte. Ouvrez Galerie ou Menu → Imprimer • Photos, sélectionnez une photo puis utilisez « Imprimer cette photo ». Android ouvre ensuite son interface d’impression afin de choisir une imprimante compatible et ses réglages." />
+        <GuideSection title="6. Studio créatif" body="Menu → Design • Studio créatif permet de préparer un modèle, des textes, un cadre, un effet couleur, une vitesse et des effets vidéo. Jusqu’à trois musiques peuvent être importées. En mode musique, KHE sélectionne automatiquement une piste selon la rotation configurée. Le fichier source reste conservé séparément du futur rendu final." />
+        <GuideSection title="7. Audio" body="Le Studio permet de choisir Micro ou Musique. Le rendu final doit utiliser l’un ou l’autre afin d’éviter de superposer automatiquement le son micro et la musique. Les fichiers musicaux importés restent sous la responsabilité de l’utilisateur, notamment pour les droits d’utilisation." />
+        <GuideSection title="8. Profil" body="Menu → Profil permet d’ajouter facultativement une photo de profil, un nom affiché, une entreprise, un rôle, des coordonnées et une présentation. Ces informations sont modifiables et ne sont pas nécessaires pour utiliser CAPTURE ou SHARING." />
+        <GuideSection title="9. Offline-first" body="Une coupure Internet ne doit pas supprimer les prises locales. Évitez de désinstaller l’application, vider ses données ou supprimer un média non synchronisé tant que vous n’avez pas vérifié sa sauvegarde. La synchronisation peut reprendre après le retour du réseau." />
+        <GuideSection title="10. Veille et sécurité" body="L’anti-veille et le verrouillage KHE sont des options de confort et de sécurité. Ils peuvent être ignorés. Si vous activez la veille sécurisée, configurez un mot de passe de secours et utilisez la biométrie ou la sécurité Android compatible si vous le souhaitez." />
+        <GuideSection title="11. Langues et région" body="KHE propose une langue à partir de la langue/région de la tablette sans GPS obligatoire. Vous restez libre de la modifier depuis le menu. Une localisation précise ne doit jamais être nécessaire pour prendre des photos ou vidéos." />
+        <GuideSection title="12. Réseau et données mobiles" body="Le Wi-Fi peut être privilégié pour les transferts lourds. Lorsque l’utilisation des données mobiles nécessite une confirmation, KHE doit demander l’accord avant le téléchargement ou l’envoi concerné. Refuser ne doit pas supprimer les médias locaux." />
+        <GuideSection title="13. Mises à jour" body="Consultez Menu → Version. Lorsqu’une nouvelle version modifie les fonctions ou les conditions d’utilisation, KHE peut demander une nouvelle lecture et acceptation avant de continuer. Le numéro de version affiché doit correspondre à la version réellement installée." />
       </ScrollView>
     </View>
   );
@@ -104,7 +109,7 @@ export function LanguageAndRegion({ onClose, onChanged }: { onClose: () => void;
             </Pressable>
           ))}
         </View>
-        {saved ? <Text style={styles.saved}>Langue enregistrée. Les écrans traduits utiliseront progressivement cette préférence.</Text> : null}
+        {saved ? <Text style={styles.saved}>Langue enregistrée. Les écrans traduits utilisent cette préférence lorsqu’une traduction est disponible.</Text> : null}
         <Text style={styles.privacy}>La localisation précise reste facultative. KHE ne doit jamais bloquer CAPTURE ou SHARING parce qu’un utilisateur refuse la localisation.</Text>
       </ScrollView>
     </View>
