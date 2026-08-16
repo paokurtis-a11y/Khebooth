@@ -1,4 +1,4 @@
-trigger=2026-08-16T10:15:00+02:00
+trigger=2026-08-16T10:08:00+02:00
 reason=khe-booth-v0.3.0-photo-print-profile-sharing-gallery-studio
-validated_mobile_commit=fe319f7fcb86db44116cab49b6f6a00389fe6f6e
-validated_general_ci_run=31936791431
+validated_mobile_commit=debcb84c94deed01fdfaf76bea71875e4320e767
+validated_general_ci_run=31937650670
