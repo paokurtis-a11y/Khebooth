@@ -1,4 +1,4 @@
-trigger=2026-08-15T23:55:00+02:00
-reason=webrtc-config-plugin-15.0.2
-api_commit=5df5b4e31aeb80460e5ab039d2a4b20619bb8af2
-mobile_commit=0ad19f900fec9108b1776e9b43e0b5ae4bfee4b5
+trigger=2026-08-16T04:21:00+02:00
+reason=ux-menu-terms-gallery-rotation-v0.2.0
+api_commit=c527899c0d196bc1cc12dae8e524a0f8034fdd26
+mobile_commit=fa5a15f484509701e186f803c452c42ed0eaaad4
