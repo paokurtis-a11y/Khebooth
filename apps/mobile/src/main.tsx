@@ -11,6 +11,7 @@ import { MediaGallery } from './gallery/media-gallery';
 import { APP_VERSION, AboutAndTerms, TermsGate, fetchReleaseInfo, type ReleaseInfo } from './legal/legal-and-info';
 import { SQLiteLocalStore } from './offline/sqlite-store';
 import type { LocalMediaRecord, PersistedStationContext } from './offline/types';
+import { UserProfile } from './profile/user-profile';
 import { SecureStoreCredentialVault } from './security/secure-store-vault';
 import { StandbyScreen } from './security/standby-screen';
 import { SettingsScreen } from './settings/app-settings';
@@ -55,6 +56,7 @@ function App() {
   const [languageOpen, setLanguageOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [studioOpen, setStudioOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [appLanguage, setAppLanguage] = useState<AppLanguage>(getDeviceLocaleInfo().suggestedLanguage);
   const [release, setRelease] = useState<ReleaseInfo>({ latestVersion: APP_VERSION, updateAvailable: false });
   const [keepAwakeEnabled, setKeepAwakeEnabled] = useState(true);
@@ -138,7 +140,7 @@ function App() {
   async function deactivateStation(): Promise<void> {
     setBusy(true);
     try {
-      setCameraOpen(false); setGalleryOpen(false); setMenuOpen(false); setAboutOpen(false); setGuideOpen(false); setLanguageOpen(false); setSettingsOpen(false); setStudioOpen(false);
+      setCameraOpen(false); setGalleryOpen(false); setMenuOpen(false); setAboutOpen(false); setGuideOpen(false); setLanguageOpen(false); setSettingsOpen(false); setStudioOpen(false); setProfileOpen(false);
       await vault.clearStationToken();
       await vault.saveStandbyLocked(false);
       await store.clearStation();
@@ -192,6 +194,7 @@ function App() {
   if (languageOpen) return <LanguageAndRegion onClose={() => setLanguageOpen(false)} onChanged={setAppLanguage} />;
   if (settingsOpen) return <SettingsScreen onClose={() => setSettingsOpen(false)} />;
   if (studioOpen) return <CreativeStudio onClose={() => setStudioOpen(false)} />;
+  if (profileOpen) return <UserProfile onClose={() => setProfileOpen(false)} />;
   if (cameraOpen && station?.mode === 'CAPTURE' && stationToken) return <CameraCapture eventId={station.session.eventId} store={store} api={api} stationToken={stationToken} onClose={() => setCameraOpen(false)} onCaptured={handleCaptured} />;
   if (galleryOpen && station?.mode === 'CAPTURE') return <MediaGallery eventId={station.session.eventId} eventName={eventName ?? station.session.eventId} store={store} onClose={() => setGalleryOpen(false)} />;
 
@@ -205,6 +208,8 @@ function App() {
               {menuOpen ? (
                 <View style={styles.menuPanel}>
                   <Text style={styles.menuBrand}>KHE BOOTH</Text><Text style={styles.menuSession}>{station.mode} • {eventName ?? 'Événement'}</Text>
+                  <Pressable style={styles.menuItem} onPress={() => { setMenuOpen(false); setProfileOpen(true); }}><Text style={styles.menuItemText}>👤 Profil</Text></Pressable>
+                  {station.mode === 'CAPTURE' ? <Pressable style={styles.menuItem} onPress={() => { setMenuOpen(false); setGalleryOpen(true); }}><Text style={styles.menuItemText}>🖨 Imprimer • Photos</Text></Pressable> : null}
                   <Pressable style={styles.menuItem} onPress={() => { setMenuOpen(false); setSettingsOpen(true); }}><Text style={styles.menuItemText}>⚙ Paramètres</Text></Pressable>
                   <Pressable style={styles.menuItem} onPress={() => { setMenuOpen(false); setStudioOpen(true); }}><Text style={styles.menuItemText}>✦ Design • Studio créatif</Text></Pressable>
                   <Pressable style={styles.menuItem} onPress={() => { setMenuOpen(false); setGuideOpen(true); }}><Text style={styles.menuItemText}>Mode d’emploi</Text></Pressable>
