@@ -6,12 +6,16 @@ import { RedeemStationDto } from './dto/redeem-station.dto';
 import { UpdateStationCommandDto } from './dto/update-station-command.dto';
 import { UpdateStationStatusDto } from './dto/update-station-status.dto';
 import { UpdateUploadProgressDto } from './dto/update-upload-progress.dto';
+import { MediaStorageService } from './media-storage.service';
 import { StationAuthGuard } from './station-auth.guard';
 import { StationsService } from './stations.service';
 
 @Controller('stations')
 export class StationsController {
-  constructor(private readonly stations: StationsService) {}
+  constructor(
+    private readonly stations: StationsService,
+    private readonly mediaStorage: MediaStorageService,
+  ) {}
 
   @Post('redeem')
   redeem(@Body() dto: RedeemStationDto) {
@@ -68,6 +72,25 @@ export class StationsController {
   }
 
   @UseGuards(StationAuthGuard)
+  @Post('media/:id/blob-upload')
+  prepareBlobUpload(
+    @CurrentStation() station: AuthenticatedStation,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.mediaStorage.prepareUpload(station, id);
+  }
+
+  @UseGuards(StationAuthGuard)
+  @Get('media/:id/download')
+  mediaDownload(
+    @CurrentStation() station: AuthenticatedStation,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.mediaStorage.downloadTicket(station, id);
+  }
+
+  // Legacy progress endpoint remains useful for UI progress and operational telemetry.
+  @UseGuards(StationAuthGuard)
   @Post('media/:id/upload')
   initializeUpload(
     @CurrentStation() station: AuthenticatedStation,
@@ -86,12 +109,13 @@ export class StationsController {
     return this.stations.updateUploadProgress(station, id, dto);
   }
 
+  // Finalization now checks the real Blob object before marking a media asset SYNCED.
   @UseGuards(StationAuthGuard)
   @Post('media/:id/finalize')
   finalizeUpload(
     @CurrentStation() station: AuthenticatedStation,
     @Param('id', new ParseUUIDPipe()) id: string,
   ) {
-    return this.stations.finalizeUpload(station, id);
+    return this.mediaStorage.finalizeUpload(station, id);
   }
 }
