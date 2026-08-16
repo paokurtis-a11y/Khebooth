@@ -1,4 +1,4 @@
-trigger=2026-08-16T04:21:00+02:00
-reason=ux-menu-terms-gallery-rotation-v0.2.0
-api_commit=c527899c0d196bc1cc12dae8e524a0f8034fdd26
-mobile_commit=fa5a15f484509701e186f803c452c42ed0eaaad4
+trigger=2026-08-16T10:15:00+02:00
+reason=khe-booth-v0.3.0-photo-print-profile-sharing-gallery-studio
+validated_mobile_commit=fe319f7fcb86db44116cab49b6f6a00389fe6f6e
+validated_general_ci_run=31936791431
