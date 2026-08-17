@@ -6,6 +6,7 @@ import { ActivityIndicator, Alert, Pressable, SafeAreaView, ScrollView, StyleShe
 import { HttpStationApi } from './api/station-api';
 import { CameraCapture } from './capture/camera-capture';
 import { API_BASE_URL } from './config';
+import { t } from './experience/i18n';
 import { LanguageAndRegion, UserGuide, getDeviceLocaleInfo, languageLabel, loadLanguagePreference, type AppLanguage } from './experience/user-guide-and-language';
 import { MediaGallery } from './gallery/media-gallery';
 import { APP_VERSION, AboutAndTerms, TermsGate, fetchReleaseInfo, type ReleaseInfo } from './legal/legal-and-info';
@@ -22,9 +23,7 @@ import { useCaptureSync } from './sync/capture-sync-runner';
 
 const EVENT_KEEP_AWAKE_TAG = 'khe-booth-event';
 
-function makeInstallationId(): string {
-  return `khe-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
-}
+function makeInstallationId(): string { return `khe-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`; }
 
 function refreshErrorMessage(error: unknown): string {
   const detail = error instanceof Error ? error.message : String(error ?? '');
@@ -52,6 +51,7 @@ function App() {
   const [cameraOpen, setCameraOpen] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuReturnPending, setMenuReturnPending] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [languageOpen, setLanguageOpen] = useState(false);
@@ -82,35 +82,26 @@ function App() {
         const savedLanguage = await loadLanguagePreference();
         if (cached && !(await vault.getInstallationId())) await vault.saveInstallationId(cached.installationId);
         if (cancelled) return;
-        setStation(cached);
-        setStationToken(cachedToken);
-        setLockConfigured(Boolean(savedPassword));
+        setStation(cached); setStationToken(cachedToken); setLockConfigured(Boolean(savedPassword));
         setStandbyLocked(Boolean(cached && savedPassword && savedStandbyLocked));
         setKeepAwakeEnabled(!(cached && savedPassword && savedStandbyLocked));
         if (savedLanguage) setAppLanguage(savedLanguage);
-        if (cached) {
-          const manifest = await store.getManifest(cached.session.eventId);
-          if (!cancelled) setEventName(manifest?.event.name ?? null);
-        }
-        const releaseInfo = await fetchReleaseInfo();
-        if (!cancelled) setRelease(releaseInfo);
-      } catch (error) {
-        if (!cancelled) setMessage(error instanceof Error ? error.message : 'Impossible d’ouvrir le stockage local.');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+        if (cached) { const manifest = await store.getManifest(cached.session.eventId); if (!cancelled) setEventName(manifest?.event.name ?? null); }
+        const releaseInfo = await fetchReleaseInfo(); if (!cancelled) setRelease(releaseInfo);
+      } catch (error) { if (!cancelled) setMessage(error instanceof Error ? error.message : 'Impossible d’ouvrir le stockage local.'); }
+      finally { if (!cancelled) setLoading(false); }
     })();
     return () => { cancelled = true; };
   }, [bootstrap, store, vault]);
 
   useEffect(() => {
-    if (!station || !keepAwakeEnabled) {
-      void deactivateKeepAwake(EVENT_KEEP_AWAKE_TAG).catch(() => undefined);
-      return;
-    }
+    if (!station || !keepAwakeEnabled) { void deactivateKeepAwake(EVENT_KEEP_AWAKE_TAG).catch(() => undefined); return; }
     void activateKeepAwakeAsync(EVENT_KEEP_AWAKE_TAG).catch(() => setMessage('Impossible d’empêcher automatiquement la mise en veille sur cette tablette.'));
     return () => { void deactivateKeepAwake(EVENT_KEEP_AWAKE_TAG).catch(() => undefined); };
   }, [keepAwakeEnabled, station]);
+
+  function openMenuSection(open: () => void): void { setMenuOpen(false); setMenuReturnPending(true); open(); }
+  function closeSection(close: () => void): void { close(); if (menuReturnPending) { setMenuReturnPending(false); setMenuOpen(true); } }
 
   async function activate(): Promise<void> {
     setBusy(true); setMessage('');
@@ -119,8 +110,7 @@ function App() {
       if (!installationId) { installationId = makeInstallationId(); await vault.saveInstallationId(installationId); }
       const response = await bootstrap.redeem({ code: code.trim().toUpperCase(), installationId, mode, platform: 'react-native', deviceName: mode === 'CAPTURE' ? 'KHE Booth Capture' : 'KHE Booth Sharing' });
       const cached = await bootstrap.getCachedContext();
-      setStation(cached); setStationToken(response.stationToken); setEventName(response.manifest.event.name);
-      setKeepAwakeEnabled(true); setStandbyLocked(false); setCode(''); setSecurityOptionsHidden(false);
+      setStation(cached); setStationToken(response.stationToken); setEventName(response.manifest.event.name); setKeepAwakeEnabled(true); setStandbyLocked(false); setCode(''); setSecurityOptionsHidden(false);
       await vault.saveStandbyLocked(false);
       setMessage(`Station activée pour « ${response.manifest.event.name} ». L’événement a été identifié automatiquement.`);
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Activation impossible.'); }
@@ -129,24 +119,16 @@ function App() {
 
   async function refreshManifest(): Promise<void> {
     setBusy(true); setMessage('');
-    try {
-      await bootstrap.refreshManifest();
-      if (station) {
-        const manifest = await store.getManifest(station.session.eventId);
-        setEventName(manifest?.event.name ?? null);
-      }
-      setMessage('Manifest actualisé et remis en cache.');
-    } catch (error) { setMessage(refreshErrorMessage(error)); }
+    try { await bootstrap.refreshManifest(); if (station) { const manifest = await store.getManifest(station.session.eventId); setEventName(manifest?.event.name ?? null); } setMessage('Manifest actualisé et remis en cache.'); }
+    catch (error) { setMessage(refreshErrorMessage(error)); }
     finally { setBusy(false); }
   }
 
   async function deactivateStation(): Promise<void> {
     setBusy(true);
     try {
-      setCameraOpen(false); setGalleryOpen(false); setMenuOpen(false); setAboutOpen(false); setGuideOpen(false); setLanguageOpen(false); setSettingsOpen(false); setStudioOpen(false); setProfileOpen(false);
-      await vault.clearStationToken();
-      await vault.saveStandbyLocked(false);
-      await store.clearStation();
+      setCameraOpen(false); setGalleryOpen(false); setMenuOpen(false); setMenuReturnPending(false); setAboutOpen(false); setGuideOpen(false); setLanguageOpen(false); setSettingsOpen(false); setStudioOpen(false); setProfileOpen(false);
+      await vault.clearStationToken(); await vault.saveStandbyLocked(false); await store.clearStation();
       setStation(null); setStationToken(null); setEventName(null); setStandbyLocked(false); setKeepAwakeEnabled(false);
       setMessage('Station désactivée sur cette tablette. Les médias locaux ont été conservés. Entrez un code d’activation pour ouvrir une nouvelle session.');
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Impossible de fermer la station.'); }
@@ -155,8 +137,7 @@ function App() {
 
   function confirmDeactivate(): void {
     Alert.alert('Désactiver cette station ?', 'Le token et la session active seront retirés de cette tablette. Les médias locaux ne seront pas supprimés.', [
-      { text: 'Annuler', style: 'cancel' },
-      { text: 'Désactiver', style: 'destructive', onPress: () => void deactivateStation() },
+      { text: 'Annuler', style: 'cancel' }, { text: 'Désactiver', style: 'destructive', onPress: () => void deactivateStation() },
     ]);
   }
 
@@ -165,84 +146,58 @@ function App() {
     const password = newLockPassword.trim();
     if (password.length < 4) { setMessage('Le mot de passe KHE doit contenir au minimum 4 caractères.'); return; }
     if (password !== confirmLockPassword.trim()) { setMessage('Les deux saisies du mot de passe KHE ne correspondent pas.'); return; }
-    await vault.saveEventLockPassword(password);
-    setLockConfigured(true); setNewLockPassword(''); setConfirmLockPassword('');
-    setMessage('Mot de passe de veille KHE enregistré. Cette option reste facultative et peut être ignorée.');
+    await vault.saveEventLockPassword(password); setLockConfigured(true); setNewLockPassword(''); setConfirmLockPassword(''); setMessage('Mot de passe de veille KHE enregistré.');
   }
 
   async function allowSecureStandby(): Promise<void> {
-    if (station?.mode !== 'SHARING') { setMessage('La veille sécurisée est administrée depuis la régie SHARING.'); return; }
-    if (!(await vault.getEventLockPassword())) { setLockConfigured(false); setSecurityOptionsHidden(false); setMessage('Si vous souhaitez utiliser la veille sécurisée, définissez d’abord un mot de passe KHE. Vous pouvez aussi ignorer cette option.'); return; }
+    if (station?.mode !== 'SHARING') return;
+    if (!(await vault.getEventLockPassword())) { setLockConfigured(false); setSecurityOptionsHidden(false); setMessage('Définissez d’abord un mot de passe KHE, ou ignorez cette option.'); return; }
     setKeepAwakeEnabled(false); setStandbyLocked(true); await vault.saveStandbyLocked(true);
   }
 
-  async function unlockStandby(): Promise<void> {
-    await vault.saveStandbyLocked(false); setStandbyLocked(false); setKeepAwakeEnabled(true);
-    setMessage('Régie KHE déverrouillée. Écran toujours actif rétabli.');
-  }
-
-  async function verifyLockPassword(password: string): Promise<boolean> {
-    const expected = await vault.getEventLockPassword();
-    return Boolean(expected && expected === password);
-  }
-
-  function handleCaptured(media: LocalMediaRecord, format: AspectRatio): void {
-    setMessage(`Capture ${format} conservée localement (${Math.max(1, Math.round(media.byteSize / 1024 / 1024))} Mo) et placée en attente de synchronisation.`);
-  }
+  async function unlockStandby(): Promise<void> { await vault.saveStandbyLocked(false); setStandbyLocked(false); setKeepAwakeEnabled(true); }
+  async function verifyLockPassword(password: string): Promise<boolean> { const expected = await vault.getEventLockPassword(); return Boolean(expected && expected === password); }
+  function handleCaptured(media: LocalMediaRecord, format: AspectRatio): void { setMessage(`Capture ${format} conservée localement (${Math.max(1, Math.round(media.byteSize / 1024 / 1024))} Mo) et placée en attente de synchronisation.`); }
 
   if (loading) return <SafeAreaView style={styles.center}><ActivityIndicator /><Text style={styles.muted}>Initialisation du stockage offline…</Text></SafeAreaView>;
   if (station && standbyLocked) return <StandbyScreen verifyPassword={verifyLockPassword} onUnlocked={unlockStandby} />;
-  if (aboutOpen) return <AboutAndTerms onClose={() => setAboutOpen(false)} />;
-  if (guideOpen) return <UserGuide onClose={() => setGuideOpen(false)} />;
-  if (languageOpen) return <LanguageAndRegion onClose={() => setLanguageOpen(false)} onChanged={setAppLanguage} />;
-  if (settingsOpen) return <SettingsScreen onClose={() => setSettingsOpen(false)} />;
-  if (studioOpen) return <CreativeStudio onClose={() => setStudioOpen(false)} />;
-  if (profileOpen) return <UserProfile onClose={() => setProfileOpen(false)} />;
+  if (aboutOpen) return <AboutAndTerms onClose={() => closeSection(() => setAboutOpen(false))} />;
+  if (guideOpen) return <UserGuide language={appLanguage} onClose={() => closeSection(() => setGuideOpen(false))} />;
+  if (languageOpen) return <LanguageAndRegion language={appLanguage} onClose={() => closeSection(() => setLanguageOpen(false))} onChanged={setAppLanguage} />;
+  if (settingsOpen) return <SettingsScreen language={appLanguage} onClose={() => closeSection(() => setSettingsOpen(false))} />;
+  if (studioOpen) return <CreativeStudio onClose={() => closeSection(() => setStudioOpen(false))} />;
+  if (profileOpen) return <UserProfile onClose={() => closeSection(() => setProfileOpen(false))} />;
   if (cameraOpen && station?.mode === 'CAPTURE' && stationToken) return <CameraCapture eventId={station.session.eventId} store={store} api={api} stationToken={stationToken} onClose={() => setCameraOpen(false)} onCaptured={handleCaptured} />;
-  if (galleryOpen && station?.mode === 'CAPTURE') return <MediaGallery eventId={station.session.eventId} eventName={eventName ?? station.session.eventId} store={store} onClose={() => setGalleryOpen(false)} />;
+  if (galleryOpen && station?.mode === 'CAPTURE') return <MediaGallery eventId={station.session.eventId} eventName={eventName ?? station.session.eventId} store={store} onClose={() => closeSection(() => setGalleryOpen(false))} />;
 
-  return (
-    <SafeAreaView style={styles.page}>
-      <ScrollView style={styles.pageScroll} contentContainerStyle={[styles.pageContent, landscape && styles.pageContentLandscape]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator>
-        <View style={[styles.card, landscape && styles.cardLandscape]}>
-          {station ? (
-            <View style={styles.menuAnchor}>
-              <Pressable style={styles.menuButton} onPress={() => setMenuOpen((current) => !current)}><Text style={styles.menuButtonText}>☰</Text><Text style={styles.menuButtonLabel}>Menu</Text>{release.updateAvailable ? <View style={styles.updateDot} /> : null}</Pressable>
-              {menuOpen ? (
-                <View style={styles.menuPanel}>
-                  <Text style={styles.menuBrand}>KHE BOOTH</Text><Text style={styles.menuSession}>{station.mode} • {eventName ?? 'Événement'}</Text>
-                  <Pressable style={styles.menuItem} onPress={() => { setMenuOpen(false); setProfileOpen(true); }}><Text style={styles.menuItemText}>👤 Profil</Text></Pressable>
-                  {station.mode === 'CAPTURE' ? <Pressable style={styles.menuItem} onPress={() => { setMenuOpen(false); setGalleryOpen(true); }}><Text style={styles.menuItemText}>🖨 Imprimer • Photos</Text></Pressable> : null}
-                  <Pressable style={styles.menuItem} onPress={() => { setMenuOpen(false); setSettingsOpen(true); }}><Text style={styles.menuItemText}>⚙ Paramètres</Text></Pressable>
-                  <Pressable style={styles.menuItem} onPress={() => { setMenuOpen(false); setStudioOpen(true); }}><Text style={styles.menuItemText}>✦ Design • Studio créatif</Text></Pressable>
-                  <Pressable style={styles.menuItem} onPress={() => { setMenuOpen(false); setGuideOpen(true); }}><Text style={styles.menuItemText}>Mode d’emploi</Text></Pressable>
-                  <Pressable style={styles.menuItem} onPress={() => { setMenuOpen(false); setLanguageOpen(true); }}><Text style={styles.menuItemText}>Langues • {languageLabel(appLanguage)}</Text></Pressable>
-                  <Pressable style={styles.menuItem} onPress={() => { setMenuOpen(false); setAboutOpen(true); }}><Text style={styles.menuItemText}>Conditions d’utilisation</Text></Pressable>
-                  <Pressable style={styles.menuItem} onPress={() => { setMenuOpen(false); setAboutOpen(true); }}><Text style={styles.menuItemText}>Version {APP_VERSION}{release.updateAvailable ? ` • Mise à jour ${release.latestVersion}` : ' • À jour'}</Text></Pressable>
-                  {station.mode === 'SHARING' && securityOptionsHidden ? <Pressable style={styles.menuItem} onPress={() => { setSecurityOptionsHidden(false); setMenuOpen(false); }}><Text style={styles.menuItemText}>Afficher veille & sécurité</Text></Pressable> : null}
-                  <Pressable style={styles.menuItemDanger} onPress={confirmDeactivate}><Text style={styles.menuItemDangerText}>Désactiver / fermer la session</Text></Pressable>
-                </View>
-              ) : null}
-            </View>
-          ) : null}
+  return <SafeAreaView style={styles.page}><ScrollView style={styles.pageScroll} contentContainerStyle={[styles.pageContent, landscape && styles.pageContentLandscape]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator><View style={[styles.card, landscape && styles.cardLandscape]}>
+    {station ? <View style={styles.menuAnchor}>
+      <Pressable style={styles.menuButton} onPress={() => setMenuOpen((current) => !current)}><Text style={styles.menuButtonText}>☰</Text><Text style={styles.menuButtonLabel}>{t(appLanguage, 'menu')}</Text>{release.updateAvailable ? <View style={styles.updateDot} /> : null}</Pressable>
+      {menuOpen ? <View style={styles.menuPanel}>
+        <Text style={styles.menuBrand}>KHE BOOTH</Text><Text style={styles.menuSession}>{station.mode} • {eventName ?? t(appLanguage, 'event')}</Text>
+        <Pressable style={styles.menuItem} onPress={() => openMenuSection(() => setProfileOpen(true))}><Text style={styles.menuItemText}>👤 {t(appLanguage, 'profile')}</Text></Pressable>
+        {station.mode === 'CAPTURE' ? <Pressable style={styles.menuItem} onPress={() => openMenuSection(() => setGalleryOpen(true))}><Text style={styles.menuItemText}>🖨 {t(appLanguage, 'printPhotos')}</Text></Pressable> : null}
+        <Pressable style={styles.menuItem} onPress={() => openMenuSection(() => setSettingsOpen(true))}><Text style={styles.menuItemText}>⚙ {t(appLanguage, 'settings')}</Text></Pressable>
+        <Pressable style={styles.menuItem} onPress={() => openMenuSection(() => setStudioOpen(true))}><Text style={styles.menuItemText}>✦ {t(appLanguage, 'creativeStudio')}</Text></Pressable>
+        <Pressable style={styles.menuItem} onPress={() => openMenuSection(() => setGuideOpen(true))}><Text style={styles.menuItemText}>{t(appLanguage, 'guide')}</Text></Pressable>
+        <Pressable style={styles.menuItem} onPress={() => openMenuSection(() => setLanguageOpen(true))}><Text style={styles.menuItemText}>{t(appLanguage, 'languages')} • {languageLabel(appLanguage)}</Text></Pressable>
+        <Pressable style={styles.menuItem} onPress={() => openMenuSection(() => setAboutOpen(true))}><Text style={styles.menuItemText}>{t(appLanguage, 'terms')}</Text></Pressable>
+        <Pressable style={styles.menuItem} onPress={() => openMenuSection(() => setAboutOpen(true))}><Text style={styles.menuItemText}>{t(appLanguage, 'version')} {APP_VERSION}{release.updateAvailable ? ` • ${t(appLanguage, 'update')} ${release.latestVersion}` : ` • ${t(appLanguage, 'upToDate')}`}</Text></Pressable>
+        {station.mode === 'SHARING' && securityOptionsHidden ? <Pressable style={styles.menuItem} onPress={() => { setSecurityOptionsHidden(false); setMenuOpen(false); }}><Text style={styles.menuItemText}>{t(appLanguage, 'showSecurity')}</Text></Pressable> : null}
+        <Pressable style={styles.menuItemDanger} onPress={confirmDeactivate}><Text style={styles.menuItemDangerText}>{t(appLanguage, 'deactivate')}</Text></Pressable>
+      </View> : null}
+    </View> : null}
 
-          <Text style={styles.brand}>KHE BOOTH</Text><Text style={styles.title}>Station événement</Text><Text style={styles.muted}>Offline-first • Capture et Sharing séparés</Text>
-          {release.updateAvailable ? <View style={styles.updateBanner}><Text style={styles.updateBannerText}>Mise à jour KHE Booth {release.latestVersion} disponible. Ouvrez Menu → Version.</Text></View> : null}
+    <Text style={styles.brand}>KHE BOOTH</Text><Text style={styles.title}>{t(appLanguage, 'stationEvent')}</Text><Text style={styles.muted}>{t(appLanguage, 'offlineSeparated')}</Text>
+    {release.updateAvailable ? <View style={styles.updateBanner}><Text style={styles.updateBannerText}>KHE Booth {release.latestVersion} • {t(appLanguage, 'update')}</Text></View> : null}
 
-          {station ? (
-            <View style={styles.section}>
-              {!securityOptionsHidden ? <View style={styles.awakeCard}><View style={styles.awakeCopy}><Text style={styles.awakeTitle}>ÉTAT DE VEILLE • FACULTATIF</Text><Text style={styles.awakeStatus}>{keepAwakeEnabled ? 'Écran toujours actif' : 'Veille autorisée'}</Text><Text style={styles.awakeHelp}>{station.mode === 'SHARING' ? 'Vous pouvez utiliser la veille sécurisée ou ignorer entièrement cette configuration.' : 'La station CAPTURE reste éveillée pendant l’événement.'}</Text></View>{station.mode === 'SHARING' ? <Pressable onPress={() => void allowSecureStandby()} style={[styles.awakeButton, styles.awakeButtonActive]}><Text style={styles.awakeButtonTextActive}>AUTORISER VEILLE SÉCURISÉE</Text></Pressable> : null}{station.mode === 'SHARING' ? <Pressable style={styles.skipButton} onPress={() => setSecurityOptionsHidden(true)}><Text style={styles.skipButtonText}>Ignorer ces options pour l’instant</Text></Pressable> : null}</View> : null}
-
-              {station.mode === 'SHARING' && !securityOptionsHidden ? <View style={styles.securityCard}><Text style={styles.awakeTitle}>SÉCURITÉ DE LA RÉGIE • FACULTATIF</Text><Text style={styles.securityTitle}>{lockConfigured ? 'Mot de passe KHE configuré' : 'Créer un mot de passe KHE'}</Text><Text style={styles.awakeHelp}>{lockConfigured ? 'Vous pouvez le remplacer ou ignorer cette section.' : 'Le mot de passe n’est nécessaire que si vous souhaitez utiliser la veille sécurisée KHE.'}</Text><TextInput value={newLockPassword} onChangeText={setNewLockPassword} secureTextEntry={!showLockPassword} autoCapitalize="none" autoCorrect={false} placeholder={lockConfigured ? 'Nouveau mot de passe' : 'Mot de passe KHE'} style={styles.input} /><TextInput value={confirmLockPassword} onChangeText={setConfirmLockPassword} secureTextEntry={!showLockPassword} autoCapitalize="none" autoCorrect={false} placeholder="Confirmer le mot de passe" style={styles.input} /><Pressable style={styles.visibilityButton} onPress={() => setShowLockPassword((current) => !current)}><Text style={styles.visibilityText}>{showLockPassword ? '🙈 Masquer les mots de passe' : '👁 Afficher les mots de passe'}</Text></Pressable><Pressable disabled={!newLockPassword || !confirmLockPassword} onPress={() => void saveLockPassword()} style={styles.securityButton}><Text style={styles.securityButtonText}>{lockConfigured ? 'MODIFIER LE MOT DE PASSE' : 'ENREGISTRER LE MOT DE PASSE'}</Text></Pressable><Pressable style={styles.skipButton} onPress={() => setSecurityOptionsHidden(true)}><Text style={styles.skipButtonText}>Passer cette configuration</Text></Pressable></View> : null}
-
-              {station.mode === 'SHARING' && stationToken ? <SharingStationPanel eventName={eventName ?? 'Événement KHE Booth'} api={api} stationToken={stationToken} /> : <><Text style={styles.label}>Station active</Text><Text style={styles.value}>{station.mode}</Text><Text style={styles.label}>Événement</Text><Text style={styles.value}>{eventName ?? station.session.eventId}</Text><Text style={styles.label}>Session</Text><Text style={styles.small}>{station.session.id}</Text><Pressable disabled={busy} style={styles.primaryButton} onPress={() => void refreshManifest()}><Text style={styles.primaryButtonText}>{busy ? 'Synchronisation…' : 'Actualiser le manifest'}</Text></Pressable><View style={styles.captureActions}><Pressable disabled={busy || !stationToken} style={styles.captureButton} onPress={() => setCameraOpen(true)}><Text style={styles.captureButtonText}>Ouvrir la caméra</Text></Pressable><Pressable disabled={busy} style={styles.galleryButton} onPress={() => setGalleryOpen(true)}><Text style={styles.galleryButtonText}>Galerie</Text></Pressable></View><Text style={styles.notice}>Le Studio créatif du menu définit les textes, cadres, effets et la musique destinés au rendu des prochaines prises.</Text></>}
-            </View>
-          ) : <View style={styles.section}><Text style={styles.label}>Mode de la tablette</Text><View style={styles.modeRow}>{(['CAPTURE', 'SHARING'] as const).map((candidate) => <Pressable key={candidate} onPress={() => setMode(candidate)} style={[styles.modeButton, mode === candidate && styles.modeButtonActive]}><Text style={mode === candidate ? styles.modeTextActive : styles.modeText}>{candidate}</Text></Pressable>)}</View><Text style={styles.label}>Code d’activation</Text><TextInput autoCapitalize="characters" autoCorrect={false} value={code} onChangeText={setCode} placeholder="KHE-123456" style={styles.input} /><Text style={styles.activationHelp}>Aucun Event ID à saisir : KHE Booth retrouve automatiquement l’événement lié à ce code.</Text><Pressable disabled={busy || !code.trim()} style={styles.primaryButton} onPress={() => void activate()}><Text style={styles.primaryButtonText}>{busy ? 'Activation…' : 'Activer cette station'}</Text></Pressable><Pressable style={styles.termsLink} onPress={() => setAboutOpen(true)}><Text style={styles.termsLinkText}>Conditions d’utilisation • Version {APP_VERSION}</Text></Pressable></View>}
-          {message ? <Text style={styles.message}>{message}</Text> : null}
-        </View>
-      </ScrollView>
-    </SafeAreaView>
-  );
+    {station ? <View style={styles.section}>
+      {!securityOptionsHidden ? <View style={styles.awakeCard}><View style={styles.awakeCopy}><Text style={styles.awakeTitle}>{t(appLanguage, 'awakeOptional')}</Text><Text style={styles.awakeStatus}>{keepAwakeEnabled ? t(appLanguage, 'screenAlwaysOn') : t(appLanguage, 'standbyAllowed')}</Text><Text style={styles.awakeHelp}>{station.mode === 'SHARING' ? t(appLanguage, 'sharingStandbyHelp') : t(appLanguage, 'captureStandbyHelp')}</Text></View>{station.mode === 'SHARING' ? <Pressable onPress={() => void allowSecureStandby()} style={[styles.awakeButton, styles.awakeButtonActive]}><Text style={styles.awakeButtonTextActive}>{t(appLanguage, 'secureStandby')}</Text></Pressable> : null}{station.mode === 'SHARING' ? <Pressable style={styles.skipButton} onPress={() => setSecurityOptionsHidden(true)}><Text style={styles.skipButtonText}>{t(appLanguage, 'ignoreOptions')}</Text></Pressable> : null}</View> : null}
+      {station.mode === 'SHARING' && !securityOptionsHidden ? <View style={styles.securityCard}><Text style={styles.awakeTitle}>{t(appLanguage, 'securityOptional')}</Text><Text style={styles.securityTitle}>{lockConfigured ? t(appLanguage, 'passwordConfigured') : t(appLanguage, 'createPassword')}</Text><TextInput value={newLockPassword} onChangeText={setNewLockPassword} secureTextEntry={!showLockPassword} autoCapitalize="none" autoCorrect={false} placeholder="KHE" style={styles.input} /><TextInput value={confirmLockPassword} onChangeText={setConfirmLockPassword} secureTextEntry={!showLockPassword} autoCapitalize="none" autoCorrect={false} placeholder="KHE" style={styles.input} /><Pressable style={styles.visibilityButton} onPress={() => setShowLockPassword((current) => !current)}><Text style={styles.visibilityText}>{showLockPassword ? '🙈' : '👁'}</Text></Pressable><Pressable disabled={!newLockPassword || !confirmLockPassword} onPress={() => void saveLockPassword()} style={styles.securityButton}><Text style={styles.securityButtonText}>{lockConfigured ? t(appLanguage, 'changePassword') : t(appLanguage, 'savePassword')}</Text></Pressable><Pressable style={styles.skipButton} onPress={() => setSecurityOptionsHidden(true)}><Text style={styles.skipButtonText}>{t(appLanguage, 'skipConfiguration')}</Text></Pressable></View> : null}
+      {station.mode === 'SHARING' && stationToken ? <SharingStationPanel eventName={eventName ?? 'KHE Booth'} api={api} stationToken={stationToken} /> : <><Text style={styles.label}>{t(appLanguage, 'stationActive')}</Text><Text style={styles.value}>{station.mode}</Text><Text style={styles.label}>{t(appLanguage, 'eventLabel')}</Text><Text style={styles.value}>{eventName ?? station.session.eventId}</Text><Text style={styles.label}>{t(appLanguage, 'session')}</Text><Text style={styles.small}>{station.session.id}</Text><Pressable disabled={busy} style={styles.primaryButton} onPress={() => void refreshManifest()}><Text style={styles.primaryButtonText}>{busy ? t(appLanguage, 'syncing') : t(appLanguage, 'refreshManifest')}</Text></Pressable><View style={styles.captureActions}><Pressable disabled={busy || !stationToken} style={styles.captureButton} onPress={() => setCameraOpen(true)}><Text style={styles.captureButtonText}>{t(appLanguage, 'openCamera')}</Text></Pressable><Pressable disabled={busy} style={styles.galleryButton} onPress={() => setGalleryOpen(true)}><Text style={styles.galleryButtonText}>{t(appLanguage, 'gallery')}</Text></Pressable></View><Text style={styles.notice}>{t(appLanguage, 'studioNotice')}</Text></>}
+    </View> : <View style={styles.section}><Text style={styles.label}>{t(appLanguage, 'tabletMode')}</Text><View style={styles.modeRow}>{(['CAPTURE', 'SHARING'] as const).map((candidate) => <Pressable key={candidate} onPress={() => setMode(candidate)} style={[styles.modeButton, mode === candidate && styles.modeButtonActive]}><Text style={mode === candidate ? styles.modeTextActive : styles.modeText}>{candidate}</Text></Pressable>)}</View><Text style={styles.label}>{t(appLanguage, 'activationCode')}</Text><TextInput autoCapitalize="characters" autoCorrect={false} value={code} onChangeText={setCode} placeholder="KHE-123456" style={styles.input} /><Text style={styles.activationHelp}>{t(appLanguage, 'noEventId')}</Text><Pressable disabled={busy || !code.trim()} style={styles.primaryButton} onPress={() => void activate()}><Text style={styles.primaryButtonText}>{busy ? t(appLanguage, 'activating') : t(appLanguage, 'activateStation')}</Text></Pressable><Pressable style={styles.termsLink} onPress={() => { setMenuReturnPending(false); setAboutOpen(true); }}><Text style={styles.termsLinkText}>{t(appLanguage, 'terms')} • {APP_VERSION}</Text></Pressable></View>}
+    {message ? <Text style={styles.message}>{message}</Text> : null}
+  </View></ScrollView></SafeAreaView>;
 }
 
 function Root() { return <TermsGate><App /></TermsGate>; }
@@ -250,12 +205,12 @@ function Root() { return <TermsGate><App /></TermsGate>; }
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#101010' }, pageScroll: { flex: 1 }, pageContent: { flexGrow: 1, justifyContent: 'center', padding: 20, paddingBottom: 44 }, pageContentLandscape: { justifyContent: 'flex-start', paddingVertical: 16 }, center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
   card: { width: '100%', maxWidth: 760, alignSelf: 'center', backgroundColor: '#fff', borderRadius: 24, padding: 22, gap: 8 }, cardLandscape: { maxWidth: 980 }, brand: { fontSize: 13, letterSpacing: 3, fontWeight: '800', paddingTop: 4 }, title: { fontSize: 30, lineHeight: 36, fontWeight: '800' }, muted: { opacity: 0.6, lineHeight: 18 }, section: { marginTop: 18, gap: 10 }, label: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', opacity: 0.55 }, value: { fontSize: 18, fontWeight: '700' }, small: { fontSize: 12, opacity: 0.65 },
-  modeRow: { flexDirection: 'row', gap: 10 }, modeButton: { flex: 1, borderWidth: 1, borderColor: '#c9c9c9', borderRadius: 12, padding: 12, alignItems: 'center' }, modeButtonActive: { backgroundColor: '#111', borderColor: '#111' }, modeText: { fontWeight: '700' }, modeTextActive: { color: '#fff', fontWeight: '700' }, input: { borderWidth: 1, borderColor: '#d6d6d6', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: '#fff' }, activationHelp: { fontSize: 12, lineHeight: 17, opacity: 0.6 }, primaryButton: { marginTop: 8, backgroundColor: '#111', borderRadius: 12, padding: 14, alignItems: 'center' }, primaryButtonText: { color: '#fff', fontWeight: '800' },
+  modeRow: { flexDirection: 'row', gap: 10 }, modeButton: { flex: 1, borderWidth: 1, borderColor: '#c9c9c9', borderRadius: 12, padding: 12, alignItems: 'center' }, modeButtonActive: { backgroundColor: '#8e1e2d', borderColor: '#8e1e2d' }, modeText: { fontWeight: '700' }, modeTextActive: { color: '#fff', fontWeight: '700' }, input: { borderWidth: 1, borderColor: '#d6d6d6', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: '#fff' }, activationHelp: { fontSize: 12, lineHeight: 17, opacity: 0.6 }, primaryButton: { marginTop: 8, backgroundColor: '#8e1e2d', borderRadius: 12, padding: 14, alignItems: 'center' }, primaryButtonText: { color: '#fff', fontWeight: '800' },
   awakeCard: { borderWidth: 1, borderColor: '#d5d5d5', borderRadius: 16, padding: 14, gap: 10 }, awakeCopy: { gap: 3 }, awakeTitle: { fontSize: 10, fontWeight: '900', letterSpacing: 1.5, opacity: 0.55 }, awakeStatus: { fontSize: 17, fontWeight: '900' }, awakeHelp: { fontSize: 11, lineHeight: 16, opacity: 0.62 }, awakeButton: { borderWidth: 1, borderColor: '#111', borderRadius: 11, paddingVertical: 11, alignItems: 'center' }, awakeButtonActive: { backgroundColor: '#111' }, awakeButtonTextActive: { color: '#fff', fontWeight: '900', fontSize: 11 },
-  securityCard: { borderWidth: 1, borderColor: '#d5d5d5', borderRadius: 16, padding: 14, gap: 9 }, securityTitle: { fontSize: 16, fontWeight: '900' }, securityButton: { backgroundColor: '#ededed', borderRadius: 11, paddingVertical: 12, alignItems: 'center' }, securityButtonText: { fontWeight: '900', fontSize: 11 }, visibilityButton: { borderWidth: 1, borderColor: '#d6d6d6', borderRadius: 10, padding: 10, alignItems: 'center' }, visibilityText: { fontWeight: '800', fontSize: 11 }, skipButton: { paddingVertical: 9, alignItems: 'center' }, skipButtonText: { fontSize: 11, fontWeight: '800', textDecorationLine: 'underline', opacity: 0.65 },
-  captureActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, captureButton: { flexGrow: 1, minWidth: 160, borderWidth: 1, borderColor: '#111', borderRadius: 12, padding: 14, alignItems: 'center' }, captureButtonText: { color: '#111', fontWeight: '800' }, galleryButton: { flexGrow: 1, minWidth: 140, backgroundColor: '#111', borderRadius: 12, padding: 14, alignItems: 'center' }, galleryButtonText: { color: '#fff', fontWeight: '800' }, notice: { marginTop: 8, fontSize: 12, lineHeight: 18, opacity: 0.65 }, message: { marginTop: 14, fontSize: 13, lineHeight: 18 },
-  menuAnchor: { alignSelf: 'flex-start', zIndex: 20, marginBottom: 8 }, menuButton: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: '#111', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9 }, menuButtonText: { color: '#fff', fontSize: 18, fontWeight: '900' }, menuButtonLabel: { color: '#fff', fontSize: 12, fontWeight: '900' }, updateDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#ffd35c' }, menuPanel: { position: 'absolute', top: 48, left: 0, width: 300, backgroundColor: '#111', borderRadius: 16, padding: 12, gap: 5, elevation: 10 }, menuBrand: { color: '#fff', fontWeight: '900', letterSpacing: 2 }, menuSession: { color: '#aaa', fontSize: 11, marginBottom: 6 }, menuItem: { backgroundColor: '#222225', borderRadius: 10, padding: 12 }, menuItemText: { color: '#fff', fontSize: 12, fontWeight: '800', lineHeight: 17 }, menuItemDanger: { borderWidth: 1, borderColor: '#7d3d3d', borderRadius: 10, padding: 12, marginTop: 3 }, menuItemDangerText: { color: '#ffb6b6', fontSize: 12, fontWeight: '900' },
-  updateBanner: { backgroundColor: '#fff1bd', borderRadius: 12, padding: 10, marginTop: 7 }, updateBannerText: { color: '#4a3900', fontSize: 11, lineHeight: 16, fontWeight: '800' }, termsLink: { alignItems: 'center', padding: 10 }, termsLinkText: { fontSize: 11, fontWeight: '700', textDecorationLine: 'underline', opacity: 0.65 },
+  securityCard: { borderWidth: 1, borderColor: '#d5d5d5', borderRadius: 16, padding: 14, gap: 9 }, securityTitle: { fontSize: 16, fontWeight: '900' }, securityButton: { backgroundColor: '#f4d37a', borderRadius: 11, paddingVertical: 12, alignItems: 'center' }, securityButtonText: { fontWeight: '900', fontSize: 11 }, visibilityButton: { borderWidth: 1, borderColor: '#d6d6d6', borderRadius: 10, padding: 10, alignItems: 'center' }, visibilityText: { fontWeight: '800', fontSize: 11 }, skipButton: { paddingVertical: 9, alignItems: 'center' }, skipButtonText: { fontSize: 11, fontWeight: '800', textDecorationLine: 'underline', opacity: 0.65 },
+  captureActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, captureButton: { flexGrow: 1, minWidth: 160, borderWidth: 1, borderColor: '#8e1e2d', borderRadius: 12, padding: 14, alignItems: 'center' }, captureButtonText: { color: '#8e1e2d', fontWeight: '800' }, galleryButton: { flexGrow: 1, minWidth: 140, backgroundColor: '#111', borderRadius: 12, padding: 14, alignItems: 'center' }, galleryButtonText: { color: '#fff', fontWeight: '800' }, notice: { marginTop: 8, fontSize: 12, lineHeight: 18, opacity: 0.65 }, message: { marginTop: 14, fontSize: 13, lineHeight: 18 },
+  menuAnchor: { alignSelf: 'flex-start', zIndex: 20, marginBottom: 8 }, menuButton: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: '#8e1e2d', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9 }, menuButtonText: { color: '#fff', fontSize: 18, fontWeight: '900' }, menuButtonLabel: { color: '#fff', fontSize: 12, fontWeight: '900' }, updateDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#f4d37a' }, menuPanel: { position: 'absolute', top: 48, left: 0, width: 300, backgroundColor: '#111', borderRadius: 16, padding: 12, gap: 5, elevation: 10, borderWidth: 1, borderColor: '#c7a34b' }, menuBrand: { color: '#f4d37a', fontWeight: '900', letterSpacing: 2 }, menuSession: { color: '#aaa', fontSize: 11, marginBottom: 6 }, menuItem: { backgroundColor: '#222225', borderRadius: 10, padding: 12 }, menuItemText: { color: '#fff', fontSize: 12, fontWeight: '800', lineHeight: 17 }, menuItemDanger: { borderWidth: 1, borderColor: '#8e1e2d', borderRadius: 10, padding: 12, marginTop: 3 }, menuItemDangerText: { color: '#ffb6b6', fontSize: 12, fontWeight: '900' },
+  updateBanner: { backgroundColor: '#f4d37a', borderRadius: 12, padding: 10, marginTop: 7 }, updateBannerText: { color: '#241b00', fontSize: 11, lineHeight: 16, fontWeight: '800' }, termsLink: { alignItems: 'center', padding: 10 }, termsLinkText: { fontSize: 11, fontWeight: '700', textDecorationLine: 'underline', opacity: 0.65 },
 });
 
 registerRootComponent(Root);
