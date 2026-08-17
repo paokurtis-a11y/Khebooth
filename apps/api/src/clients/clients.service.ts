@@ -1,14 +1,18 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import type { PaymentStatus, SubscriptionPlan, SubscriptionStatus } from '@khe/contracts';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateClientDto } from './dto/create-client.dto';
+import {
+  CreateClientDto,
+  type ApiPaymentStatus,
+  type ApiSubscriptionPlan,
+  type ApiSubscriptionStatus,
+} from './dto/create-client.dto';
 import { UpdateClientDto } from './dto/update-client.dto';
 
 type SubscriptionSnapshot = {
   id: string;
-  subscriptionPlan: SubscriptionPlan;
-  subscriptionStatus: SubscriptionStatus;
-  paymentStatus: PaymentStatus;
+  subscriptionPlan: ApiSubscriptionPlan;
+  subscriptionStatus: ApiSubscriptionStatus;
+  paymentStatus: ApiPaymentStatus;
   subscriptionStartedAt: Date | null;
   subscriptionEndsAt: Date | null;
 };
