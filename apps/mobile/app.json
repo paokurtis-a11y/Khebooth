@@ -17,7 +17,9 @@
       "package": "com.kurtishypnotic.khebooth",
       "permissions": [
         "android.permission.FOREGROUND_SERVICE",
-        "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
       ]
     },
     "plugins": [
@@ -26,6 +28,12 @@
         "expo-secure-store",
         {
           "configureAndroidBackup": true
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "KHE Booth utilise votre position précise uniquement si vous activez volontairement cette option dans les paramètres. La capture et le partage restent disponibles sans localisation."
         }
       ],
       [
