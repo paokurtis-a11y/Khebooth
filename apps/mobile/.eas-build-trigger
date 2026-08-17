@@ -1,4 +1,6 @@
-trigger=2026-08-16T10:08:00+02:00
-reason=khe-booth-v0.3.0-photo-print-profile-sharing-gallery-studio
-validated_mobile_commit=debcb84c94deed01fdfaf76bea71875e4320e767
-validated_general_ci_run=31937650670
+trigger=2026-08-17T19:32:00+02:00
+reason=khe-booth-capture-sync-blob-apk
+merged_sync_commit=c223cf3fdb4ecc65f6e2a410b23caa0917159f8b
+validated_mobile_commit=efb58f919c16c8cd646582dc4be349eaee18dc5e
+validated_mobile_ci_run=32050437564
+validated_general_ci_run=32050438016
