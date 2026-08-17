@@ -5,176 +5,28 @@ import { useEffect, useMemo, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { HttpStationApi, type StationProfileUpdate } from '../api/station-api';
 import { API_BASE_URL } from '../config';
+import { SubscriptionPanel } from './subscription-panel';
 
-interface UserProfileData extends StationProfileUpdate {
-  avatarUri: string | null;
-}
-
+interface UserProfileData extends StationProfileUpdate { avatarUri: string | null; }
 const PROFILE_KEY = 'khe.profile.v1';
 const STATION_TOKEN_KEY = 'khe.station.token.v1';
-const EMPTY_PROFILE: UserProfileData = {
-  firstName: '', lastName: '', displayName: '', company: '', role: '', email: '', phone: '', city: '', country: '', bio: '', avatarUri: null,
-};
+const EMPTY_PROFILE: UserProfileData = { firstName:'', lastName:'', displayName:'', company:'', role:'', email:'', phone:'', city:'', country:'', bio:'', avatarUri:null };
 
-async function loadLocalProfile(): Promise<UserProfileData> {
-  const raw = await SecureStore.getItemAsync(PROFILE_KEY);
-  if (!raw) return EMPTY_PROFILE;
-  try { return { ...EMPTY_PROFILE, ...(JSON.parse(raw) as Partial<UserProfileData>) }; } catch { return EMPTY_PROFILE; }
+async function loadLocalProfile(): Promise<UserProfileData> { const raw=await SecureStore.getItemAsync(PROFILE_KEY); if(!raw)return EMPTY_PROFILE; try{return{...EMPTY_PROFILE,...(JSON.parse(raw) as Partial<UserProfileData>)}}catch{return EMPTY_PROFILE;} }
+async function saveLocalProfile(profile:UserProfileData):Promise<void>{await SecureStore.setItemAsync(PROFILE_KEY,JSON.stringify(profile),{keychainAccessible:SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY});}
+function Field({label,value,onChange,placeholder,multiline=false}:{label:string;value:string;onChange:(value:string)=>void;placeholder:string;multiline?:boolean}){return <View style={styles.field}><Text style={styles.label}>{label}</Text><TextInput value={value} onChangeText={onChange} placeholder={placeholder} placeholderTextColor="#999" multiline={multiline} style={[styles.input,multiline&&styles.multiline]}/></View>;}
+
+export function UserProfile({onClose}:{onClose:()=>void}){
+  const api=useMemo(()=>new HttpStationApi(API_BASE_URL),[]); const [profile,setProfile]=useState<UserProfileData>(EMPTY_PROFILE); const [message,setMessage]=useState(''); const [saving,setSaving]=useState(false); const [syncing,setSyncing]=useState(true);
+  useEffect(()=>{let cancelled=false;void(async()=>{const local=await loadLocalProfile();if(!cancelled)setProfile(local);const token=await SecureStore.getItemAsync(STATION_TOKEN_KEY);if(!token){if(!cancelled){setSyncing(false);setMessage('Profil local chargé. Activez une station pour le synchroniser entre CAPTURE et SHARING.');}return;}try{const remote=await api.profile(token);const merged:UserProfileData={firstName:remote.firstName,lastName:remote.lastName,displayName:remote.displayName,company:remote.company,role:remote.role,email:remote.email,phone:remote.phone,city:remote.city,country:remote.country,bio:remote.bio,avatarUri:local.avatarUri};await saveLocalProfile(merged);if(!cancelled){setProfile(merged);setMessage('Profil KHE synchronisé avec l’autre station.');}}catch(error){if(!cancelled)setMessage(`Profil local disponible hors ligne. ${error instanceof Error?error.message:''}`.trim());}finally{if(!cancelled)setSyncing(false);}})();return()=>{cancelled=true;};},[api]);
+  const completion=useMemo(()=>{const fields=[profile.displayName,profile.company,profile.role,profile.email,profile.city,profile.country,profile.bio];return Math.round((fields.filter((value)=>value.trim().length>0).length/fields.length)*100);},[profile]);
+  function patch(patchValue:Partial<UserProfileData>):void{setProfile((current)=>({...current,...patchValue}));setMessage('');}
+  async function chooseAvatar():Promise<void>{const result=await DocumentPicker.getDocumentAsync({type:['image/jpeg','image/png','image/webp','image/*'],copyToCacheDirectory:true,multiple:false});if(result.canceled||!result.assets[0])return;const asset=result.assets[0];try{const directory=new Directory(Paths.document,'profile');await directory.create({idempotent:true,intermediates:true});const extension=asset.name?.split('.').pop()?.toLowerCase()||'jpg';const source=new File(asset.uri);const destination=new File(directory,`avatar.${extension}`);if(destination.exists)destination.delete();await source.copy(destination);patch({avatarUri:destination.uri});}catch(error){setMessage(error instanceof Error?error.message:'Impossible d’enregistrer la photo de profil.');}}
+  async function persist():Promise<void>{setSaving(true);try{const normalized:UserProfileData={...profile,displayName:profile.displayName.trim()||`${profile.firstName} ${profile.lastName}`.trim()};await saveLocalProfile(normalized);setProfile(normalized);const token=await SecureStore.getItemAsync(STATION_TOKEN_KEY);if(!token){setMessage('Profil enregistré localement. Il sera synchronisable dès qu’une station KHE est active.');return;}const{avatarUri:_avatarUri,...shared}=normalized;await api.updateProfile(token,shared);setMessage('✓ Profil KHE enregistré et synchronisé sur CAPTURE et SHARING.');}catch(error){setMessage(error instanceof Error?`Profil conservé localement. Synchronisation distante : ${error.message}`:'Impossible de synchroniser le profil.');}finally{setSaving(false);}}
+  return <View style={styles.page}><ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled"><View style={styles.header}><View style={{flex:1}}><Text style={styles.brand}>KHE IDENTITY</Text><Text style={styles.title}>Profil unique</Text><Text style={styles.help}>Un seul profil pour CAPTURE et SHARING. Les informations, l’abonnement et les messages KHE sont synchronisés.</Text></View><Pressable style={styles.close} onPress={onClose}><Text style={styles.closeText}>Fermer</Text></Pressable></View><View style={styles.syncBanner}><View style={[styles.syncDot,syncing?styles.syncDotBusy:styles.syncDotReady]}/><Text style={styles.syncText}>{syncing?'Synchronisation du profil…':'Profil partagé entre les deux stations'}</Text></View><View style={styles.identityCard}><Pressable style={styles.avatarButton} onPress={()=>void chooseAvatar()}>{profile.avatarUri?<Image source={{uri:profile.avatarUri}} style={styles.avatar}/>:<View style={styles.avatarPlaceholder}><Text style={styles.avatarPlaceholderText}>＋</Text></View>}</Pressable><View style={{flex:1}}><Text style={styles.profileName}>{profile.displayName||profile.firstName||'Votre profil KHE'}</Text><Text style={styles.profileMeta}>{profile.company||'Kurtis Hypnotic Events'}{profile.role?` • ${profile.role}`:''}</Text><Text style={styles.completion}>Profil complété à {completion}%</Text><View style={styles.progressTrack}><View style={[styles.progressFill,{width:`${completion}%`}]}/></View></View></View>
+    <SubscriptionPanel />
+    <View style={styles.grid}><Field label="Prénom" value={profile.firstName} onChange={(value)=>patch({firstName:value})} placeholder="Votre prénom"/><Field label="Nom" value={profile.lastName} onChange={(value)=>patch({lastName:value})} placeholder="Votre nom"/><Field label="Nom affiché" value={profile.displayName} onChange={(value)=>patch({displayName:value})} placeholder="Nom visible dans KHE"/><Field label="Entreprise" value={profile.company} onChange={(value)=>patch({company:value})} placeholder="Nom de votre entreprise"/><Field label="Rôle" value={profile.role} onChange={(value)=>patch({role:value})} placeholder="DJ, organisateur, photobooth…"/><Field label="E-mail" value={profile.email} onChange={(value)=>patch({email:value})} placeholder="contact@exemple.ch"/><Field label="Téléphone" value={profile.phone} onChange={(value)=>patch({phone:value})} placeholder="+41 …"/><Field label="Ville" value={profile.city} onChange={(value)=>patch({city:value})} placeholder="Ville"/><Field label="Pays" value={profile.country} onChange={(value)=>patch({country:value})} placeholder="Pays"/><Field label="À propos" value={profile.bio} onChange={(value)=>patch({bio:value})} placeholder="Présentez votre activité et votre univers…" multiline/></View><View style={styles.tipCard}><Text style={styles.tipTitle}>Identité KHE synchronisée</Text><Text style={styles.tipText}>Les données textuelles et commerciales sont communes aux deux stations. La photo reste stockée localement sur l’appareil.</Text></View><Pressable disabled={saving} style={[styles.saveButton,saving&&styles.disabled]} onPress={()=>void persist()}><Text style={styles.saveText}>{saving?'Synchronisation…':'Enregistrer et synchroniser'}</Text></Pressable>{message?<Text style={styles.message}>{message}</Text>:null}</ScrollView></View>;
 }
 
-async function saveLocalProfile(profile: UserProfileData): Promise<void> {
-  await SecureStore.setItemAsync(PROFILE_KEY, JSON.stringify(profile), { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY });
-}
-
-function Field({ label, value, onChange, placeholder, multiline = false }: { label: string; value: string; onChange: (value: string) => void; placeholder: string; multiline?: boolean }) {
-  return (
-    <View style={styles.field}>
-      <Text style={styles.label}>{label}</Text>
-      <TextInput value={value} onChangeText={onChange} placeholder={placeholder} placeholderTextColor="#999" multiline={multiline} style={[styles.input, multiline && styles.multiline]} />
-    </View>
-  );
-}
-
-export function UserProfile({ onClose }: { onClose: () => void }) {
-  const api = useMemo(() => new HttpStationApi(API_BASE_URL), []);
-  const [profile, setProfile] = useState<UserProfileData>(EMPTY_PROFILE);
-  const [message, setMessage] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [syncing, setSyncing] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      const local = await loadLocalProfile();
-      if (!cancelled) setProfile(local);
-      const token = await SecureStore.getItemAsync(STATION_TOKEN_KEY);
-      if (!token) {
-        if (!cancelled) { setSyncing(false); setMessage('Profil local chargé. Activez une station pour le synchroniser entre CAPTURE et SHARING.'); }
-        return;
-      }
-      try {
-        const remote = await api.profile(token);
-        const merged: UserProfileData = {
-          firstName: remote.firstName,
-          lastName: remote.lastName,
-          displayName: remote.displayName,
-          company: remote.company,
-          role: remote.role,
-          email: remote.email,
-          phone: remote.phone,
-          city: remote.city,
-          country: remote.country,
-          bio: remote.bio,
-          avatarUri: local.avatarUri,
-        };
-        await saveLocalProfile(merged);
-        if (!cancelled) { setProfile(merged); setMessage('Profil KHE synchronisé avec l’autre station.'); }
-      } catch (error) {
-        if (!cancelled) setMessage(`Profil local disponible hors ligne. ${error instanceof Error ? error.message : ''}`.trim());
-      } finally {
-        if (!cancelled) setSyncing(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [api]);
-
-  const completion = useMemo(() => {
-    const fields = [profile.displayName, profile.company, profile.role, profile.email, profile.city, profile.country, profile.bio];
-    return Math.round((fields.filter((value) => value.trim().length > 0).length / fields.length) * 100);
-  }, [profile]);
-
-  function patch(patchValue: Partial<UserProfileData>): void {
-    setProfile((current) => ({ ...current, ...patchValue }));
-    setMessage('');
-  }
-
-  async function chooseAvatar(): Promise<void> {
-    const result = await DocumentPicker.getDocumentAsync({ type: ['image/jpeg', 'image/png', 'image/webp', 'image/*'], copyToCacheDirectory: true, multiple: false });
-    if (result.canceled || !result.assets[0]) return;
-    const asset = result.assets[0];
-    try {
-      const directory = new Directory(Paths.document, 'profile');
-      await directory.create({ idempotent: true, intermediates: true });
-      const extension = asset.name?.split('.').pop()?.toLowerCase() || 'jpg';
-      const source = new File(asset.uri);
-      const destination = new File(directory, `avatar.${extension}`);
-      if (destination.exists) destination.delete();
-      await source.copy(destination);
-      patch({ avatarUri: destination.uri });
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Impossible d’enregistrer la photo de profil.');
-    }
-  }
-
-  async function persist(): Promise<void> {
-    setSaving(true);
-    try {
-      const normalized: UserProfileData = { ...profile, displayName: profile.displayName.trim() || `${profile.firstName} ${profile.lastName}`.trim() };
-      await saveLocalProfile(normalized);
-      setProfile(normalized);
-      const token = await SecureStore.getItemAsync(STATION_TOKEN_KEY);
-      if (!token) {
-        setMessage('Profil enregistré localement. Il sera synchronisable dès qu’une station KHE est active.');
-        return;
-      }
-      const { avatarUri: _avatarUri, ...shared } = normalized;
-      await api.updateProfile(token, shared);
-      setMessage('✓ Profil KHE enregistré et synchronisé sur CAPTURE et SHARING.');
-    } catch (error) {
-      setMessage(error instanceof Error ? `Profil conservé localement. Synchronisation distante : ${error.message}` : 'Impossible de synchroniser le profil.');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <View style={styles.page}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <View style={styles.header}>
-          <View style={{ flex: 1 }}><Text style={styles.brand}>KHE IDENTITY</Text><Text style={styles.title}>Profil unique</Text><Text style={styles.help}>Un seul profil pour CAPTURE et SHARING. Les informations sont synchronisées via KHE Booth.</Text></View>
-          <Pressable style={styles.close} onPress={onClose}><Text style={styles.closeText}>Fermer</Text></Pressable>
-        </View>
-
-        <View style={styles.syncBanner}><View style={[styles.syncDot, syncing ? styles.syncDotBusy : styles.syncDotReady]} /><Text style={styles.syncText}>{syncing ? 'Synchronisation du profil…' : 'Profil partagé entre les deux stations'}</Text></View>
-
-        <View style={styles.identityCard}>
-          <Pressable style={styles.avatarButton} onPress={() => void chooseAvatar()}>
-            {profile.avatarUri ? <Image source={{ uri: profile.avatarUri }} style={styles.avatar} /> : <View style={styles.avatarPlaceholder}><Text style={styles.avatarPlaceholderText}>＋</Text></View>}
-          </Pressable>
-          <View style={{ flex: 1 }}><Text style={styles.profileName}>{profile.displayName || profile.firstName || 'Votre profil KHE'}</Text><Text style={styles.profileMeta}>{profile.company || 'Kurtis Hypnotic Events'}{profile.role ? ` • ${profile.role}` : ''}</Text><Text style={styles.completion}>Profil complété à {completion}%</Text><View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${completion}%` }]} /></View></View>
-        </View>
-
-        <View style={styles.grid}>
-          <Field label="Prénom" value={profile.firstName} onChange={(value) => patch({ firstName: value })} placeholder="Votre prénom" />
-          <Field label="Nom" value={profile.lastName} onChange={(value) => patch({ lastName: value })} placeholder="Votre nom" />
-          <Field label="Nom affiché" value={profile.displayName} onChange={(value) => patch({ displayName: value })} placeholder="Nom visible dans KHE" />
-          <Field label="Entreprise" value={profile.company} onChange={(value) => patch({ company: value })} placeholder="Nom de votre entreprise" />
-          <Field label="Rôle" value={profile.role} onChange={(value) => patch({ role: value })} placeholder="DJ, organisateur, photobooth…" />
-          <Field label="E-mail" value={profile.email} onChange={(value) => patch({ email: value })} placeholder="contact@exemple.ch" />
-          <Field label="Téléphone" value={profile.phone} onChange={(value) => patch({ phone: value })} placeholder="+41 …" />
-          <Field label="Ville" value={profile.city} onChange={(value) => patch({ city: value })} placeholder="Ville" />
-          <Field label="Pays" value={profile.country} onChange={(value) => patch({ country: value })} placeholder="Pays" />
-          <Field label="À propos" value={profile.bio} onChange={(value) => patch({ bio: value })} placeholder="Présentez votre activité et votre univers…" multiline />
-        </View>
-
-        <View style={styles.tipCard}><Text style={styles.tipTitle}>Identité KHE synchronisée</Text><Text style={styles.tipText}>Les données textuelles sont communes aux deux stations. La photo reste stockée localement sur l’appareil pour éviter d’envoyer une image personnelle sans nécessité.</Text></View>
-        <Pressable disabled={saving} style={[styles.saveButton, saving && styles.disabled]} onPress={() => void persist()}><Text style={styles.saveText}>{saving ? 'Synchronisation…' : 'Enregistrer et synchroniser'}</Text></Pressable>
-        {message ? <Text style={styles.message}>{message}</Text> : null}
-      </ScrollView>
-    </View>
-  );
-}
-
-const KHE_RED = '#b31520';
-const KHE_GOLD = '#d2ad4f';
-const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#f7f2ea' }, content: { padding: 22, paddingTop: 30, paddingBottom: 52, gap: 18 },
-  header: { flexDirection: 'row', gap: 14, alignItems: 'flex-start' }, brand: { color: KHE_RED, fontSize: 11, letterSpacing: 3, fontWeight: '900' }, title: { fontSize: 32, fontWeight: '900', marginTop: 3, color: '#111' }, help: { marginTop: 5, color: '#70685e', lineHeight: 19 },
-  close: { backgroundColor: '#111', borderRadius: 13, paddingHorizontal: 14, paddingVertical: 11 }, closeText: { color: '#fff', fontWeight: '900' },
-  syncBanner: { backgroundColor: '#fff8e8', borderWidth: 1, borderColor: '#ead397', borderRadius: 14, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 9 }, syncDot: { width: 9, height: 9, borderRadius: 5 }, syncDotBusy: { backgroundColor: KHE_GOLD }, syncDotReady: { backgroundColor: '#16804a' }, syncText: { fontWeight: '800', color: '#443b2d' },
-  identityCard: { backgroundColor: '#111113', borderRadius: 24, padding: 18, flexDirection: 'row', gap: 16, alignItems: 'center', borderBottomWidth: 4, borderBottomColor: KHE_GOLD }, avatarButton: { width: 86, height: 86 }, avatar: { width: 86, height: 86, borderRadius: 43 }, avatarPlaceholder: { width: 86, height: 86, borderRadius: 43, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: KHE_RED }, avatarPlaceholderText: { fontSize: 34, fontWeight: '300', color: KHE_RED },
-  profileName: { color: '#fff', fontSize: 20, fontWeight: '900' }, profileMeta: { color: '#c9b88a', marginTop: 3 }, completion: { color: '#fff', fontSize: 10, marginTop: 11, fontWeight: '800' }, progressTrack: { height: 5, borderRadius: 3, backgroundColor: '#444', marginTop: 5, overflow: 'hidden' }, progressFill: { height: 5, backgroundColor: KHE_GOLD },
-  grid: { gap: 12 }, field: { gap: 6 }, label: { fontSize: 11, fontWeight: '900', letterSpacing: 0.7, color: '#4c433b' }, input: { backgroundColor: '#fff', borderRadius: 14, borderWidth: 1, borderColor: '#e0d6c8', paddingHorizontal: 14, paddingVertical: 13, fontSize: 15, color: '#111' }, multiline: { minHeight: 110, textAlignVertical: 'top' },
-  tipCard: { backgroundColor: '#efe5d4', borderRadius: 18, padding: 16, borderLeftWidth: 4, borderLeftColor: KHE_GOLD }, tipTitle: { fontWeight: '900', fontSize: 15 }, tipText: { marginTop: 5, color: '#6f6458', lineHeight: 18 },
-  saveButton: { backgroundColor: KHE_RED, borderRadius: 16, padding: 16, alignItems: 'center' }, saveText: { color: '#fff', fontWeight: '900' }, disabled: { opacity: 0.5 }, message: { backgroundColor: '#fff', borderRadius: 13, padding: 13, lineHeight: 18, borderLeftWidth: 4, borderLeftColor: KHE_GOLD },
-});
+const KHE_RED='#b31520';const KHE_GOLD='#d2ad4f';
+const styles=StyleSheet.create({page:{flex:1,backgroundColor:'#f7f2ea'},content:{padding:22,paddingTop:30,paddingBottom:52,gap:18},header:{flexDirection:'row',gap:14,alignItems:'flex-start'},brand:{color:KHE_RED,fontSize:11,letterSpacing:3,fontWeight:'900'},title:{fontSize:32,fontWeight:'900',marginTop:3,color:'#111'},help:{marginTop:5,color:'#70685e',lineHeight:19},close:{backgroundColor:'#111',borderRadius:13,paddingHorizontal:14,paddingVertical:11},closeText:{color:'#fff',fontWeight:'900'},syncBanner:{backgroundColor:'#fff8e8',borderWidth:1,borderColor:'#ead397',borderRadius:14,padding:12,flexDirection:'row',alignItems:'center',gap:9},syncDot:{width:9,height:9,borderRadius:5},syncDotBusy:{backgroundColor:KHE_GOLD},syncDotReady:{backgroundColor:'#16804a'},syncText:{fontWeight:'800',color:'#443b2d'},identityCard:{backgroundColor:'#111113',borderRadius:24,padding:18,flexDirection:'row',gap:16,alignItems:'center',borderBottomWidth:4,borderBottomColor:KHE_GOLD},avatarButton:{width:86,height:86},avatar:{width:86,height:86,borderRadius:43},avatarPlaceholder:{width:86,height:86,borderRadius:43,backgroundColor:'#fff',alignItems:'center',justifyContent:'center',borderWidth:3,borderColor:KHE_RED},avatarPlaceholderText:{fontSize:34,fontWeight:'300',color:KHE_RED},profileName:{color:'#fff',fontSize:20,fontWeight:'900'},profileMeta:{color:'#c9b88a',marginTop:3},completion:{color:'#fff',fontSize:10,marginTop:11,fontWeight:'800'},progressTrack:{height:5,borderRadius:3,backgroundColor:'#444',marginTop:5,overflow:'hidden'},progressFill:{height:5,backgroundColor:KHE_GOLD},grid:{gap:12},field:{gap:6},label:{fontSize:11,fontWeight:'900',letterSpacing:0.7,color:'#4c433b'},input:{backgroundColor:'#fff',borderRadius:14,borderWidth:1,borderColor:'#e0d6c8',paddingHorizontal:14,paddingVertical:13,fontSize:15,color:'#111'},multiline:{minHeight:110,textAlignVertical:'top'},tipCard:{backgroundColor:'#efe5d4',borderRadius:18,padding:16,borderLeftWidth:4,borderLeftColor:KHE_GOLD},tipTitle:{fontWeight:'900',fontSize:15},tipText:{marginTop:5,color:'#6f6458',lineHeight:18},saveButton:{backgroundColor:KHE_RED,borderRadius:16,padding:16,alignItems:'center'},saveText:{color:'#fff',fontWeight:'900'},disabled:{opacity:0.5},message:{backgroundColor:'#fff',borderRadius:13,padding:13,lineHeight:18,borderLeftWidth:4,borderLeftColor:KHE_GOLD}});
