@@ -194,6 +194,21 @@ export class FakeStationApi implements StationApi {
     };
   }
 
+  async createMediaShare(_stationToken: string, mediaId: string) {
+    const media = this.findMedia(mediaId);
+    if (!media.blobStored || media.syncState !== 'SYNCED') throw new Error('Media not synchronized');
+    return {
+      id: '99999999-9999-4999-8999-999999999999',
+      mediaId,
+      shareUrl: 'https://khebooth.example.test/m/test-token',
+      createdAt: new Date().toISOString(),
+    };
+  }
+
+  async revokeMediaShare(_stationToken: string, shareId: string) {
+    return { id: shareId, revoked: true };
+  }
+
   async initializeUpload(_stationToken: string, mediaId: string): Promise<UploadSessionContract> {
     const media = this.findMedia(mediaId);
     return {

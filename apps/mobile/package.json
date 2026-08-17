@@ -32,7 +32,9 @@
     "expo-video": "~56.1.4",
     "livekit-client": "2.20.1",
     "react": "19.2.3",
-    "react-native": "0.85.3"
+    "react-native": "0.85.3",
+    "react-native-qrcode-svg": "6.3.21",
+    "react-native-svg": "15.15.4"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

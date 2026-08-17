@@ -6,6 +6,7 @@ import { RedeemStationDto } from './dto/redeem-station.dto';
 import { UpdateStationCommandDto } from './dto/update-station-command.dto';
 import { UpdateStationStatusDto } from './dto/update-station-status.dto';
 import { UpdateUploadProgressDto } from './dto/update-upload-progress.dto';
+import { MediaSharingService } from './media-sharing.service';
 import { MediaStorageService } from './media-storage.service';
 import { StationAuthGuard } from './station-auth.guard';
 import { StationsService } from './stations.service';
@@ -15,6 +16,7 @@ export class StationsController {
   constructor(
     private readonly stations: StationsService,
     private readonly mediaStorage: MediaStorageService,
+    private readonly mediaSharing: MediaSharingService,
   ) {}
 
   @Post('redeem')
@@ -28,7 +30,6 @@ export class StationsController {
     return this.stations.manifest(station);
   }
 
-  // LiveKit credentials stay server-side; stations only receive a scoped participant token.
   @UseGuards(StationAuthGuard)
   @Get('live-session')
   liveSession(@CurrentStation() station: AuthenticatedStation) {
@@ -89,7 +90,24 @@ export class StationsController {
     return this.mediaStorage.downloadTicket(station, id);
   }
 
-  // Legacy progress endpoint remains useful for UI progress and operational telemetry.
+  @UseGuards(StationAuthGuard)
+  @Post('media/:id/share')
+  createMediaShare(
+    @CurrentStation() station: AuthenticatedStation,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.mediaSharing.createShare(station, id);
+  }
+
+  @UseGuards(StationAuthGuard)
+  @Post('shares/:id/revoke')
+  revokeMediaShare(
+    @CurrentStation() station: AuthenticatedStation,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.mediaSharing.revokeShare(station, id);
+  }
+
   @UseGuards(StationAuthGuard)
   @Post('media/:id/upload')
   initializeUpload(
@@ -109,7 +127,6 @@ export class StationsController {
     return this.stations.updateUploadProgress(station, id, dto);
   }
 
-  // Finalization now checks the real Blob object before marking a media asset SYNCED.
   @UseGuards(StationAuthGuard)
   @Post('media/:id/finalize')
   finalizeUpload(

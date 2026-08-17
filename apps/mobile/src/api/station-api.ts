@@ -14,6 +14,13 @@ import type {
   UploadSessionContract,
 } from '@khe/contracts';
 
+export interface MediaShareContract {
+  id: string;
+  mediaId: string;
+  shareUrl: string;
+  createdAt: string | Date;
+}
+
 export interface StationApi {
   redeem(request: StationRedeemRequestContract): Promise<StationRedeemResponseContract>;
   manifest(stationToken: string): Promise<EventManifestContract>;
@@ -25,6 +32,8 @@ export interface StationApi {
   createMedia(stationToken: string, media: SyntheticMediaCreateContract): Promise<MediaAssetContract>;
   prepareBlobUpload(stationToken: string, mediaId: string): Promise<BlobUploadTicketContract & { alreadyUploaded?: boolean }>;
   mediaDownload(stationToken: string, mediaId: string): Promise<MediaDownloadTicketContract>;
+  createMediaShare(stationToken: string, mediaId: string): Promise<MediaShareContract>;
+  revokeMediaShare(stationToken: string, shareId: string): Promise<{ id: string; revoked: boolean }>;
   initializeUpload(stationToken: string, mediaId: string): Promise<UploadSessionContract>;
   updateUpload(stationToken: string, mediaId: string, uploadedBytes: number): Promise<UploadSessionContract>;
   finalizeUpload(stationToken: string, mediaId: string): Promise<FinalizeUploadResponseContract>;
@@ -124,6 +133,20 @@ export class HttpStationApi implements StationApi {
 
   mediaDownload(stationToken: string, mediaId: string): Promise<MediaDownloadTicketContract> {
     return this.request(`/stations/media/${encodeURIComponent(mediaId)}/download`, {
+      headers: this.stationHeaders(stationToken),
+    });
+  }
+
+  createMediaShare(stationToken: string, mediaId: string): Promise<MediaShareContract> {
+    return this.request(`/stations/media/${encodeURIComponent(mediaId)}/share`, {
+      method: 'POST',
+      headers: this.stationHeaders(stationToken),
+    });
+  }
+
+  revokeMediaShare(stationToken: string, shareId: string): Promise<{ id: string; revoked: boolean }> {
+    return this.request(`/stations/shares/${encodeURIComponent(shareId)}/revoke`, {
+      method: 'POST',
       headers: this.stationHeaders(stationToken),
     });
   }
