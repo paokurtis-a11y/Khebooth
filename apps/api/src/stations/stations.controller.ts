@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
 import type { AuthenticatedStation } from './station-auth.types';
 import { CurrentStation } from './current-station.decorator';
 import { CreateMediaDto } from './dto/create-media.dto';
@@ -9,6 +9,7 @@ import { UpdateUploadProgressDto } from './dto/update-upload-progress.dto';
 import { MediaSharingService } from './media-sharing.service';
 import { MediaStorageService } from './media-storage.service';
 import { StationAuthGuard } from './station-auth.guard';
+import { StationRenewalService } from './station-renewal.service';
 import { StationsService } from './stations.service';
 
 @Controller('stations')
@@ -17,11 +18,17 @@ export class StationsController {
     private readonly stations: StationsService,
     private readonly mediaStorage: MediaStorageService,
     private readonly mediaSharing: MediaSharingService,
+    private readonly stationRenewal: StationRenewalService,
   ) {}
 
   @Post('redeem')
   redeem(@Body() dto: RedeemStationDto) {
     return this.stations.redeem(dto);
+  }
+
+  @Post('renew')
+  renew(@Headers('authorization') authorization?: string) {
+    return this.stationRenewal.renew(authorization);
   }
 
   @UseGuards(StationAuthGuard)
