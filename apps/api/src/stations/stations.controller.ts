@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Headers, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { CommerceService } from '../commerce/commerce.service';
 import type { AuthenticatedStation } from './station-auth.types';
 import { CurrentStation } from './current-station.decorator';
 import { CreateMediaDto } from './dto/create-media.dto';
@@ -22,142 +23,62 @@ export class StationsController {
     private readonly mediaSharing: MediaSharingService,
     private readonly stationRenewal: StationRenewalService,
     private readonly stationProfile: StationProfileService,
+    private readonly commerce: CommerceService,
   ) {}
 
-  @Post('redeem')
-  redeem(@Body() dto: RedeemStationDto) {
-    return this.stations.redeem(dto);
-  }
-
-  @Post('renew')
-  renew(@Headers('authorization') authorization?: string) {
-    return this.stationRenewal.renew(authorization);
-  }
+  @Post('redeem') redeem(@Body() dto: RedeemStationDto) { return this.stations.redeem(dto); }
+  @Post('renew') renew(@Headers('authorization') authorization?: string) { return this.stationRenewal.renew(authorization); }
 
   @UseGuards(StationAuthGuard)
-  @Get('profile')
-  profile(@CurrentStation() station: AuthenticatedStation) {
-    return this.stationProfile.get(station);
-  }
+  @Get('profile') profile(@CurrentStation() station: AuthenticatedStation) { return this.stationProfile.get(station); }
 
   @UseGuards(StationAuthGuard)
   @Patch('profile')
-  updateProfile(
-    @CurrentStation() station: AuthenticatedStation,
-    @Body() dto: UpdateStationProfileDto,
-  ) {
-    return this.stationProfile.update(station, dto);
-  }
+  updateProfile(@CurrentStation() station: AuthenticatedStation, @Body() dto: UpdateStationProfileDto) { return this.stationProfile.update(station, dto); }
 
   @UseGuards(StationAuthGuard)
-  @Get('manifest')
-  manifest(@CurrentStation() station: AuthenticatedStation) {
-    return this.stations.manifest(station);
-  }
+  @Get('client-experience')
+  clientExperience(@CurrentStation() station: AuthenticatedStation) { return this.commerce.stationClientExperience(station); }
 
   @UseGuards(StationAuthGuard)
-  @Get('live-session')
-  liveSession(@CurrentStation() station: AuthenticatedStation) {
-    return this.stations.liveSession(station);
-  }
+  @Get('manifest') manifest(@CurrentStation() station: AuthenticatedStation) { return this.stations.manifest(station); }
 
   @UseGuards(StationAuthGuard)
-  @Get('control')
-  control(@CurrentStation() station: AuthenticatedStation) {
-    return this.stations.getControl(station);
-  }
+  @Get('live-session') liveSession(@CurrentStation() station: AuthenticatedStation) { return this.stations.liveSession(station); }
 
   @UseGuards(StationAuthGuard)
-  @Patch('control/command')
-  updateControlCommand(
-    @CurrentStation() station: AuthenticatedStation,
-    @Body() dto: UpdateStationCommandDto,
-  ) {
-    return this.stations.updateControlCommand(station, dto);
-  }
+  @Get('control') control(@CurrentStation() station: AuthenticatedStation) { return this.stations.getControl(station); }
 
   @UseGuards(StationAuthGuard)
-  @Patch('control/status')
-  updateControlStatus(
-    @CurrentStation() station: AuthenticatedStation,
-    @Body() dto: UpdateStationStatusDto,
-  ) {
-    return this.stations.updateControlStatus(station, dto);
-  }
+  @Patch('control/command') updateControlCommand(@CurrentStation() station: AuthenticatedStation, @Body() dto: UpdateStationCommandDto) { return this.stations.updateControlCommand(station, dto); }
 
   @UseGuards(StationAuthGuard)
-  @Get('media')
-  listMedia(@CurrentStation() station: AuthenticatedStation) {
-    return this.stations.listMedia(station);
-  }
+  @Patch('control/status') updateControlStatus(@CurrentStation() station: AuthenticatedStation, @Body() dto: UpdateStationStatusDto) { return this.stations.updateControlStatus(station, dto); }
 
   @UseGuards(StationAuthGuard)
-  @Post('media')
-  createMedia(@CurrentStation() station: AuthenticatedStation, @Body() dto: CreateMediaDto) {
-    return this.stations.createMedia(station, dto);
-  }
+  @Get('media') listMedia(@CurrentStation() station: AuthenticatedStation) { return this.stations.listMedia(station); }
 
   @UseGuards(StationAuthGuard)
-  @Post('media/:id/blob-upload')
-  prepareBlobUpload(
-    @CurrentStation() station: AuthenticatedStation,
-    @Param('id', new ParseUUIDPipe()) id: string,
-  ) {
-    return this.mediaStorage.prepareUpload(station, id);
-  }
+  @Post('media') createMedia(@CurrentStation() station: AuthenticatedStation, @Body() dto: CreateMediaDto) { return this.stations.createMedia(station, dto); }
 
   @UseGuards(StationAuthGuard)
-  @Get('media/:id/download')
-  mediaDownload(
-    @CurrentStation() station: AuthenticatedStation,
-    @Param('id', new ParseUUIDPipe()) id: string,
-  ) {
-    return this.mediaStorage.downloadTicket(station, id);
-  }
+  @Post('media/:id/blob-upload') prepareBlobUpload(@CurrentStation() station: AuthenticatedStation, @Param('id', new ParseUUIDPipe()) id: string) { return this.mediaStorage.prepareUpload(station, id); }
 
   @UseGuards(StationAuthGuard)
-  @Post('media/:id/share')
-  createMediaShare(
-    @CurrentStation() station: AuthenticatedStation,
-    @Param('id', new ParseUUIDPipe()) id: string,
-  ) {
-    return this.mediaSharing.createShare(station, id);
-  }
+  @Get('media/:id/download') mediaDownload(@CurrentStation() station: AuthenticatedStation, @Param('id', new ParseUUIDPipe()) id: string) { return this.mediaStorage.downloadTicket(station, id); }
 
   @UseGuards(StationAuthGuard)
-  @Post('shares/:id/revoke')
-  revokeMediaShare(
-    @CurrentStation() station: AuthenticatedStation,
-    @Param('id', new ParseUUIDPipe()) id: string,
-  ) {
-    return this.mediaSharing.revokeShare(station, id);
-  }
+  @Post('media/:id/share') createMediaShare(@CurrentStation() station: AuthenticatedStation, @Param('id', new ParseUUIDPipe()) id: string) { return this.mediaSharing.createShare(station, id); }
 
   @UseGuards(StationAuthGuard)
-  @Post('media/:id/upload')
-  initializeUpload(
-    @CurrentStation() station: AuthenticatedStation,
-    @Param('id', new ParseUUIDPipe()) id: string,
-  ) {
-    return this.stations.initializeUpload(station, id);
-  }
+  @Post('shares/:id/revoke') revokeMediaShare(@CurrentStation() station: AuthenticatedStation, @Param('id', new ParseUUIDPipe()) id: string) { return this.mediaSharing.revokeShare(station, id); }
 
   @UseGuards(StationAuthGuard)
-  @Patch('media/:id/upload')
-  updateUploadProgress(
-    @CurrentStation() station: AuthenticatedStation,
-    @Param('id', new ParseUUIDPipe()) id: string,
-    @Body() dto: UpdateUploadProgressDto,
-  ) {
-    return this.stations.updateUploadProgress(station, id, dto);
-  }
+  @Post('media/:id/upload') initializeUpload(@CurrentStation() station: AuthenticatedStation, @Param('id', new ParseUUIDPipe()) id: string) { return this.stations.initializeUpload(station, id); }
 
   @UseGuards(StationAuthGuard)
-  @Post('media/:id/finalize')
-  finalizeUpload(
-    @CurrentStation() station: AuthenticatedStation,
-    @Param('id', new ParseUUIDPipe()) id: string,
-  ) {
-    return this.mediaStorage.finalizeUpload(station, id);
-  }
+  @Patch('media/:id/upload') updateUploadProgress(@CurrentStation() station: AuthenticatedStation, @Param('id', new ParseUUIDPipe()) id: string, @Body() dto: UpdateUploadProgressDto) { return this.stations.updateUploadProgress(station, id, dto); }
+
+  @UseGuards(StationAuthGuard)
+  @Post('media/:id/finalize') finalizeUpload(@CurrentStation() station: AuthenticatedStation, @Param('id', new ParseUUIDPipe()) id: string) { return this.mediaStorage.finalizeUpload(station, id); }
 }
