@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import type { AuthenticatedStation } from './station-auth.types';
 import type { UpdateStationProfileDto } from './dto/update-station-profile.dto';
 
-interface ProfileRow {
+export interface ProfileRow {
   organizationId: string;
   firstName: string;
   lastName: string;
@@ -27,7 +27,7 @@ const EMPTY = {
 export class StationProfileService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async get(station: AuthenticatedStation) {
+  async get(station: AuthenticatedStation): Promise<ProfileRow> {
     await this.prisma.$executeRaw(Prisma.sql`
       INSERT INTO "OrganizationProfile" ("organizationId")
       VALUES (${station.organizationId}::uuid)
@@ -42,7 +42,7 @@ export class StationProfileService {
     return rows[0] ?? { organizationId: station.organizationId, ...EMPTY, updatedAt: new Date() };
   }
 
-  async update(station: AuthenticatedStation, dto: UpdateStationProfileDto) {
+  async update(station: AuthenticatedStation, dto: UpdateStationProfileDto): Promise<ProfileRow> {
     const current = await this.get(station);
     const next = {
       firstName: dto.firstName ?? current.firstName,
@@ -77,6 +77,6 @@ export class StationProfileService {
         "updatedAt" = CURRENT_TIMESTAMP
       RETURNING "organizationId", "firstName", "lastName", "displayName", "company", "role", "email", "phone", "city", "country", "bio", "updatedAt"
     `);
-    return rows[0];
+    return rows[0] ?? { organizationId: station.organizationId, ...next, updatedAt: new Date() };
   }
 }
