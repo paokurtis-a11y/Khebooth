@@ -24,6 +24,23 @@ export interface MediaShareContract {
   createdAt: string | Date;
 }
 
+export interface StationProfileContract {
+  organizationId: string;
+  firstName: string;
+  lastName: string;
+  displayName: string;
+  company: string;
+  role: string;
+  email: string;
+  phone: string;
+  city: string;
+  country: string;
+  bio: string;
+  updatedAt: string | Date;
+}
+
+export type StationProfileUpdate = Omit<StationProfileContract, 'organizationId' | 'updatedAt'>;
+
 export interface StationApi {
   redeem(request: StationRedeemRequestContract): Promise<StationRedeemResponseContract>;
   manifest(stationToken: string): Promise<EventManifestContract>;
@@ -31,6 +48,8 @@ export interface StationApi {
   control(stationToken: string): Promise<StationControlContract>;
   updateControlCommand(stationToken: string, command: StationControlCommandContract): Promise<StationControlContract>;
   updateControlStatus(stationToken: string, status: StationControlStatusContract): Promise<StationControlContract>;
+  profile(stationToken: string): Promise<StationProfileContract>;
+  updateProfile(stationToken: string, profile: StationProfileUpdate): Promise<StationProfileContract>;
   listMedia(stationToken: string): Promise<MediaAssetContract[]>;
   createMedia(stationToken: string, media: SyntheticMediaCreateContract): Promise<MediaAssetContract>;
   prepareBlobUpload(stationToken: string, mediaId: string): Promise<BlobUploadTicketContract & { alreadyUploaded?: boolean }>;
@@ -43,10 +62,7 @@ export interface StationApi {
 }
 
 class StationApiHttpError extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-  ) {
+  constructor(readonly status: number, message: string) {
     super(message);
     this.name = 'StationApiHttpError';
   }
@@ -103,18 +119,16 @@ export class HttpStationApi implements StationApi {
       this.renewalPromise = this.request<StationRedeemResponseContract>('/stations/renew', {
         method: 'POST',
         headers: { Authorization: `Bearer ${current}` },
-      })
-        .then(async (response) => {
-          this.renewedTokens.set(stationToken, response.stationToken);
-          this.renewedTokens.set(current, response.stationToken);
-          await SecureStore.setItemAsync(STATION_TOKEN_KEY, response.stationToken, {
-            keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
-          });
-          return response.stationToken;
-        })
-        .finally(() => {
-          this.renewalPromise = null;
+      }).then(async (response) => {
+        this.renewedTokens.set(stationToken, response.stationToken);
+        this.renewedTokens.set(current, response.stationToken);
+        await SecureStore.setItemAsync(STATION_TOKEN_KEY, response.stationToken, {
+          keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
         });
+        return response.stationToken;
+      }).finally(() => {
+        this.renewalPromise = null;
+      });
     }
     return this.renewalPromise;
   }
@@ -139,10 +153,7 @@ export class HttpStationApi implements StationApi {
   }
 
   redeem(request: StationRedeemRequestContract): Promise<StationRedeemResponseContract> {
-    return this.request('/stations/redeem', {
-      method: 'POST',
-      body: JSON.stringify(request),
-    });
+    return this.request('/stations/redeem', { method: 'POST', body: JSON.stringify(request) });
   }
 
   manifest(stationToken: string): Promise<EventManifestContract> {
@@ -158,17 +169,19 @@ export class HttpStationApi implements StationApi {
   }
 
   updateControlCommand(stationToken: string, command: StationControlCommandContract): Promise<StationControlContract> {
-    return this.stationRequest('/stations/control/command', stationToken, {
-      method: 'PATCH',
-      body: JSON.stringify(command),
-    });
+    return this.stationRequest('/stations/control/command', stationToken, { method: 'PATCH', body: JSON.stringify(command) });
   }
 
   updateControlStatus(stationToken: string, status: StationControlStatusContract): Promise<StationControlContract> {
-    return this.stationRequest('/stations/control/status', stationToken, {
-      method: 'PATCH',
-      body: JSON.stringify(status),
-    });
+    return this.stationRequest('/stations/control/status', stationToken, { method: 'PATCH', body: JSON.stringify(status) });
+  }
+
+  profile(stationToken: string): Promise<StationProfileContract> {
+    return this.stationRequest('/stations/profile', stationToken);
+  }
+
+  updateProfile(stationToken: string, profile: StationProfileUpdate): Promise<StationProfileContract> {
+    return this.stationRequest('/stations/profile', stationToken, { method: 'PATCH', body: JSON.stringify(profile) });
   }
 
   listMedia(stationToken: string): Promise<MediaAssetContract[]> {
@@ -176,10 +189,7 @@ export class HttpStationApi implements StationApi {
   }
 
   createMedia(stationToken: string, media: SyntheticMediaCreateContract): Promise<MediaAssetContract> {
-    return this.stationRequest('/stations/media', stationToken, {
-      method: 'POST',
-      body: JSON.stringify(media),
-    });
+    return this.stationRequest('/stations/media', stationToken, { method: 'POST', body: JSON.stringify(media) });
   }
 
   prepareBlobUpload(stationToken: string, mediaId: string): Promise<BlobUploadTicketContract & { alreadyUploaded?: boolean }> {
@@ -203,10 +213,7 @@ export class HttpStationApi implements StationApi {
   }
 
   updateUpload(stationToken: string, mediaId: string, uploadedBytes: number): Promise<UploadSessionContract> {
-    return this.stationRequest(`/stations/media/${encodeURIComponent(mediaId)}/upload`, stationToken, {
-      method: 'PATCH',
-      body: JSON.stringify({ uploadedBytes }),
-    });
+    return this.stationRequest(`/stations/media/${encodeURIComponent(mediaId)}/upload`, stationToken, { method: 'PATCH', body: JSON.stringify({ uploadedBytes }) });
   }
 
   finalizeUpload(stationToken: string, mediaId: string): Promise<FinalizeUploadResponseContract> {
