@@ -22,6 +22,11 @@ CREATE TABLE IF NOT EXISTS "MarketingSiteConfig" (
   "maintenanceMessage" TEXT,
   "paymentMethods" JSONB NOT NULL DEFAULT '["card","apple_pay","google_pay","twint"]'::jsonb,
   "faq" JSONB NOT NULL DEFAULT '[]'::jsonb,
+  "media" JSONB NOT NULL DEFAULT '{}'::jsonb,
+  "seo" JSONB NOT NULL DEFAULT '{}'::jsonb,
+  "socialLinks" JSONB NOT NULL DEFAULT '{}'::jsonb,
+  "announcement" JSONB NOT NULL DEFAULT '{}'::jsonb,
+  "contentBlocks" JSONB NOT NULL DEFAULT '[]'::jsonb,
   "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
