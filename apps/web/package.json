@@ -7,11 +7,12 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
-    "lint": "tsc --noEmit",
+    "build": "pnpm --filter @khe/contracts build && next build",
+    "lint": "pnpm --filter @khe/contracts build && tsc --noEmit",
     "test": "node -e \"console.log('web: no runtime tests yet')\""
   },
   "dependencies": {
+    "@khe/contracts": "workspace:*",
     "next": "15.5.21",
     "react": "19.1.1",
     "react-dom": "19.1.1"
