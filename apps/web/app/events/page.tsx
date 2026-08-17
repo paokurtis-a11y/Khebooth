@@ -15,6 +15,10 @@ type EventItem = {
   client?: { id: string; name: string } | null;
 };
 
+function kheEventNumber(eventId: string): string {
+  return `KHE-EVT-${eventId.replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+}
+
 export default function EventsPage() {
   const [events, setEvents] = useState<EventItem[]>([]);
   const [error, setError] = useState('');
@@ -28,19 +32,20 @@ export default function EventsPage() {
   return (
     <PortalShell>
       <div className="header">
-        <div><h1>Événements</h1><p>Préparez et activez les expériences KHE Booth.</p></div>
+        <div><h1>Événements</h1><p>Chaque événement possède un numéro d’identification KHE stable, aligné avec son client.</p></div>
         <Link className="button" href="/events/new">Nouvel événement</Link>
       </div>
       {error ? <p className="error">{error}</p> : null}
       <section className="card">
         {events.length === 0 ? <div className="empty">Aucun événement enregistré.</div> : (
           <table className="table">
-            <thead><tr><th>Nom</th><th>Client</th><th>Date</th><th>Lieu</th><th>Statut</th><th></th></tr></thead>
+            <thead><tr><th>N° KHE</th><th>Événement</th><th>Client</th><th>Date</th><th>Lieu</th><th>Statut</th><th></th></tr></thead>
             <tbody>
               {events.map((event) => (
                 <tr key={event.id}>
+                  <td><strong style={{ whiteSpace: 'nowrap' }}>{kheEventNumber(event.id)}</strong></td>
                   <td><Link className="table-link" href={`/events/${event.id}`}>{event.name}</Link></td>
-                  <td>{event.client?.name ?? '—'}</td>
+                  <td>{event.client?.name ?? 'Aucun client associé'}</td>
                   <td>{new Date(event.startsAt).toLocaleString('fr-CH')}</td>
                   <td>{event.venueName ?? '—'}</td>
                   <td><span className="status-badge">{event.status}</span></td>
