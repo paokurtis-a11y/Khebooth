@@ -6,9 +6,9 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/auth.types';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
-import { MarketingService } from '../marketing/marketing.service';
 import { CommerceService } from './commerce.service';
 import { CustomerAccessService } from './customer-access.service';
+import { PaymentAnalyticsService } from './payment-analytics.service';
 import { PromotionCheckoutService } from './promotion-checkout.service';
 import { SiteContentService } from './site-content.service';
 
@@ -18,7 +18,7 @@ export class CommerceController {
     private readonly commerce: CommerceService,
     private readonly checkoutService: PromotionCheckoutService,
     private readonly customerAccess: CustomerAccessService,
-    private readonly marketing: MarketingService,
+    private readonly paymentAnalytics: PaymentAnalyticsService,
     private readonly siteContent: SiteContentService,
   ) {}
 
@@ -39,8 +39,12 @@ export class CommerceController {
     const clientId=object?.metadata?.clientId??null;
     const planCode=object?.metadata?.planCode??null;
     if(event?.type==='checkout.session.completed'&&object?.payment_status==='paid'&&clientId){
-      const org=await this.commerce.organizationIdForClient(String(clientId));
-      if(org)await this.marketing.trackServer(org,'CHECKOUT_COMPLETED',String(clientId),planCode?String(planCode):null,Number(object?.amount_total??object?.metadata?.amountCents??0),{provider:'stripe',campaignId:object?.metadata?.campaignId??null});
+      await this.paymentAnalytics.completed(
+        String(clientId),
+        planCode?String(planCode):null,
+        Number(object?.amount_total??object?.metadata?.amountCents??0),
+        {provider:'stripe',campaignId:object?.metadata?.campaignId??null},
+      );
     }
     return result;
   }
