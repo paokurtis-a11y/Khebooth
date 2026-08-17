@@ -24,7 +24,7 @@
     "expo-file-system": "~56.0.9",
     "expo-keep-awake": "~56.0.3",
     "expo-local-authentication": "~56.0.5",
-    "expo-location": "~56.0.6",
+    "expo-location": "~56.0.22",
     "expo-network": "~56.0.5",
     "expo-print": "~56.0.4",
     "expo-secure-store": "~56.0.4",
