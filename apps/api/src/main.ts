@@ -2,25 +2,31 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 
-function resolveWebOrigin() {
+const TRUSTED_WEB_ORIGINS = new Set([
+  'https://khebooth-rdvo.vercel.app',
+  'https://khebooth.vercel.app',
+]);
+
+function resolveWebOrigins() {
   const configured = process.env.WEB_ORIGIN?.trim();
-  if (!configured) return 'https://khebooth.vercel.app';
-
-  const match = configured.match(/https?:\/\/[^\s]+/);
-  if (!match) return 'https://khebooth.vercel.app';
-
-  try {
-    return new URL(match[0]).origin;
-  } catch {
-    return 'https://khebooth.vercel.app';
+  if (configured) {
+    for (const candidate of configured.split(',')) {
+      try {
+        TRUSTED_WEB_ORIGINS.add(new URL(candidate.trim()).origin);
+      } catch {
+        // Ignore malformed configured origins and retain the known trusted defaults.
+      }
+    }
   }
+
+  return [...TRUSTED_WEB_ORIGINS];
 }
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.setGlobalPrefix('api');
   app.enableCors({
-    origin: resolveWebOrigin(),
+    origin: resolveWebOrigins(),
   });
   app.useGlobalPipes(
     new ValidationPipe({
