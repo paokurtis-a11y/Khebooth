@@ -1,7 +1,7 @@
-trigger=2026-08-17T20:03:00+02:00
-reason=khe-booth-capture-blob-sharing-gallery-apk
-merged_capture_sync_commit=c223cf3fdb4ecc65f6e2a410b23caa0917159f8b
-merged_sharing_gallery_commit=832c56e746cb9f467db6227d1b682cbe0fca3fa8
-validated_sharing_head=2da1fec7cdedf91466d98d83207c4f86e2b821f1
-validated_mobile_ci_run=32053019268
-validated_general_ci_run=32053019246
+trigger=2026-08-17T21:06:00+02:00
+reason=khe-booth-secure-guest-qr-apk
+merged_public_share_commit=bcf24364583da019d6de4b29917dff22c107e510
+validated_mobile_ci_run=32057372807
+validated_general_ci_run=32057372817
+production_web_deployment=dpl_G6NZnp984bfwyLsc6gApXQgi3LG7
+production_api_deployment=dpl_4pJSj7S51i2MCz3KndfRyfcVEM8U
