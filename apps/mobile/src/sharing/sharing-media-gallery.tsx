@@ -3,7 +3,8 @@ import { Directory, File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import type { StationApi } from '../api/station-api';
+import QRCode from 'react-native-qrcode-svg';
+import type { MediaShareContract, StationApi } from '../api/station-api';
 
 interface SharingMediaGalleryProps {
   eventName: string;
@@ -33,6 +34,7 @@ export function SharingMediaGallery({ eventName, api, stationToken }: SharingMed
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [media, setMedia] = useState<MediaAssetContract[]>([]);
+  const [shares, setShares] = useState<Record<string, MediaShareContract>>({});
   const [message, setMessage] = useState('');
   const refreshingRef = useRef(false);
 
@@ -117,6 +119,41 @@ export function SharingMediaGallery({ eventName, api, stationToken }: SharingMed
     }
   }
 
+  async function createGuestQr(item: MediaAssetContract): Promise<void> {
+    setBusyId(item.id);
+    setMessage('');
+    try {
+      const next = await api.createMediaShare(stationToken, item.id);
+      if (!next.shareUrl.startsWith('https://')) throw new Error('Le lien invité sécurisé reçu est invalide.');
+      setShares((current) => ({ ...current, [item.id]: next }));
+      setMessage('QR invité créé. Il pointe vers KHE Booth et non vers l’URL Blob temporaire.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Impossible de créer le QR invité.');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function revokeGuestQr(item: MediaAssetContract): Promise<void> {
+    const currentShare = shares[item.id];
+    if (!currentShare) return;
+    setBusyId(item.id);
+    setMessage('');
+    try {
+      await api.revokeMediaShare(stationToken, currentShare.id);
+      setShares((current) => {
+        const next = { ...current };
+        delete next[item.id];
+        return next;
+      });
+      setMessage('Lien invité révoqué. L’ancien QR ne donne plus accès au média.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Impossible de révoquer le QR invité.');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
@@ -142,6 +179,7 @@ export function SharingMediaGallery({ eventName, api, stationToken }: SharingMed
           {media.map((item, index) => {
             const busy = busyId === item.id;
             const kind = item.mimeType.startsWith('image/') ? 'PHOTO' : 'VIDÉO';
+            const guestShare = shares[item.id];
             return (
               <View key={item.id} style={styles.mediaCard}>
                 <View style={styles.mediaTopRow}>
@@ -159,7 +197,20 @@ export function SharingMediaGallery({ eventName, api, stationToken }: SharingMed
                   <Pressable disabled={Boolean(busyId)} style={[styles.primaryButton, Boolean(busyId) && styles.disabled]} onPress={() => void share(item)}>
                     <Text style={styles.primaryText}>{busy ? 'Préparation…' : 'Partager'}</Text>
                   </Pressable>
+                  <Pressable disabled={Boolean(busyId)} style={[styles.qrButton, Boolean(busyId) && styles.disabled]} onPress={() => void createGuestQr(item)}>
+                    <Text style={styles.qrButtonText}>{guestShare ? 'Nouveau QR' : 'QR invité'}</Text>
+                  </Pressable>
                 </View>
+                {guestShare ? (
+                  <View style={styles.qrCard}>
+                    <View style={styles.qrCanvas}><QRCode value={guestShare.shareUrl} size={180} /></View>
+                    <Text selectable style={styles.shareUrl}>{guestShare.shareUrl}</Text>
+                    <Text style={styles.help}>Ce QR reste stable. KHE Booth génère un accès Blob privé de courte durée seulement au moment où l’invité ouvre le lien.</Text>
+                    <Pressable disabled={Boolean(busyId)} style={styles.revokeButton} onPress={() => void revokeGuestQr(item)}>
+                      <Text style={styles.revokeText}>Révoquer ce QR</Text>
+                    </Pressable>
+                  </View>
+                ) : null}
               </View>
             );
           })}
@@ -167,8 +218,8 @@ export function SharingMediaGallery({ eventName, api, stationToken }: SharingMed
       )}
 
       <View style={styles.qrNote}>
-        <Text style={styles.qrTitle}>QR invité</Text>
-        <Text style={styles.help}>Le QR ne contientra jamais l’URL Blob temporaire. Il sera activé avec une route invité stable et révocable lors de l’étape suivante.</Text>
+        <Text style={styles.qrTitle}>QR invité sécurisé</Text>
+        <Text style={styles.help}>Le QR contient uniquement une URL KHE Booth révocable. Il ne contient jamais le token Blob ni une URL Blob temporaire.</Text>
       </View>
 
       {message ? <Text style={styles.message}>{message}</Text> : null}
@@ -201,7 +252,14 @@ const styles = StyleSheet.create({
   primaryText: { color: '#ffffff', fontSize: 10, fontWeight: '900' },
   secondaryButton: { flexGrow: 1, minWidth: 120, borderWidth: 1, borderColor: '#111111', borderRadius: 10, paddingVertical: 11, alignItems: 'center' },
   secondaryText: { fontSize: 10, fontWeight: '900' },
+  qrButton: { flexGrow: 1, minWidth: 120, borderWidth: 1, borderColor: '#16863a', borderRadius: 10, paddingVertical: 11, alignItems: 'center' },
+  qrButtonText: { color: '#16863a', fontSize: 10, fontWeight: '900' },
   disabled: { opacity: 0.45 },
+  qrCard: { alignItems: 'center', gap: 10, borderTopWidth: 1, borderTopColor: '#e4e4e4', paddingTop: 12 },
+  qrCanvas: { backgroundColor: '#ffffff', padding: 12, borderRadius: 12 },
+  shareUrl: { fontSize: 9, lineHeight: 14, textAlign: 'center', opacity: 0.75 },
+  revokeButton: { borderWidth: 1, borderColor: '#a53b3b', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9 },
+  revokeText: { color: '#a53b3b', fontSize: 10, fontWeight: '900' },
   qrNote: { borderWidth: 1, borderColor: '#d7d7d7', borderRadius: 14, padding: 12, gap: 4 },
   qrTitle: { fontSize: 12, fontWeight: '900' },
   message: { fontSize: 11, lineHeight: 16, fontWeight: '700' },
