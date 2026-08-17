@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS "MarketingAutomationConfig" (
   "targetDiscovery" BOOLEAN NOT NULL DEFAULT TRUE,
   "targetPaymentPending" BOOLEAN NOT NULL DEFAULT TRUE,
   "ownerReportsEnabled" BOOLEAN NOT NULL DEFAULT TRUE,
+  "lastEvaluatedAt" TIMESTAMP(3),
   "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CHECK ("maxDiscountPercent" >= 0 AND "maxDiscountPercent" <= 30),
   CHECK ("lowConversionThresholdPercent" >= 1 AND "lowConversionThresholdPercent" <= 100)
