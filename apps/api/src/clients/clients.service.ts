@@ -1,7 +1,17 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import type { PaymentStatus, SubscriptionPlan, SubscriptionStatus } from '@khe/contracts';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateClientDto } from './dto/create-client.dto';
 import { UpdateClientDto } from './dto/update-client.dto';
+
+type SubscriptionSnapshot = {
+  id: string;
+  subscriptionPlan: SubscriptionPlan;
+  subscriptionStatus: SubscriptionStatus;
+  paymentStatus: PaymentStatus;
+  subscriptionStartedAt: Date | null;
+  subscriptionEndsAt: Date | null;
+};
 
 @Injectable()
 export class ClientsService {
@@ -14,15 +24,68 @@ export class ClientsService {
     return { ...client, firstName, lastName };
   }
 
+  private async subscriptionFor(id: string): Promise<SubscriptionSnapshot> {
+    const rows = await this.prisma.$queryRaw<SubscriptionSnapshot[]>`
+      SELECT id,
+             "subscriptionPlan",
+             "subscriptionStatus",
+             "paymentStatus",
+             "subscriptionStartedAt",
+             "subscriptionEndsAt"
+      FROM "Client"
+      WHERE id = ${id}::uuid
+      LIMIT 1
+    `;
+    if (!rows[0]) throw new NotFoundException('Client not found');
+    return rows[0];
+  }
+
+  private resolveSubscription(
+    dto: CreateClientDto | UpdateClientDto,
+    current?: SubscriptionSnapshot,
+  ): Omit<SubscriptionSnapshot, 'id'> {
+    const subscriptionPlan = dto.subscriptionPlan ?? current?.subscriptionPlan ?? 'DISCOVERY';
+    const paymentStatus = dto.paymentStatus ?? current?.paymentStatus ?? 'UNPAID';
+    let subscriptionStatus = dto.subscriptionStatus ?? current?.subscriptionStatus ?? 'PROSPECT';
+
+    if (dto.subscriptionStatus === undefined) {
+      if (paymentStatus === 'PAID' && subscriptionPlan !== 'DISCOVERY') subscriptionStatus = 'ACTIVE';
+      else if (subscriptionPlan !== 'DISCOVERY' && paymentStatus === 'PENDING') subscriptionStatus = 'PAYMENT_PENDING';
+      else if (subscriptionPlan !== 'DISCOVERY' && subscriptionStatus === 'PROSPECT') subscriptionStatus = 'PLAN_SELECTED';
+    }
+
+    const subscriptionStartedAt = dto.subscriptionStartedAt
+      ? new Date(dto.subscriptionStartedAt)
+      : current?.subscriptionStartedAt ?? (subscriptionStatus === 'ACTIVE' ? new Date() : null);
+    const subscriptionEndsAt = dto.subscriptionEndsAt
+      ? new Date(dto.subscriptionEndsAt)
+      : current?.subscriptionEndsAt ?? null;
+
+    return { subscriptionPlan, subscriptionStatus, paymentStatus, subscriptionStartedAt, subscriptionEndsAt };
+  }
+
   async list(organizationId: string) {
     const clients = await this.prisma.client.findMany({ where: { organizationId }, orderBy: { createdAt: 'desc' } });
-    return clients.map((client) => this.present(client));
+    if (clients.length === 0) return [];
+    const subscriptions = await this.prisma.$queryRaw<SubscriptionSnapshot[]>`
+      SELECT id,
+             "subscriptionPlan",
+             "subscriptionStatus",
+             "paymentStatus",
+             "subscriptionStartedAt",
+             "subscriptionEndsAt"
+      FROM "Client"
+      WHERE "organizationId" = ${organizationId}::uuid
+    `;
+    const byId = new Map(subscriptions.map((item) => [item.id, item]));
+    return clients.map((client) => this.present({ ...client, ...byId.get(client.id) }));
   }
 
   async get(organizationId: string, id: string) {
     const client = await this.prisma.client.findFirst({ where: { id, organizationId } });
     if (!client) throw new NotFoundException('Client not found');
-    return this.present(client);
+    const subscription = await this.subscriptionFor(id);
+    return this.present({ ...client, ...subscription });
   }
 
   async create(organizationId: string, userId: string, dto: CreateClientDto) {
@@ -30,38 +93,91 @@ export class ClientsService {
     const lastName = dto.name.trim();
     const email = dto.email.trim().toLowerCase();
     if (!firstName || !lastName || !email) throw new BadRequestException('First name, last name and email are required');
-    const client = await this.prisma.client.create({
-      data: {
-        organizationId,
-        name: `${firstName} ${lastName}`,
-        email,
-        phone: dto.phone?.trim() || null,
-        companyName: dto.companyName?.trim() || null,
-        notes: dto.notes?.trim() || null,
-      },
+    const subscription = this.resolveSubscription(dto);
+
+    return this.prisma.$transaction(async (tx) => {
+      const client = await tx.client.create({
+        data: {
+          organizationId,
+          name: `${firstName} ${lastName}`,
+          email,
+          phone: dto.phone?.trim() || null,
+          companyName: dto.companyName?.trim() || null,
+          notes: dto.notes?.trim() || null,
+        },
+      });
+      await tx.$executeRaw`
+        UPDATE "Client"
+        SET "subscriptionPlan" = ${subscription.subscriptionPlan},
+            "subscriptionStatus" = ${subscription.subscriptionStatus},
+            "paymentStatus" = ${subscription.paymentStatus},
+            "subscriptionStartedAt" = ${subscription.subscriptionStartedAt},
+            "subscriptionEndsAt" = ${subscription.subscriptionEndsAt}
+        WHERE id = ${client.id}::uuid
+      `;
+      await tx.auditLog.create({
+        data: {
+          organizationId,
+          userId,
+          action: 'CLIENT_CREATED',
+          entityType: 'Client',
+          entityId: client.id,
+          metadata: {
+            subscriptionPlan: subscription.subscriptionPlan,
+            subscriptionStatus: subscription.subscriptionStatus,
+            paymentStatus: subscription.paymentStatus,
+          },
+        },
+      });
+      return this.present({ ...client, id: client.id, ...subscription });
     });
-    await this.audit(organizationId, userId, 'CLIENT_CREATED', client.id);
-    return this.present(client);
   }
 
   async update(organizationId: string, userId: string, id: string, dto: UpdateClientDto) {
     const current = await this.get(organizationId, id);
+    const currentSubscription = await this.subscriptionFor(id);
     const firstName = (dto.firstName ?? current.firstName).trim();
     const lastName = (dto.name ?? current.lastName).trim();
     const email = (dto.email ?? current.email ?? '').trim().toLowerCase();
     if (!firstName || !lastName || !email) throw new BadRequestException('First name, last name and email are required');
-    const client = await this.prisma.client.update({
-      where: { id },
-      data: {
-        name: `${firstName} ${lastName}`,
-        email,
-        ...(dto.phone !== undefined ? { phone: dto.phone.trim() || null } : {}),
-        ...(dto.companyName !== undefined ? { companyName: dto.companyName.trim() || null } : {}),
-        ...(dto.notes !== undefined ? { notes: dto.notes.trim() || null } : {}),
-      },
+    const subscription = this.resolveSubscription(dto, currentSubscription);
+
+    return this.prisma.$transaction(async (tx) => {
+      const client = await tx.client.update({
+        where: { id },
+        data: {
+          name: `${firstName} ${lastName}`,
+          email,
+          ...(dto.phone !== undefined ? { phone: dto.phone.trim() || null } : {}),
+          ...(dto.companyName !== undefined ? { companyName: dto.companyName.trim() || null } : {}),
+          ...(dto.notes !== undefined ? { notes: dto.notes.trim() || null } : {}),
+        },
+      });
+      await tx.$executeRaw`
+        UPDATE "Client"
+        SET "subscriptionPlan" = ${subscription.subscriptionPlan},
+            "subscriptionStatus" = ${subscription.subscriptionStatus},
+            "paymentStatus" = ${subscription.paymentStatus},
+            "subscriptionStartedAt" = ${subscription.subscriptionStartedAt},
+            "subscriptionEndsAt" = ${subscription.subscriptionEndsAt}
+        WHERE id = ${id}::uuid
+      `;
+      await tx.auditLog.create({
+        data: {
+          organizationId,
+          userId,
+          action: 'CLIENT_UPDATED',
+          entityType: 'Client',
+          entityId: id,
+          metadata: {
+            subscriptionPlan: subscription.subscriptionPlan,
+            subscriptionStatus: subscription.subscriptionStatus,
+            paymentStatus: subscription.paymentStatus,
+          },
+        },
+      });
+      return this.present({ ...client, ...subscription });
     });
-    await this.audit(organizationId, userId, 'CLIENT_UPDATED', id);
-    return this.present(client);
   }
 
   async remove(organizationId: string, userId: string, id: string) {
