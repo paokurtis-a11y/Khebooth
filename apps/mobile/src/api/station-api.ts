@@ -48,8 +48,6 @@ export interface StationApi {
   control(stationToken: string): Promise<StationControlContract>;
   updateControlCommand(stationToken: string, command: StationControlCommandContract): Promise<StationControlContract>;
   updateControlStatus(stationToken: string, status: StationControlStatusContract): Promise<StationControlContract>;
-  profile(stationToken: string): Promise<StationProfileContract>;
-  updateProfile(stationToken: string, profile: StationProfileUpdate): Promise<StationProfileContract>;
   listMedia(stationToken: string): Promise<MediaAssetContract[]>;
   createMedia(stationToken: string, media: SyntheticMediaCreateContract): Promise<MediaAssetContract>;
   prepareBlobUpload(stationToken: string, mediaId: string): Promise<BlobUploadTicketContract & { alreadyUploaded?: boolean }>;
