@@ -8,8 +8,10 @@ export class ClientsService {
   constructor(private readonly prisma: PrismaService) {}
 
   private present<T extends { name: string; email: string | null }>(client: T) {
-    const [firstName = '', ...lastParts] = client.name.trim().split(/\s+/);
-    return { ...client, firstName, lastName: lastParts.join(' ') || firstName };
+    const parts = client.name.trim().split(/\s+/).filter(Boolean);
+    const firstName = parts.length > 1 ? parts[0] : '';
+    const lastName = parts.length > 1 ? parts.slice(1).join(' ') : (parts[0] ?? '');
+    return { ...client, firstName, lastName };
   }
 
   async list(organizationId: string) {
