@@ -1,7 +1,7 @@
 import type { MediaAssetContract } from '@khe/contracts';
 import { Directory, File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { StationApi } from '../api/station-api';
 
@@ -34,10 +34,12 @@ export function SharingMediaGallery({ eventName, api, stationToken }: SharingMed
   const [busyId, setBusyId] = useState<string | null>(null);
   const [media, setMedia] = useState<MediaAssetContract[]>([]);
   const [message, setMessage] = useState('');
+  const refreshingRef = useRef(false);
 
   async function refresh(): Promise<void> {
+    if (refreshingRef.current) return;
+    refreshingRef.current = true;
     setLoading(true);
-    setMessage('');
     try {
       const items = await api.listMedia(stationToken);
       const synced = items
@@ -51,6 +53,7 @@ export function SharingMediaGallery({ eventName, api, stationToken }: SharingMed
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Impossible de charger les médias synchronisés.');
     } finally {
+      refreshingRef.current = false;
       setLoading(false);
     }
   }
@@ -75,9 +78,10 @@ export function SharingMediaGallery({ eventName, api, stationToken }: SharingMed
     const destination = new File(directory, `${item.id}.${extensionFor(item)}`);
     const downloaded = await File.downloadFileAsync(ticket.downloadUrl, destination, { idempotent: true });
     if (!downloaded.exists) throw new Error('Le média n’a pas été enregistré sur la tablette.');
-    if (downloaded.size !== item.byteSize) {
+    const actualSize = downloaded.size;
+    if (actualSize !== item.byteSize) {
       downloaded.delete();
-      throw new Error(`Le média téléchargé est incomplet : ${downloaded.size} octets reçus sur ${item.byteSize}.`);
+      throw new Error(`Le média téléchargé est incomplet : ${actualSize} octets reçus sur ${item.byteSize}.`);
     }
     return downloaded;
   }
