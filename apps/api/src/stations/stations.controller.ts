@@ -4,11 +4,13 @@ import { CurrentStation } from './current-station.decorator';
 import { CreateMediaDto } from './dto/create-media.dto';
 import { RedeemStationDto } from './dto/redeem-station.dto';
 import { UpdateStationCommandDto } from './dto/update-station-command.dto';
+import { UpdateStationProfileDto } from './dto/update-station-profile.dto';
 import { UpdateStationStatusDto } from './dto/update-station-status.dto';
 import { UpdateUploadProgressDto } from './dto/update-upload-progress.dto';
 import { MediaSharingService } from './media-sharing.service';
 import { MediaStorageService } from './media-storage.service';
 import { StationAuthGuard } from './station-auth.guard';
+import { StationProfileService } from './station-profile.service';
 import { StationRenewalService } from './station-renewal.service';
 import { StationsService } from './stations.service';
 
@@ -19,6 +21,7 @@ export class StationsController {
     private readonly mediaStorage: MediaStorageService,
     private readonly mediaSharing: MediaSharingService,
     private readonly stationRenewal: StationRenewalService,
+    private readonly stationProfile: StationProfileService,
   ) {}
 
   @Post('redeem')
@@ -29,6 +32,21 @@ export class StationsController {
   @Post('renew')
   renew(@Headers('authorization') authorization?: string) {
     return this.stationRenewal.renew(authorization);
+  }
+
+  @UseGuards(StationAuthGuard)
+  @Get('profile')
+  profile(@CurrentStation() station: AuthenticatedStation) {
+    return this.stationProfile.get(station);
+  }
+
+  @UseGuards(StationAuthGuard)
+  @Patch('profile')
+  updateProfile(
+    @CurrentStation() station: AuthenticatedStation,
+    @Body() dto: UpdateStationProfileDto,
+  ) {
+    return this.stationProfile.update(station, dto);
   }
 
   @UseGuards(StationAuthGuard)
