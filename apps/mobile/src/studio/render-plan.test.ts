@@ -16,9 +16,9 @@ const basePlan: CreativePlan = {
   audioMode: 'MUSIC_ONLY',
   musicRotationEvery: 3,
   music: [
-    { id: 'a', name: 'A.mp3', uri: 'file:///a.mp3', mimeType: 'audio/mpeg' },
-    { id: 'b', name: 'B.wav', uri: 'file:///b.wav', mimeType: 'audio/wav' },
-    { id: 'c', name: 'C.mp4', uri: 'file:///c.mp4', mimeType: 'audio/mp4' },
+    { id: 'a', name: 'A.mp3', uri: 'file:///a.mp3', mimeType: 'audio/mpeg', trimMode: 'SEGMENT', startSeconds: 12, endSeconds: 24, volume: 75 },
+    { id: 'b', name: 'B.wav', uri: 'file:///b.wav', mimeType: 'audio/wav', trimMode: 'FULL', startSeconds: 0, endSeconds: null, volume: 100 },
+    { id: 'c', name: 'C.mp4', uri: 'file:///c.mp4', mimeType: 'audio/mp4', trimMode: 'FULL', startSeconds: 0, endSeconds: null, volume: 50 },
   ],
 };
 
@@ -48,5 +48,8 @@ const summary = renderSummary(job);
 assert.match(summary, /Cadre GOLD/);
 assert.match(summary, /Texte/);
 assert.match(summary, /Musique: A\.mp3/);
+assert.equal(job.selectedMusic?.startSeconds, 12);
+assert.equal(job.selectedMusic?.endSeconds, 24);
+assert.equal(job.selectedMusic?.volume, 75);
 
 console.log('creative render plan tests: ok');

@@ -13,6 +13,9 @@ import type {
   SyntheticMediaCreateContract,
   UploadSessionContract,
 } from '@khe/contracts';
+import * as SecureStore from 'expo-secure-store';
+
+const STATION_TOKEN_KEY = 'khe.station.token.v1';
 
 export interface MediaShareContract {
   id: string;
@@ -20,6 +23,23 @@ export interface MediaShareContract {
   shareUrl: string;
   createdAt: string | Date;
 }
+
+export interface StationProfileContract {
+  organizationId: string;
+  firstName: string;
+  lastName: string;
+  displayName: string;
+  company: string;
+  role: string;
+  email: string;
+  phone: string;
+  city: string;
+  country: string;
+  bio: string;
+  updatedAt: string | Date;
+}
+
+export type StationProfileUpdate = Omit<StationProfileContract, 'organizationId' | 'updatedAt'>;
 
 export interface StationApi {
   redeem(request: StationRedeemRequestContract): Promise<StationRedeemResponseContract>;
@@ -39,11 +59,35 @@ export interface StationApi {
   finalizeUpload(stationToken: string, mediaId: string): Promise<FinalizeUploadResponseContract>;
 }
 
+class StationApiHttpError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message);
+    this.name = 'StationApiHttpError';
+  }
+}
+
 export class HttpStationApi implements StationApi {
+  private readonly renewedTokens = new Map<string, string>();
+  private renewalPromise: Promise<string> | null = null;
+
   constructor(private readonly baseUrl: string) {}
 
+  private url(path: string): string {
+    return `${this.baseUrl.replace(/\/$/, '')}${path}`;
+  }
+
+  private resolvedToken(stationToken: string): string {
+    let current = stationToken;
+    const visited = new Set<string>();
+    while (this.renewedTokens.has(current) && !visited.has(current)) {
+      visited.add(current);
+      current = this.renewedTokens.get(current) ?? current;
+    }
+    return current;
+  }
+
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
-    const response = await fetch(`${this.baseUrl.replace(/\/$/, '')}${path}`, {
+    const response = await fetch(this.url(path), {
       ...init,
       headers: {
         Accept: 'application/json',
@@ -61,115 +105,116 @@ export class HttpStationApi implements StationApi {
       } catch {
         // Keep the status-based message when the server body is not JSON.
       }
-      throw new Error(message);
+      throw new StationApiHttpError(response.status, message);
     }
 
     return (await response.json()) as T;
   }
 
-  private stationHeaders(stationToken: string): HeadersInit {
-    return { Authorization: `Bearer ${stationToken}` };
+  private async renewToken(stationToken: string): Promise<string> {
+    const current = this.resolvedToken(stationToken);
+    if (!this.renewalPromise) {
+      this.renewalPromise = this.request<StationRedeemResponseContract>('/stations/renew', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${current}` },
+      }).then(async (response) => {
+        this.renewedTokens.set(stationToken, response.stationToken);
+        this.renewedTokens.set(current, response.stationToken);
+        await SecureStore.setItemAsync(STATION_TOKEN_KEY, response.stationToken, {
+          keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+        });
+        return response.stationToken;
+      }).finally(() => {
+        this.renewalPromise = null;
+      });
+    }
+    return this.renewalPromise;
+  }
+
+  private async stationRequest<T>(path: string, stationToken: string, init?: RequestInit): Promise<T> {
+    const execute = (token: string) => this.request<T>(path, {
+      ...init,
+      headers: {
+        ...(init?.headers ?? {}),
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const current = this.resolvedToken(stationToken);
+    try {
+      return await execute(current);
+    } catch (error) {
+      if (!(error instanceof StationApiHttpError) || error.status !== 401) throw error;
+      const renewed = await this.renewToken(current);
+      return execute(renewed);
+    }
   }
 
   redeem(request: StationRedeemRequestContract): Promise<StationRedeemResponseContract> {
-    return this.request('/stations/redeem', {
-      method: 'POST',
-      body: JSON.stringify(request),
-    });
+    return this.request('/stations/redeem', { method: 'POST', body: JSON.stringify(request) });
   }
 
   manifest(stationToken: string): Promise<EventManifestContract> {
-    return this.request('/stations/manifest', { headers: this.stationHeaders(stationToken) });
+    return this.stationRequest('/stations/manifest', stationToken);
   }
 
   liveSession(stationToken: string): Promise<StationLiveSessionContract> {
-    return this.request('/stations/live-session', { headers: this.stationHeaders(stationToken) });
+    return this.stationRequest('/stations/live-session', stationToken);
   }
 
   control(stationToken: string): Promise<StationControlContract> {
-    return this.request('/stations/control', { headers: this.stationHeaders(stationToken) });
+    return this.stationRequest('/stations/control', stationToken);
   }
 
-  updateControlCommand(
-    stationToken: string,
-    command: StationControlCommandContract,
-  ): Promise<StationControlContract> {
-    return this.request('/stations/control/command', {
-      method: 'PATCH',
-      headers: this.stationHeaders(stationToken),
-      body: JSON.stringify(command),
-    });
+  updateControlCommand(stationToken: string, command: StationControlCommandContract): Promise<StationControlContract> {
+    return this.stationRequest('/stations/control/command', stationToken, { method: 'PATCH', body: JSON.stringify(command) });
   }
 
-  updateControlStatus(
-    stationToken: string,
-    status: StationControlStatusContract,
-  ): Promise<StationControlContract> {
-    return this.request('/stations/control/status', {
-      method: 'PATCH',
-      headers: this.stationHeaders(stationToken),
-      body: JSON.stringify(status),
-    });
+  updateControlStatus(stationToken: string, status: StationControlStatusContract): Promise<StationControlContract> {
+    return this.stationRequest('/stations/control/status', stationToken, { method: 'PATCH', body: JSON.stringify(status) });
+  }
+
+  profile(stationToken: string): Promise<StationProfileContract> {
+    return this.stationRequest('/stations/profile', stationToken);
+  }
+
+  updateProfile(stationToken: string, profile: StationProfileUpdate): Promise<StationProfileContract> {
+    return this.stationRequest('/stations/profile', stationToken, { method: 'PATCH', body: JSON.stringify(profile) });
   }
 
   listMedia(stationToken: string): Promise<MediaAssetContract[]> {
-    return this.request('/stations/media', { headers: this.stationHeaders(stationToken) });
+    return this.stationRequest('/stations/media', stationToken);
   }
 
   createMedia(stationToken: string, media: SyntheticMediaCreateContract): Promise<MediaAssetContract> {
-    return this.request('/stations/media', {
-      method: 'POST',
-      headers: this.stationHeaders(stationToken),
-      body: JSON.stringify(media),
-    });
+    return this.stationRequest('/stations/media', stationToken, { method: 'POST', body: JSON.stringify(media) });
   }
 
   prepareBlobUpload(stationToken: string, mediaId: string): Promise<BlobUploadTicketContract & { alreadyUploaded?: boolean }> {
-    return this.request(`/stations/media/${encodeURIComponent(mediaId)}/blob-upload`, {
-      method: 'POST',
-      headers: this.stationHeaders(stationToken),
-    });
+    return this.stationRequest(`/stations/media/${encodeURIComponent(mediaId)}/blob-upload`, stationToken, { method: 'POST' });
   }
 
   mediaDownload(stationToken: string, mediaId: string): Promise<MediaDownloadTicketContract> {
-    return this.request(`/stations/media/${encodeURIComponent(mediaId)}/download`, {
-      headers: this.stationHeaders(stationToken),
-    });
+    return this.stationRequest(`/stations/media/${encodeURIComponent(mediaId)}/download`, stationToken);
   }
 
   createMediaShare(stationToken: string, mediaId: string): Promise<MediaShareContract> {
-    return this.request(`/stations/media/${encodeURIComponent(mediaId)}/share`, {
-      method: 'POST',
-      headers: this.stationHeaders(stationToken),
-    });
+    return this.stationRequest(`/stations/media/${encodeURIComponent(mediaId)}/share`, stationToken, { method: 'POST' });
   }
 
   revokeMediaShare(stationToken: string, shareId: string): Promise<{ id: string; revoked: boolean }> {
-    return this.request(`/stations/shares/${encodeURIComponent(shareId)}/revoke`, {
-      method: 'POST',
-      headers: this.stationHeaders(stationToken),
-    });
+    return this.stationRequest(`/stations/shares/${encodeURIComponent(shareId)}/revoke`, stationToken, { method: 'POST' });
   }
 
   initializeUpload(stationToken: string, mediaId: string): Promise<UploadSessionContract> {
-    return this.request(`/stations/media/${encodeURIComponent(mediaId)}/upload`, {
-      method: 'POST',
-      headers: this.stationHeaders(stationToken),
-    });
+    return this.stationRequest(`/stations/media/${encodeURIComponent(mediaId)}/upload`, stationToken, { method: 'POST' });
   }
 
   updateUpload(stationToken: string, mediaId: string, uploadedBytes: number): Promise<UploadSessionContract> {
-    return this.request(`/stations/media/${encodeURIComponent(mediaId)}/upload`, {
-      method: 'PATCH',
-      headers: this.stationHeaders(stationToken),
-      body: JSON.stringify({ uploadedBytes }),
-    });
+    return this.stationRequest(`/stations/media/${encodeURIComponent(mediaId)}/upload`, stationToken, { method: 'PATCH', body: JSON.stringify({ uploadedBytes }) });
   }
 
   finalizeUpload(stationToken: string, mediaId: string): Promise<FinalizeUploadResponseContract> {
-    return this.request(`/stations/media/${encodeURIComponent(mediaId)}/finalize`, {
-      method: 'POST',
-      headers: this.stationHeaders(stationToken),
-    });
+    return this.stationRequest(`/stations/media/${encodeURIComponent(mediaId)}/finalize`, stationToken, { method: 'POST' });
   }
 }
