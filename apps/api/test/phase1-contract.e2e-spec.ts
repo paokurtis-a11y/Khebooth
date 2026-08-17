@@ -96,13 +96,13 @@ suite('Phase 1 API contract (PostgreSQL integration)', () => {
     const operatorCreated = await request(app.getHttpServer())
       .post('/api/clients')
       .set(auth(operatorToken))
-      .send({ name: 'Operator client' })
+      .send({ firstName: 'Operator', name: 'Client', email: `operator-client-${suffix}@example.com` })
       .expect(201);
 
     await request(app.getHttpServer())
       .patch(`/api/clients/${operatorCreated.body.id}`)
       .set(auth(operatorToken))
-      .send({ name: 'Operator client updated' })
+      .send({ name: 'Client updated' })
       .expect(200);
     await request(app.getHttpServer())
       .delete(`/api/clients/${operatorCreated.body.id}`)
@@ -116,7 +116,7 @@ suite('Phase 1 API contract (PostgreSQL integration)', () => {
     const ownerCreated = await request(app.getHttpServer())
       .post('/api/clients')
       .set(auth(ownerToken))
-      .send({ name: 'Owner delete client' })
+      .send({ firstName: 'Owner', name: 'Delete client', email: `owner-delete-${suffix}@example.com` })
       .expect(201);
     await request(app.getHttpServer())
       .delete(`/api/clients/${ownerCreated.body.id}`)
@@ -128,7 +128,7 @@ suite('Phase 1 API contract (PostgreSQL integration)', () => {
     const clientB = await request(app.getHttpServer())
       .post('/api/clients')
       .set(auth(ownerBToken))
-      .send({ name: 'Private client B' })
+      .send({ firstName: 'Private', name: 'Client B', email: `private-client-b-${suffix}@example.com` })
       .expect(201);
     const presetB = await request(app.getHttpServer())
       .post('/api/presets')
@@ -162,7 +162,7 @@ suite('Phase 1 API contract (PostgreSQL integration)', () => {
     const client = await request(app.getHttpServer())
       .post('/api/clients')
       .set(auth(operatorToken))
-      .send({ name: 'Phase 1 client', companyName: 'KHE test' })
+      .send({ firstName: 'Phase', name: '1 client', email: `phase1-client-${suffix}@example.com`, companyName: 'KHE test' })
       .expect(201);
     await request(app.getHttpServer())
       .patch(`/api/clients/${client.body.id}`)
