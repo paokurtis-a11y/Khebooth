@@ -153,7 +153,7 @@ export default function HomePage() {
             <p>{plan.tagline}</p>
             <div className="pricing-price">{plan.priceMonthlyChf === null ? <><strong>Sur mesure</strong></> : <><span>CHF</span><strong>{plan.priceMonthlyChf}</strong><small>/mois</small></>}</div>
             <ul>{plan.features.map((feature) => <li key={feature}>✓ {feature}</li>)}</ul>
-            <a className={plan.highlighted ? 'marketing-cta pricing-button' : 'marketing-ghost pricing-button'} href="mailto:contact@khebooth.ch?subject=KHE%20Booth%20-%20Abonnement">{plan.actionLabel}</a>
+            <a className={plan.highlighted ? 'marketing-cta pricing-button' : 'marketing-ghost pricing-button'} href="#contact">{plan.actionLabel}</a>
           </article>)}
         </div>
         <p className="pricing-note">Les prix peuvent être ajustés dans le catalogue central avant commercialisation définitive. Les données privées des clients ne sont jamais publiées sur cette page.</p>
@@ -179,9 +179,9 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="marketing-final-cta">
-        <div><div className="marketing-kicker"><span /> PRÊT POUR LE PROCHAIN ÉVÉNEMENT ?</div><h2>Faites de votre photobooth une expérience de marque.</h2><p>CAPTURE, SHARING, Studio créatif, cloud et QR invité réunis dans KHE Booth.</p></div>
-        <div className="final-actions"><a className="marketing-cta" href="#tarifs">Choisir mon offre</a><Link className="marketing-ghost" href="/login">Accéder à KHE Booth</Link></div>
+      <section id="contact" className="marketing-final-cta">
+        <div><div className="marketing-kicker"><span /> PRÊT POUR LE PROCHAIN ÉVÉNEMENT ?</div><h2>Faites de votre photobooth une expérience de marque.</h2><p>CAPTURE, SHARING, Studio créatif, cloud et QR invité réunis dans KHE Booth. L’espace commercial sera relié ici dès que le canal de contact et le paiement officiels seront configurés.</p></div>
+        <div className="final-actions"><a className="marketing-cta" href="#tarifs">Comparer les offres</a><Link className="marketing-ghost" href="/login">Accéder à KHE Booth</Link></div>
       </section>
 
       <footer className="marketing-footer">
