@@ -1,4 +1,4 @@
-export * from './subscriptions';
+export * from './subscriptions.js';
 
 export const USER_ROLES = ['OWNER', 'ADMIN', 'OPERATOR', 'SHARE_HOST'] as const;
 export type UserRole = (typeof USER_ROLES)[number];
