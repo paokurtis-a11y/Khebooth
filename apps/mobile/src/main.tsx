@@ -18,6 +18,7 @@ import { SettingsScreen } from './settings/app-settings';
 import { RemoteControlPanel } from './sharing/remote-control-panel';
 import { StationBootstrapService } from './station/station-bootstrap';
 import { CreativeStudio } from './studio/creative-studio';
+import { useCaptureSync } from './sync/capture-sync-runner';
 
 const EVENT_KEEP_AWAKE_TAG = 'khe-booth-event';
 
@@ -66,6 +67,8 @@ function App() {
   const [confirmLockPassword, setConfirmLockPassword] = useState('');
   const [showLockPassword, setShowLockPassword] = useState(false);
   const [securityOptionsHidden, setSecurityOptionsHidden] = useState(false);
+
+  useCaptureSync(api, store, vault, station?.mode === 'CAPTURE' && Boolean(stationToken));
 
   useEffect(() => {
     let cancelled = false;
