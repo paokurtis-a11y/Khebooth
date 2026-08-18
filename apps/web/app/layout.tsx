@@ -4,6 +4,7 @@ import { WebStartupIntro } from '@/components/web-startup-intro';
 import './globals.css';
 import './responsive-fixes.css';
 import './site-editor.css';
+import './portal-polish.css';
 
 export const metadata: Metadata = {
   title: {
