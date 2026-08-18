@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { WebStartupIntro } from '@/components/web-startup-intro';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -14,7 +15,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="fr">
-      <body>{children}</body>
+      <body><WebStartupIntro />{children}</body>
     </html>
   );
 }
