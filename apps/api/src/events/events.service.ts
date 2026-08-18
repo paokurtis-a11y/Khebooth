@@ -1,14 +1,18 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomInt } from 'node:crypto';
 import * as argon2 from 'argon2';
 import { EventStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { EntitlementsService } from '../subscriptions/entitlements.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 
 @Injectable()
 export class EventsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly entitlements: EntitlementsService,
+  ) {}
 
   list(organizationId: string) {
     return this.prisma.event.findMany({
@@ -77,7 +81,24 @@ export class EventsService {
   }
 
   async activate(organizationId: string, userId: string, id: string) {
-    await this.get(organizationId, id);
+    const event = await this.get(organizationId, id);
+    const access = await this.entitlements.forEvent(organizationId, id);
+    if (access.clientId && access.maxActiveEvents !== null && event.status !== EventStatus.ACTIVE) {
+      const activeCount = await this.prisma.event.count({
+        where: {
+          organizationId,
+          clientId: access.clientId,
+          status: EventStatus.ACTIVE,
+          id: { not: id },
+        },
+      });
+      if (activeCount >= access.maxActiveEvents) {
+        throw new ForbiddenException(
+          `Le forfait ${access.plan} autorise au maximum ${access.maxActiveEvents} événement(s) actif(s). Passez au forfait supérieur pour en activer davantage.`,
+        );
+      }
+    }
+
     const rawCode = `KHE-${randomInt(100000, 1000000)}`;
     const codeHash = await argon2.hash(rawCode);
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);

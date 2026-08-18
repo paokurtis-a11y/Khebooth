@@ -52,9 +52,26 @@ suite('Phase 2 station and synchronization foundation', () => {
       },
     });
 
+    // Cloud/SHARING are paid entitlements. This E2E scenario intentionally models
+    // a real Starter subscriber so the synchronization path is exercised without
+    // weakening the Discovery restrictions in production code.
+    const subscribedClient = await prisma.client.create({
+      data: {
+        organizationId: organizationAId,
+        name: 'Phase 2 Starter client',
+        email: `phase2-client-${suffix}@example.com`,
+      },
+    });
+    await prisma.$executeRaw`
+      UPDATE "Client"
+      SET "subscriptionPlan" = 'STARTER', "subscriptionStatus" = 'ACTIVE', "paymentStatus" = 'PAID'
+      WHERE id = ${subscribedClient.id}::uuid
+    `;
+
     const eventA = await prisma.event.create({
       data: {
         organizationId: organizationAId,
+        clientId: subscribedClient.id,
         name: 'Phase 2 event A',
         startsAt: new Date('2026-08-12T18:00:00.000Z'),
         status: EventStatus.READY,
@@ -94,6 +111,7 @@ suite('Phase 2 station and synchronization foundation', () => {
       await prisma.eventActivation.deleteMany({ where: { organizationId: { in: organizationIds } } });
       await prisma.auditLog.deleteMany({ where: { organizationId: { in: organizationIds } } });
       await prisma.event.deleteMany({ where: { organizationId: { in: organizationIds } } });
+      await prisma.client.deleteMany({ where: { organizationId: { in: organizationIds } } });
       await prisma.user.deleteMany({ where: { organizationId: { in: organizationIds } } });
       await prisma.organization.deleteMany({ where: { id: { in: organizationIds } } });
     }

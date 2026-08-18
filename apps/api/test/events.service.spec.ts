@@ -2,6 +2,7 @@ import { EventStatus } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { EventsService } from '../src/events/events.service';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { EntitlementsService } from '../src/subscriptions/entitlements.service';
 
 jest.mock('argon2', () => ({ hash: jest.fn() }));
 
@@ -43,6 +44,7 @@ describe('EventsService activation and manifest', () => {
     event: {
       findFirst: jest.fn(),
       update: jest.fn(),
+      count: jest.fn(),
     },
     eventActivation: {
       updateMany: jest.fn(),
@@ -53,12 +55,25 @@ describe('EventsService activation and manifest', () => {
     $transaction: jest.fn(),
   } as unknown as PrismaService;
 
-  const service = new EventsService(prisma);
+  const entitlements = {
+    forEvent: jest.fn().mockResolvedValue({
+      clientId: null,
+      plan: 'ENTERPRISE',
+      maxActiveEvents: null,
+    }),
+  } as unknown as EntitlementsService;
+
+  const service = new EventsService(prisma, entitlements);
   const hashMock = argon2.hash as jest.MockedFunction<typeof argon2.hash>;
 
   beforeEach(() => {
     jest.clearAllMocks();
     jest.spyOn(prisma.event, 'findFirst').mockResolvedValue(eventRecord);
+    jest.spyOn(entitlements, 'forEvent').mockResolvedValue({
+      clientId: null,
+      plan: 'ENTERPRISE',
+      maxActiveEvents: null,
+    } as never);
   });
 
   it('stores only the activation code hash and revokes previous active codes', async () => {
