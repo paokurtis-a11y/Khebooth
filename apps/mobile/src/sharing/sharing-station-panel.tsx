@@ -2,15 +2,17 @@ import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { StationApi } from '../api/station-api';
 import { RemoteControlPanel } from './remote-control-panel';
+import { SharingEventManager } from './sharing-event-manager';
 import { SharingMediaGallery } from './sharing-media-gallery';
 
 interface SharingStationPanelProps {
   eventName: string;
   api: StationApi;
   stationToken: string;
+  onClientEventCreated?: (eventId:string,eventName:string)=>void;
 }
 
-export function SharingStationPanel({ eventName, api, stationToken }: SharingStationPanelProps) {
+export function SharingStationPanel({ eventName, api, stationToken, onClientEventCreated }: SharingStationPanelProps) {
   const [ready, setReady] = useState(false);
   const [checking, setChecking] = useState(true);
   const [error, setError] = useState('');
@@ -22,7 +24,7 @@ export function SharingStationPanel({ eventName, api, stationToken }: SharingSta
     setChecking(true);
     setError('');
     try {
-      await Promise.all([api.control(stationToken), api.listMedia(stationToken)]);
+      await Promise.all([api.control(stationToken), api.listMedia(stationToken), api.clientWorkspace(stationToken)]);
       setReady(true);
     } catch (cause) {
       setReady(false);
@@ -41,7 +43,7 @@ export function SharingStationPanel({ eventName, api, stationToken }: SharingSta
         <View style={styles.statusHeader}><View style={styles.dot} /><Text style={styles.eyebrow}>RÉGIE SHARING</Text></View>
         <Text style={styles.title}>{checking ? 'Connexion à KHE Booth…' : 'Connexion interrompue'}</Text>
         {checking ? <ActivityIndicator color="#d2ad4f" size="large" /> : null}
-        <Text style={styles.help}>{checking ? 'Vérification de la session, de CAPTURE et de la galerie Cloud.' : error}</Text>
+        <Text style={styles.help}>{checking ? 'Vérification de la session, de CAPTURE, des événements client et de la galerie Cloud.' : error}</Text>
         {!checking ? <Pressable style={styles.retry} onPress={() => void initialize()}><Text style={styles.retryText}>RÉESSAYER LA CONNEXION</Text></Pressable> : null}
       </View>
     );
@@ -49,6 +51,7 @@ export function SharingStationPanel({ eventName, api, stationToken }: SharingSta
 
   return (
     <View style={styles.readyShell}>
+      <SharingEventManager api={api} stationToken={stationToken} onCreated={(eventId,eventTitle)=>onClientEventCreated?.(eventId,eventTitle)} />
       <RemoteControlPanel eventName={eventName} api={api} stationToken={stationToken} />
       <SharingMediaGallery eventName={eventName} api={api} stationToken={stationToken} />
     </View>
