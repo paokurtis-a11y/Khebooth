@@ -3,12 +3,14 @@ import { CommerceService } from '../commerce/commerce.service';
 import { EntitlementsService } from '../subscriptions/entitlements.service';
 import type { AuthenticatedStation } from './station-auth.types';
 import { CurrentStation } from './current-station.decorator';
+import { CreateClientEventDto } from './dto/create-client-event.dto';
 import { CreateMediaDto } from './dto/create-media.dto';
 import { RedeemStationDto } from './dto/redeem-station.dto';
 import { UpdateStationCommandDto } from './dto/update-station-command.dto';
 import { UpdateStationProfileDto } from './dto/update-station-profile.dto';
 import { UpdateStationStatusDto } from './dto/update-station-status.dto';
 import { UpdateUploadProgressDto } from './dto/update-upload-progress.dto';
+import { ClientEventWorkspaceService } from './client-event-workspace.service';
 import { MediaSharingService } from './media-sharing.service';
 import { MediaStorageService } from './media-storage.service';
 import { StationAuthGuard } from './station-auth.guard';
@@ -26,6 +28,7 @@ export class StationsController {
     private readonly stationProfile: StationProfileService,
     private readonly commerce: CommerceService,
     private readonly entitlements: EntitlementsService,
+    private readonly clientEvents: ClientEventWorkspaceService,
   ) {}
 
   @Post('redeem') redeem(@Body() dto: RedeemStationDto) { return this.stations.redeem(dto); }
@@ -42,6 +45,18 @@ export class StationsController {
 
   @UseGuards(StationAuthGuard)
   @Patch('notification-preferences') updateNotificationPreferences(@CurrentStation() station:AuthenticatedStation,@Body() body:Record<string,unknown>){ return this.stationProfile.updateNotificationPreferences(station,body); }
+
+  @UseGuards(StationAuthGuard)
+  @Get('client-workspace') clientWorkspace(@CurrentStation() station:AuthenticatedStation){ return this.clientEvents.workspace(station); }
+
+  @UseGuards(StationAuthGuard)
+  @Post('client-events') createClientEvent(@CurrentStation() station:AuthenticatedStation,@Body() dto:CreateClientEventDto){ return this.clientEvents.createEvent(station,dto); }
+
+  @UseGuards(StationAuthGuard)
+  @Post('client-events/:id/design-ready') markClientEventDesignReady(@CurrentStation() station:AuthenticatedStation,@Param('id',new ParseUUIDPipe()) id:string,@Body() body:Record<string,unknown>){ return this.clientEvents.markDesignReady(station,id,body); }
+
+  @UseGuards(StationAuthGuard)
+  @Post('client-events/:id/switch') switchClientEvent(@CurrentStation() station:AuthenticatedStation,@Param('id',new ParseUUIDPipe()) id:string){ return this.clientEvents.switchEvent(station,id); }
 
   @UseGuards(StationAuthGuard)
   @Get('client-experience') clientExperience(@CurrentStation() station: AuthenticatedStation) { return this.commerce.stationClientExperience(station); }
