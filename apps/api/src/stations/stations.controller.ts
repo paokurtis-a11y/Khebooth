@@ -11,9 +11,12 @@ import { UpdateStationProfileDto } from './dto/update-station-profile.dto';
 import { UpdateStationStatusDto } from './dto/update-station-status.dto';
 import { UpdateUploadProgressDto } from './dto/update-upload-progress.dto';
 import { ClientEventWorkspaceService } from './client-event-workspace.service';
+import { DesignStorageService } from './design-storage.service';
 import { MediaSharingService } from './media-sharing.service';
 import { MediaStorageService } from './media-storage.service';
+import { ProfileStorageService } from './profile-storage.service';
 import { StationAuthGuard } from './station-auth.guard';
+import { StationConnectionService } from './station-connection.service';
 import { StationProfileService } from './station-profile.service';
 import { StationRenewalService } from './station-renewal.service';
 import { StationsService } from './stations.service';
@@ -24,8 +27,11 @@ export class StationsController {
     private readonly stations: StationsService,
     private readonly mediaStorage: MediaStorageService,
     private readonly mediaSharing: MediaSharingService,
+    private readonly designStorage: DesignStorageService,
+    private readonly profileStorage: ProfileStorageService,
     private readonly stationRenewal: StationRenewalService,
     private readonly stationProfile: StationProfileService,
+    private readonly stationConnection: StationConnectionService,
     private readonly commerce: CommerceService,
     private readonly entitlements: EntitlementsService,
     private readonly clientEvents: ClientEventWorkspaceService,
@@ -39,6 +45,15 @@ export class StationsController {
 
   @UseGuards(StationAuthGuard)
   @Patch('profile') updateProfile(@CurrentStation() station: AuthenticatedStation, @Body() dto: UpdateStationProfileDto) { return this.stationProfile.update(station, dto); }
+
+  @UseGuards(StationAuthGuard)
+  @Post('profile/avatar-upload') prepareProfileAvatar(@CurrentStation() station:AuthenticatedStation,@Body() body:Record<string,unknown>){ return this.profileStorage.prepareAvatarUpload(station,body); }
+
+  @UseGuards(StationAuthGuard)
+  @Post('profile/avatar-confirm') confirmProfileAvatar(@CurrentStation() station:AuthenticatedStation,@Body() body:Record<string,unknown>){ return this.profileStorage.confirmAvatar(station,body); }
+
+  @UseGuards(StationAuthGuard)
+  @Get('profile/avatar-download') profileAvatarDownload(@CurrentStation() station:AuthenticatedStation){ return this.profileStorage.avatarDownload(station); }
 
   @UseGuards(StationAuthGuard)
   @Get('notification-preferences') notificationPreferences(@CurrentStation() station:AuthenticatedStation){ return this.stationProfile.notificationPreferences(station); }
@@ -56,6 +71,17 @@ export class StationsController {
   @Post('client-events/:id/design-ready') markClientEventDesignReady(@CurrentStation() station:AuthenticatedStation,@Param('id',new ParseUUIDPipe()) id:string,@Body() body:Record<string,unknown>){ return this.clientEvents.markDesignReady(station,id,body); }
 
   @UseGuards(StationAuthGuard)
+  @Post('client-events/:id/design-background-upload') async prepareDesignBackground(@CurrentStation() station:AuthenticatedStation,@Param('id',new ParseUUIDPipe()) id:string,@Body() body:Record<string,unknown>){
+    await this.entitlements.requireStation(station,'STUDIO_BASIC');
+    return this.designStorage.prepareBackgroundUpload(station,id,body);
+  }
+
+  @UseGuards(StationAuthGuard)
+  @Post('design-background-download') designBackgroundDownload(@CurrentStation() station:AuthenticatedStation,@Body() body:Record<string,unknown>){
+    return this.designStorage.backgroundDownload(station,body);
+  }
+
+  @UseGuards(StationAuthGuard)
   @Post('client-events/:id/switch') switchClientEvent(@CurrentStation() station:AuthenticatedStation,@Param('id',new ParseUUIDPipe()) id:string){ return this.clientEvents.switchEvent(station,id); }
 
   @UseGuards(StationAuthGuard)
@@ -68,13 +94,42 @@ export class StationsController {
   @Get('manifest') async manifest(@CurrentStation() station: AuthenticatedStation) { const [manifest,subscriptionAccess]=await Promise.all([this.stations.manifest(station),this.entitlements.forStation(station)]);return{...manifest,subscriptionAccess}; }
 
   @UseGuards(StationAuthGuard)
-  @Get('live-session') async liveSession(@CurrentStation() station: AuthenticatedStation) { await this.entitlements.requireStation(station, 'SHARING'); return this.stations.liveSession(station); }
+  @Get('live-session') async liveSession(@CurrentStation() station: AuthenticatedStation) {
+    await this.entitlements.requireStation(station, 'SHARING');
+    await this.stationConnection.requireAccepted(station);
+    return this.stations.liveSession(station);
+  }
   @UseGuards(StationAuthGuard)
-  @Get('control') async control(@CurrentStation() station: AuthenticatedStation) { await this.entitlements.requireStation(station, 'SHARING'); return this.stations.getControl(station); }
+  @Get('control') async control(@CurrentStation() station: AuthenticatedStation) {
+    await this.entitlements.requireStation(station, 'SHARING');
+    return this.stationConnection.decorate(station, await this.stations.getControl(station));
+  }
   @UseGuards(StationAuthGuard)
-  @Patch('control/command') async updateControlCommand(@CurrentStation() station: AuthenticatedStation, @Body() dto: UpdateStationCommandDto) { await this.entitlements.requireStation(station, 'SHARING'); return this.stations.updateControlCommand(station, dto); }
+  @Post('control/connection-request') async requestControlConnection(@CurrentStation() station: AuthenticatedStation) {
+    await this.entitlements.requireStation(station, 'SHARING');
+    return this.stationConnection.request(station);
+  }
   @UseGuards(StationAuthGuard)
-  @Patch('control/status') async updateControlStatus(@CurrentStation() station: AuthenticatedStation, @Body() dto: UpdateStationStatusDto) { await this.entitlements.requireStation(station, 'SHARING'); return this.stations.updateControlStatus(station, dto); }
+  @Patch('control/connection-response') async respondControlConnection(@CurrentStation() station: AuthenticatedStation, @Body() body: Record<string, unknown>) {
+    await this.entitlements.requireStation(station, 'SHARING');
+    return this.stationConnection.respond(station, body.accepted);
+  }
+  @UseGuards(StationAuthGuard)
+  @Post('control/disconnect') async disconnectControlConnection(@CurrentStation() station: AuthenticatedStation) {
+    await this.entitlements.requireStation(station, 'SHARING');
+    return this.stationConnection.disconnect(station);
+  }
+  @UseGuards(StationAuthGuard)
+  @Patch('control/command') async updateControlCommand(@CurrentStation() station: AuthenticatedStation, @Body() dto: UpdateStationCommandDto) {
+    await this.entitlements.requireStation(station, 'SHARING');
+    await this.stationConnection.requireAccepted(station);
+    return this.stationConnection.decorate(station, await this.stations.updateControlCommand(station, dto));
+  }
+  @UseGuards(StationAuthGuard)
+  @Patch('control/status') async updateControlStatus(@CurrentStation() station: AuthenticatedStation, @Body() dto: UpdateStationStatusDto) {
+    await this.entitlements.requireStation(station, 'SHARING');
+    return this.stationConnection.decorate(station, await this.stations.updateControlStatus(station, dto));
+  }
   @UseGuards(StationAuthGuard)
   @Get('media') async listMedia(@CurrentStation() station: AuthenticatedStation) { await this.entitlements.requireStation(station, 'CLOUD_SYNC'); return this.stations.listMedia(station); }
   @UseGuards(StationAuthGuard)

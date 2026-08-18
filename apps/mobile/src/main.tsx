@@ -2,7 +2,7 @@ import type { AspectRatio, StationMode } from '@khe/contracts';
 import { registerRootComponent } from 'expo';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import * as SecureStore from 'expo-secure-store';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Alert, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { HttpStationApi } from './api/station-api';
 import { CameraCapture } from './capture/camera-capture';
@@ -35,6 +35,17 @@ function refreshErrorMessage(error: unknown): string {
   if (/fetch failed|network request failed|unknownhost|unable to resolve host|timed?\s*out/i.test(detail)) return `Réseau indisponible : le cache local reste conservé. ${detail}`.trim();
   if (/NativeDatabase|prepareAsync|SQLite|NullPointerException|database/i.test(detail)) return `Stockage local indisponible : le cache existant reste conservé. ${detail}`.trim();
   return `Actualisation impossible : le cache local reste conservé. ${detail}`.trim();
+}
+
+function BackPage({ onBack, children }: { onBack: () => void; children: ReactNode }) {
+  return (
+    <SafeAreaView style={styles.backPage}>
+      <View style={styles.backBar}>
+        <Pressable style={styles.backButton} onPress={onBack}><Text style={styles.backText}>← RETOUR</Text></Pressable>
+      </View>
+      <View style={styles.backContent}>{children}</View>
+    </SafeAreaView>
+  );
 }
 
 function App() {
@@ -222,14 +233,14 @@ function App() {
   const returnToMenu=()=>setMenuOpen(true);
   if (loading) return <SafeAreaView style={styles.center}><ActivityIndicator /><Text style={styles.muted}>Initialisation du stockage offline…</Text></SafeAreaView>;
   if (station && standbyLocked) return <StandbyScreen verifyPassword={verifyLockPassword} onUnlocked={unlockStandby} />;
-  if (aboutOpen) return <AboutAndTerms onClose={() => {setAboutOpen(false);returnToMenu();}} />;
-  if (guideOpen) return <UserGuide onClose={() => {setGuideOpen(false);returnToMenu();}} />;
-  if (languageOpen) return <LanguageAndRegion onClose={() => {setLanguageOpen(false);returnToMenu();}} onChanged={setAppLanguage} />;
-  if (settingsOpen) return <SettingsScreen onClose={() => {setSettingsOpen(false);returnToMenu();}} />;
-  if (studioOpen) return <CreativeStudio onClose={() => {setStudioOpen(false);returnToMenu();}} />;
-  if (profileOpen) return <UserProfile onClose={() => {setProfileOpen(false);returnToMenu();}} />;
-  if (cameraOpen && station?.mode === 'CAPTURE' && stationToken) return <CameraCapture eventId={station.session.eventId} store={store} api={api} stationToken={stationToken} onClose={() => setCameraOpen(false)} onCaptured={handleCaptured} />;
-  if (galleryOpen && station?.mode === 'CAPTURE') return <MediaGallery eventId={station.session.eventId} eventName={eventName ?? station.session.eventId} store={store} onClose={() => setGalleryOpen(false)} />;
+  if (aboutOpen) return <BackPage onBack={() => setAboutOpen(false)}><AboutAndTerms onClose={() => {setAboutOpen(false);returnToMenu();}} /></BackPage>;
+  if (guideOpen) return <BackPage onBack={() => setGuideOpen(false)}><UserGuide onClose={() => {setGuideOpen(false);returnToMenu();}} /></BackPage>;
+  if (languageOpen) return <BackPage onBack={() => setLanguageOpen(false)}><LanguageAndRegion onClose={() => {setLanguageOpen(false);returnToMenu();}} onChanged={setAppLanguage} /></BackPage>;
+  if (settingsOpen) return <BackPage onBack={() => setSettingsOpen(false)}><SettingsScreen onClose={() => {setSettingsOpen(false);returnToMenu();}} /></BackPage>;
+  if (studioOpen && station && stationToken) return <BackPage onBack={() => setStudioOpen(false)}><CreativeStudio api={api} stationToken={stationToken} eventId={station.session.eventId} onSaved={(plan)=>api.markClientEventDesignReady(stationToken,station.session.eventId,plan as unknown as Record<string,unknown>)} onClose={() => {setStudioOpen(false);returnToMenu();}} /></BackPage>;
+  if (profileOpen) return <BackPage onBack={() => setProfileOpen(false)}><UserProfile onClose={() => {setProfileOpen(false);returnToMenu();}} /></BackPage>;
+  if (cameraOpen && station?.mode === 'CAPTURE' && stationToken) return <BackPage onBack={() => setCameraOpen(false)}><CameraCapture eventId={station.session.eventId} store={store} api={api} stationToken={stationToken} onClose={() => setCameraOpen(false)} onCaptured={handleCaptured} /></BackPage>;
+  if (galleryOpen && station?.mode === 'CAPTURE') return <BackPage onBack={() => setGalleryOpen(false)}><MediaGallery eventId={station.session.eventId} eventName={eventName ?? station.session.eventId} store={store} onClose={() => setGalleryOpen(false)} /></BackPage>;
 
   return (
     <SafeAreaView style={styles.page}>
@@ -265,7 +276,7 @@ function App() {
 
               {station.mode === 'SHARING' && !securityOptionsHidden ? <View style={styles.securityCard}><Text style={styles.awakeTitle}>SÉCURITÉ DE LA RÉGIE • FACULTATIF</Text><Text style={styles.securityTitle}>{lockConfigured ? 'Mot de passe KHE configuré' : 'Créer un mot de passe KHE'}</Text><Text style={styles.awakeHelp}>{lockConfigured ? 'Vous pouvez le remplacer ou ignorer cette section.' : 'Le mot de passe n’est nécessaire que si vous souhaitez utiliser la veille sécurisée KHE.'}</Text><TextInput value={newLockPassword} onChangeText={setNewLockPassword} secureTextEntry={!showLockPassword} autoCapitalize="none" autoCorrect={false} placeholder={lockConfigured ? 'Nouveau mot de passe' : 'Mot de passe KHE'} style={styles.input} /><TextInput value={confirmLockPassword} onChangeText={setConfirmLockPassword} secureTextEntry={!showLockPassword} autoCapitalize="none" autoCorrect={false} placeholder="Confirmer le mot de passe" style={styles.input} /><Pressable style={styles.visibilityButton} onPress={() => setShowLockPassword((current) => !current)}><Text style={styles.visibilityText}>{showLockPassword ? '🙈 Masquer les mots de passe' : '👁 Afficher les mots de passe'}</Text></Pressable><Pressable disabled={!newLockPassword || !confirmLockPassword} onPress={() => void saveLockPassword()} style={styles.securityButton}><Text style={styles.securityButtonText}>{lockConfigured ? 'MODIFIER LE MOT DE PASSE' : 'ENREGISTRER LE MOT DE PASSE'}</Text></Pressable><Pressable style={styles.skipButton} onPress={() => setSecurityOptionsHidden(true)}><Text style={styles.skipButtonText}>Passer cette configuration</Text></Pressable></View> : null}
 
-              {station.mode === 'SHARING' && stationToken ? <SharingStationPanel eventName={eventName ?? 'Événement KHE Booth'} api={api} stationToken={stationToken} /> : <><Text style={styles.label}>Station active</Text><Text style={styles.value}>{station.mode}</Text><Text style={styles.label}>Événement</Text><Text style={styles.value}>{eventName ?? station.session.eventId}</Text><Text style={styles.label}>N° d’identification KHE</Text><Text style={styles.value}>{kheEventNumber(station.session.eventId)}</Text><Pressable disabled={busy} style={styles.primaryButton} onPress={() => void refreshManifest()}><Text style={styles.primaryButtonText}>{busy ? 'Synchronisation…' : 'Actualiser le manifest'}</Text></Pressable><View style={styles.captureActions}><Pressable disabled={busy || !stationToken} style={styles.captureButton} onPress={() => setCameraOpen(true)}><Text style={styles.captureButtonText}>Ouvrir la caméra</Text></Pressable><Pressable disabled={busy} style={styles.galleryButton} onPress={() => setGalleryOpen(true)}><Text style={styles.galleryButtonText}>Galerie</Text></Pressable></View><Text style={styles.notice}>Le Studio créatif du menu définit les textes, cadres, effets et la musique destinés au rendu des prochaines prises.</Text></>}
+              {station.mode === 'SHARING' && stationToken ? <SharingStationPanel eventName={eventName ?? 'Événement KHE Booth'} api={api} stationToken={stationToken} /> : <><Text style={styles.label}>Station active</Text><Text style={styles.value}>{station.mode}</Text><Text style={styles.label}>Événement</Text><Text style={styles.value}>{eventName ?? station.session.eventId}</Text><Text style={styles.label}>N° d’identification KHE</Text><Text style={styles.value}>{kheEventNumber(station.session.eventId)}</Text><Pressable disabled={busy} style={styles.primaryButton} onPress={() => void refreshManifest()}><Text style={styles.primaryButtonText}>{busy ? 'Synchronisation…' : 'Actualiser le manifest'}</Text></Pressable><View style={styles.captureActions}><Pressable disabled={busy || !stationToken} style={styles.captureButton} onPress={() => setCameraOpen(true)}><Text style={styles.captureButtonText}>Ouvrir la caméra</Text></Pressable><Pressable disabled={busy} style={styles.galleryButton} onPress={() => setGalleryOpen(true)}><Text style={styles.galleryButtonText}>Galerie</Text></Pressable></View><Text style={styles.notice}>Le Studio créatif du menu définit les textes, cadres, effets, image de fond et musique destinés au rendu et à l’aperçu CAPTURE.</Text></>}
             </View>
           ) : <View style={styles.section}><Text style={styles.label}>Mode de la tablette</Text><View style={styles.modeRow}>{(['CAPTURE', 'SHARING'] as const).map((candidate) => <Pressable key={candidate} onPress={() => setMode(candidate)} style={[styles.modeButton, mode === candidate && styles.modeButtonActive]}><Text style={mode === candidate ? styles.modeTextActive : styles.modeText}>{candidate}</Text></Pressable>)}</View><Text style={styles.label}>Code d’activation</Text><TextInput autoCapitalize="characters" autoCorrect={false} value={code} onChangeText={setCode} placeholder="KHE-123456" style={styles.input} /><Text style={styles.activationHelp}>Aucun Event ID à saisir : KHE Booth retrouve automatiquement l’événement lié à ce code.</Text><Pressable disabled={busy || !code.trim()} style={styles.primaryButton} onPress={() => void activate()}><Text style={styles.primaryButtonText}>{busy ? 'Activation…' : 'Activer cette station'}</Text></Pressable><Pressable style={styles.termsLink} onPress={() => setAboutOpen(true)}><Text style={styles.termsLinkText}>Conditions d’utilisation • Version {APP_VERSION}</Text></Pressable></View>}
           {message ? <Text style={styles.message}>{message}</Text> : null}
@@ -279,6 +290,7 @@ function Root() { return <TermsGate><App /></TermsGate>; }
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#101010' }, pageScroll: { flex: 1 }, pageContent: { flexGrow: 1, justifyContent: 'center', padding: 20, paddingBottom: 44 }, pageContentLandscape: { justifyContent: 'flex-start', paddingVertical: 16 }, center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  backPage: { flex: 1, backgroundColor: '#101010' }, backBar: { paddingHorizontal: 14, paddingTop: 8, paddingBottom: 6, backgroundColor: '#101010' }, backButton: { alignSelf: 'flex-start', borderWidth: 1, borderColor: '#ffffff', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 9 }, backText: { color: '#ffffff', fontSize: 11, fontWeight: '900', letterSpacing: 0.7 }, backContent: { flex: 1 },
   card: { width: '100%', maxWidth: 760, alignSelf: 'center', backgroundColor: '#fff', borderRadius: 24, padding: 22, gap: 8 }, cardLandscape: { maxWidth: 980 }, brand: { fontSize: 13, letterSpacing: 3, fontWeight: '800', paddingTop: 4 }, title: { fontSize: 30, lineHeight: 36, fontWeight: '800' }, muted: { opacity: 0.6, lineHeight: 18 }, section: { marginTop: 18, gap: 10 }, label: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', opacity: 0.55 }, value: { fontSize: 18, fontWeight: '700' }, small: { fontSize: 12, opacity: 0.65 },
   modeRow: { flexDirection: 'row', gap: 10 }, modeButton: { flex: 1, borderWidth: 1, borderColor: '#c9c9c9', borderRadius: 12, padding: 12, alignItems: 'center' }, modeButtonActive: { backgroundColor: '#111', borderColor: '#111' }, modeText: { fontWeight: '700' }, modeTextActive: { color: '#fff', fontWeight: '700' }, input: { borderWidth: 1, borderColor: '#d6d6d6', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: '#fff' }, activationHelp: { fontSize: 12, lineHeight: 17, opacity: 0.6 }, primaryButton: { marginTop: 8, backgroundColor: '#111', borderRadius: 12, padding: 14, alignItems: 'center' }, primaryButtonText: { color: '#fff', fontWeight: '800' },
   awakeCard: { borderWidth: 1, borderColor: '#d5d5d5', borderRadius: 16, padding: 14, gap: 10 }, awakeCopy: { gap: 3 }, awakeTitle: { fontSize: 10, fontWeight: '900', letterSpacing: 1.5, opacity: 0.55 }, awakeStatus: { fontSize: 17, fontWeight: '900' }, awakeHelp: { fontSize: 11, lineHeight: 16, opacity: 0.62 }, awakeButton: { borderWidth: 1, borderColor: '#111', borderRadius: 11, paddingVertical: 11, alignItems: 'center' }, awakeButtonActive: { backgroundColor: '#111' }, awakeButtonTextActive: { color: '#fff', fontWeight: '900', fontSize: 11 },

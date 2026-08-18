@@ -24,6 +24,9 @@ export type RemoteCaptureCommand = (typeof REMOTE_CAPTURE_COMMANDS)[number];
 export const REMOTE_CAPTURE_STATES = ['IDLE', 'COUNTDOWN', 'RECORDING', 'PAUSED', 'SAVING', 'ERROR'] as const;
 export type RemoteCaptureState = (typeof REMOTE_CAPTURE_STATES)[number];
 
+export const SHARING_CONNECTION_STATUSES = ['DISCONNECTED', 'PENDING', 'ACCEPTED', 'REJECTED'] as const;
+export type SharingConnectionStatus = (typeof SHARING_CONNECTION_STATUSES)[number];
+
 export const VISUAL_EFFECTS = ['NONE', 'WARM', 'COOL', 'GOLD', 'PARTY'] as const;
 export type VisualEffect = (typeof VISUAL_EFFECTS)[number];
 
@@ -125,6 +128,9 @@ export interface StationControlContract {
   maxDurationSeconds: CaptureDurationSeconds;
   elapsedSeconds: number;
   captureSeenAt: string | Date | null;
+  sharingConnectionStatus?: SharingConnectionStatus;
+  sharingRequestedAt?: string | Date | null;
+  sharingRespondedAt?: string | Date | null;
   updatedAt: string | Date;
 }
 

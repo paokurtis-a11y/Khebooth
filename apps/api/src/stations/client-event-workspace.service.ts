@@ -93,7 +93,7 @@ export class ClientEventWorkspaceService{
   }
 
   async markDesignReady(station:AuthenticatedStation,eventId:string,payload:Record<string,unknown>){
-    this.assertSharing(station);const context=await this.context(station);const clientId=context.clientId!;
+    const context=await this.context(station);const clientId=context.clientId!;
     const target=await this.prisma.event.findFirst({where:{id:eventId,organizationId:station.organizationId,clientId}});
     if(!target)throw new NotFoundException('Événement client introuvable.');
     const access=await this.entitlements.forEvent(station.organizationId,station.eventId);
@@ -109,7 +109,7 @@ export class ClientEventWorkspaceService{
         ON CONFLICT ("clientId") DO UPDATE SET "selectedEventId"=EXCLUDED."selectedEventId","designConfig"=EXCLUDED."designConfig","designReadyAt"=EXCLUDED."designReadyAt","updatedAt"=CURRENT_TIMESTAMP
       `,
     ]);
-    await this.prisma.auditLog.create({data:{organizationId:station.organizationId,action:'CLIENT_EVENT_DESIGN_READY',entityType:'Event',entityId:eventId,metadata:{clientId,stationSessionId:station.sessionId}}});
+    await this.prisma.auditLog.create({data:{organizationId:station.organizationId,action:'CLIENT_EVENT_DESIGN_READY',entityType:'Event',entityId:eventId,metadata:{clientId,stationSessionId:station.sessionId,mode:station.mode}}});
     return this.workspace(station);
   }
 
