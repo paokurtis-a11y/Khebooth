@@ -42,6 +42,7 @@
 .content .button.secondary{background:#171e27;border-color:#394454;color:#f4f6f8}
 .content .button.secondary:hover{border-color:#d6af52;background:#1b222c}
 .content .button.danger{color:#ff9aa6;border-color:#74404a;background:rgba(116,31,45,.12)}
+.content .button:focus-visible,.content a:focus-visible,.content input:focus-visible,.content select:focus-visible,.content textarea:focus-visible{outline:2px solid #f0d47d;outline-offset:3px}
 
 .content .table{color:#eef2f6}
 .content .table th{color:#aeb8c5;font-size:12px;letter-spacing:.03em;background:#111720}
@@ -102,11 +103,12 @@
   .content h2{font-size:clamp(21px,6.5vw,28px)}
   .content p,.content label{font-size:14px}
   .content input:not([type='checkbox']):not([type='radio']):not([type='range']),.content textarea,.content select{min-height:50px;font-size:16px}
+  .content input[type='checkbox'],.content input[type='radio']{width:23px;height:23px;min-width:23px}
   .team-member-head,.team-invitation-row{align-items:flex-start;flex-direction:column}
   .team-status{align-self:flex-start}
   .team-member-actions{display:grid;grid-template-columns:1fr;width:100%}
   .team-member-actions .button{width:100%}
-  .team-permission-option,.team-member-permission{min-height:54px;font-size:13px!important}
+  .team-permission-option,.team-member-permission{min-height:58px;font-size:13px!important}
   .profile-permission-pill{font-size:13px}
 }
 
