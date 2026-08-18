@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Headers, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
 import { CommerceService } from '../commerce/commerce.service';
+import { EntitlementsService } from '../subscriptions/entitlements.service';
 import type { AuthenticatedStation } from './station-auth.types';
 import { CurrentStation } from './current-station.decorator';
 import { CreateMediaDto } from './dto/create-media.dto';
@@ -24,6 +25,7 @@ export class StationsController {
     private readonly stationRenewal: StationRenewalService,
     private readonly stationProfile: StationProfileService,
     private readonly commerce: CommerceService,
+    private readonly entitlements: EntitlementsService,
   ) {}
 
   @Post('redeem') redeem(@Body() dto: RedeemStationDto) { return this.stations.redeem(dto); }
@@ -41,44 +43,107 @@ export class StationsController {
   clientExperience(@CurrentStation() station: AuthenticatedStation) { return this.commerce.stationClientExperience(station); }
 
   @UseGuards(StationAuthGuard)
-  @Get('manifest') manifest(@CurrentStation() station: AuthenticatedStation) { return this.stations.manifest(station); }
+  @Get('entitlements')
+  entitlementsForStation(@CurrentStation() station: AuthenticatedStation) { return this.entitlements.forStation(station); }
 
   @UseGuards(StationAuthGuard)
-  @Get('live-session') liveSession(@CurrentStation() station: AuthenticatedStation) { return this.stations.liveSession(station); }
+  @Get('manifest')
+  async manifest(@CurrentStation() station: AuthenticatedStation) {
+    const [manifest, subscriptionAccess] = await Promise.all([
+      this.stations.manifest(station),
+      this.entitlements.forStation(station),
+    ]);
+    return { ...manifest, subscriptionAccess };
+  }
 
   @UseGuards(StationAuthGuard)
-  @Get('control') control(@CurrentStation() station: AuthenticatedStation) { return this.stations.getControl(station); }
+  @Get('live-session')
+  async liveSession(@CurrentStation() station: AuthenticatedStation) {
+    await this.entitlements.requireStation(station, 'SHARING');
+    return this.stations.liveSession(station);
+  }
 
   @UseGuards(StationAuthGuard)
-  @Patch('control/command') updateControlCommand(@CurrentStation() station: AuthenticatedStation, @Body() dto: UpdateStationCommandDto) { return this.stations.updateControlCommand(station, dto); }
+  @Get('control')
+  async control(@CurrentStation() station: AuthenticatedStation) {
+    await this.entitlements.requireStation(station, 'SHARING');
+    return this.stations.getControl(station);
+  }
 
   @UseGuards(StationAuthGuard)
-  @Patch('control/status') updateControlStatus(@CurrentStation() station: AuthenticatedStation, @Body() dto: UpdateStationStatusDto) { return this.stations.updateControlStatus(station, dto); }
+  @Patch('control/command')
+  async updateControlCommand(@CurrentStation() station: AuthenticatedStation, @Body() dto: UpdateStationCommandDto) {
+    await this.entitlements.requireStation(station, 'SHARING');
+    return this.stations.updateControlCommand(station, dto);
+  }
 
   @UseGuards(StationAuthGuard)
-  @Get('media') listMedia(@CurrentStation() station: AuthenticatedStation) { return this.stations.listMedia(station); }
+  @Patch('control/status')
+  async updateControlStatus(@CurrentStation() station: AuthenticatedStation, @Body() dto: UpdateStationStatusDto) {
+    await this.entitlements.requireStation(station, 'SHARING');
+    return this.stations.updateControlStatus(station, dto);
+  }
 
   @UseGuards(StationAuthGuard)
-  @Post('media') createMedia(@CurrentStation() station: AuthenticatedStation, @Body() dto: CreateMediaDto) { return this.stations.createMedia(station, dto); }
+  @Get('media')
+  async listMedia(@CurrentStation() station: AuthenticatedStation) {
+    await this.entitlements.requireStation(station, 'CLOUD_SYNC');
+    return this.stations.listMedia(station);
+  }
 
   @UseGuards(StationAuthGuard)
-  @Post('media/:id/blob-upload') prepareBlobUpload(@CurrentStation() station: AuthenticatedStation, @Param('id', new ParseUUIDPipe()) id: string) { return this.mediaStorage.prepareUpload(station, id); }
+  @Post('media')
+  async createMedia(@CurrentStation() station: AuthenticatedStation, @Body() dto: CreateMediaDto) {
+    await this.entitlements.requireStation(station, 'CLOUD_SYNC');
+    return this.stations.createMedia(station, dto);
+  }
 
   @UseGuards(StationAuthGuard)
-  @Get('media/:id/download') mediaDownload(@CurrentStation() station: AuthenticatedStation, @Param('id', new ParseUUIDPipe()) id: string) { return this.mediaStorage.downloadTicket(station, id); }
+  @Post('media/:id/blob-upload')
+  async prepareBlobUpload(@CurrentStation() station: AuthenticatedStation, @Param('id', new ParseUUIDPipe()) id: string) {
+    await this.entitlements.requireStation(station, 'CLOUD_SYNC');
+    return this.mediaStorage.prepareUpload(station, id);
+  }
 
   @UseGuards(StationAuthGuard)
-  @Post('media/:id/share') createMediaShare(@CurrentStation() station: AuthenticatedStation, @Param('id', new ParseUUIDPipe()) id: string) { return this.mediaSharing.createShare(station, id); }
+  @Get('media/:id/download')
+  async mediaDownload(@CurrentStation() station: AuthenticatedStation, @Param('id', new ParseUUIDPipe()) id: string) {
+    await this.entitlements.requireStation(station, 'CLOUD_SYNC');
+    return this.mediaStorage.downloadTicket(station, id);
+  }
 
   @UseGuards(StationAuthGuard)
-  @Post('shares/:id/revoke') revokeMediaShare(@CurrentStation() station: AuthenticatedStation, @Param('id', new ParseUUIDPipe()) id: string) { return this.mediaSharing.revokeShare(station, id); }
+  @Post('media/:id/share')
+  async createMediaShare(@CurrentStation() station: AuthenticatedStation, @Param('id', new ParseUUIDPipe()) id: string) {
+    await this.entitlements.requireStation(station, 'GUEST_QR');
+    return this.mediaSharing.createShare(station, id);
+  }
 
   @UseGuards(StationAuthGuard)
-  @Post('media/:id/upload') initializeUpload(@CurrentStation() station: AuthenticatedStation, @Param('id', new ParseUUIDPipe()) id: string) { return this.stations.initializeUpload(station, id); }
+  @Post('shares/:id/revoke')
+  async revokeMediaShare(@CurrentStation() station: AuthenticatedStation, @Param('id', new ParseUUIDPipe()) id: string) {
+    await this.entitlements.requireStation(station, 'GUEST_QR');
+    return this.mediaSharing.revokeShare(station, id);
+  }
 
   @UseGuards(StationAuthGuard)
-  @Patch('media/:id/upload') updateUploadProgress(@CurrentStation() station: AuthenticatedStation, @Param('id', new ParseUUIDPipe()) id: string, @Body() dto: UpdateUploadProgressDto) { return this.stations.updateUploadProgress(station, id, dto); }
+  @Post('media/:id/upload')
+  async initializeUpload(@CurrentStation() station: AuthenticatedStation, @Param('id', new ParseUUIDPipe()) id: string) {
+    await this.entitlements.requireStation(station, 'CLOUD_SYNC');
+    return this.stations.initializeUpload(station, id);
+  }
 
   @UseGuards(StationAuthGuard)
-  @Post('media/:id/finalize') finalizeUpload(@CurrentStation() station: AuthenticatedStation, @Param('id', new ParseUUIDPipe()) id: string) { return this.mediaStorage.finalizeUpload(station, id); }
+  @Patch('media/:id/upload')
+  async updateUploadProgress(@CurrentStation() station: AuthenticatedStation, @Param('id', new ParseUUIDPipe()) id: string, @Body() dto: UpdateUploadProgressDto) {
+    await this.entitlements.requireStation(station, 'CLOUD_SYNC');
+    return this.stations.updateUploadProgress(station, id, dto);
+  }
+
+  @UseGuards(StationAuthGuard)
+  @Post('media/:id/finalize')
+  async finalizeUpload(@CurrentStation() station: AuthenticatedStation, @Param('id', new ParseUUIDPipe()) id: string) {
+    await this.entitlements.requireStation(station, 'CLOUD_SYNC');
+    return this.mediaStorage.finalizeUpload(station, id);
+  }
 }
