@@ -11,16 +11,11 @@ type ConnectionStateRow = {
   sharingRespondedAt: Date | null;
 };
 
-type BaseControl = {
-  captureSeenAt: Date | null;
-  [key: string]: unknown;
-};
-
 @Injectable()
 export class StationConnectionService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async decorate<T extends BaseControl>(station: AuthenticatedStation, control: T) {
+  async decorate<T extends { captureSeenAt: Date | null }>(station: AuthenticatedStation, control: T) {
     const state = await this.readState(station.eventId);
     const status = state?.sharingConnectionStatus ?? 'DISCONNECTED';
     return {
