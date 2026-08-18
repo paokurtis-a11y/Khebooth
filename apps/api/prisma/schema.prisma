@@ -261,21 +261,24 @@ model StationSession {
 }
 
 model StationRemoteControl {
-  id                  String               @id @default(uuid()) @db.Uuid
-  organizationId      String               @db.Uuid
-  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  eventId             String               @unique @db.Uuid
-  event               Event                @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  command             RemoteCaptureCommand @default(NONE)
-  commandVersion      Int                  @default(0)
-  acknowledgedVersion Int                  @default(0)
-  runtimeState        RemoteCaptureState   @default(IDLE)
-  selectedEffect      VisualEffect         @default(NONE)
-  maxDurationSeconds  Int                  @default(15)
-  elapsedSeconds      Int                  @default(0)
-  captureSeenAt       DateTime?
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  id                      String               @id @default(uuid()) @db.Uuid
+  organizationId          String               @db.Uuid
+  organization            Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  eventId                 String               @unique @db.Uuid
+  event                   Event                @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  command                 RemoteCaptureCommand @default(NONE)
+  commandVersion          Int                  @default(0)
+  acknowledgedVersion     Int                  @default(0)
+  runtimeState            RemoteCaptureState   @default(IDLE)
+  selectedEffect          VisualEffect         @default(NONE)
+  maxDurationSeconds      Int                  @default(15)
+  elapsedSeconds          Int                  @default(0)
+  captureSeenAt           DateTime?
+  sharingConnectionStatus String               @default("DISCONNECTED")
+  sharingRequestedAt      DateTime?
+  sharingRespondedAt      DateTime?
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
 
   @@index([organizationId, eventId])
 }
