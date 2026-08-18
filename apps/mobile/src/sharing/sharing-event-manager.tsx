@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import type { ClientWorkspaceContract, StationApi } from '../api/station-api';
+import type { ClientWorkspaceContract, StationExperienceApi } from '../api/station-api';
 
 function parseLocalDateTime(value:string):string|null{
   const normalized=value.trim().replace('T',' ');const match=normalized.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})$/);if(!match)return null;
@@ -8,7 +8,7 @@ function parseLocalDateTime(value:string):string|null{
 }
 function localExample(offsetHours:number){const d=new Date(Date.now()+offsetHours*60*60*1000);const pad=(n:number)=>String(n).padStart(2,'0');return`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;}
 
-export function SharingEventManager({api,stationToken,onCreated}:{api:StationApi;stationToken:string;onCreated:(eventId:string,eventName:string)=>void}){
+export function SharingEventManager({api,stationToken,onCreated}:{api:StationExperienceApi;stationToken:string;onCreated:(eventId:string,eventName:string)=>void}){
   const[open,setOpen]=useState(false);const[name,setName]=useState('');const[description,setDescription]=useState('');const[startsAt,setStartsAt]=useState('');const[endsAt,setEndsAt]=useState('');const[workspace,setWorkspace]=useState<ClientWorkspaceContract|null>(null);const[message,setMessage]=useState('');const[busy,setBusy]=useState(false);
   const refresh=()=>api.clientWorkspace(stationToken).then(setWorkspace).catch(()=>undefined);
   useEffect(()=>{void refresh();},[api,stationToken]);
