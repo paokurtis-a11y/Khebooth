@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { WebDisplayPreferenceBootstrap } from '@/components/web-display-preferences';
 import { WebStartupIntro } from '@/components/web-startup-intro';
 import './globals.css';
 
@@ -15,7 +16,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="fr">
-      <body><WebStartupIntro />{children}</body>
+      <body><WebDisplayPreferenceBootstrap /><WebStartupIntro />{children}</body>
     </html>
   );
 }
