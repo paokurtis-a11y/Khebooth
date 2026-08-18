@@ -8,7 +8,7 @@
   "crons": [
     {
       "path": "/api/system/events/complete-ended",
-      "schedule": "*/5 * * * *"
+      "schedule": "15 3 * * *"
     }
   ],
   "git": {
