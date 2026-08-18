@@ -14,6 +14,7 @@ import { ClientEventWorkspaceService } from './client-event-workspace.service';
 import { MediaSharingService } from './media-sharing.service';
 import { MediaStorageService } from './media-storage.service';
 import { StationAuthGuard } from './station-auth.guard';
+import { StationConnectionService } from './station-connection.service';
 import { StationProfileService } from './station-profile.service';
 import { StationRenewalService } from './station-renewal.service';
 import { StationsService } from './stations.service';
@@ -26,6 +27,7 @@ export class StationsController {
     private readonly mediaSharing: MediaSharingService,
     private readonly stationRenewal: StationRenewalService,
     private readonly stationProfile: StationProfileService,
+    private readonly stationConnection: StationConnectionService,
     private readonly commerce: CommerceService,
     private readonly entitlements: EntitlementsService,
     private readonly clientEvents: ClientEventWorkspaceService,
@@ -68,13 +70,41 @@ export class StationsController {
   @Get('manifest') async manifest(@CurrentStation() station: AuthenticatedStation) { const [manifest,subscriptionAccess]=await Promise.all([this.stations.manifest(station),this.entitlements.forStation(station)]);return{...manifest,subscriptionAccess}; }
 
   @UseGuards(StationAuthGuard)
-  @Get('live-session') async liveSession(@CurrentStation() station: AuthenticatedStation) { await this.entitlements.requireStation(station, 'SHARING'); return this.stations.liveSession(station); }
+  @Get('live-session') async liveSession(@CurrentStation() station: AuthenticatedStation) {
+    await this.entitlements.requireStation(station, 'SHARING');
+    if (station.mode === 'SHARING') await this.stationConnection.request(station);
+    return this.stations.liveSession(station);
+  }
   @UseGuards(StationAuthGuard)
-  @Get('control') async control(@CurrentStation() station: AuthenticatedStation) { await this.entitlements.requireStation(station, 'SHARING'); return this.stations.getControl(station); }
+  @Get('control') async control(@CurrentStation() station: AuthenticatedStation) {
+    await this.entitlements.requireStation(station, 'SHARING');
+    return this.stationConnection.decorate(station, await this.stations.getControl(station));
+  }
   @UseGuards(StationAuthGuard)
-  @Patch('control/command') async updateControlCommand(@CurrentStation() station: AuthenticatedStation, @Body() dto: UpdateStationCommandDto) { await this.entitlements.requireStation(station, 'SHARING'); return this.stations.updateControlCommand(station, dto); }
+  @Post('control/connection-request') async requestControlConnection(@CurrentStation() station: AuthenticatedStation) {
+    await this.entitlements.requireStation(station, 'SHARING');
+    return this.stationConnection.request(station);
+  }
   @UseGuards(StationAuthGuard)
-  @Patch('control/status') async updateControlStatus(@CurrentStation() station: AuthenticatedStation, @Body() dto: UpdateStationStatusDto) { await this.entitlements.requireStation(station, 'SHARING'); return this.stations.updateControlStatus(station, dto); }
+  @Patch('control/connection-response') async respondControlConnection(@CurrentStation() station: AuthenticatedStation, @Body() body: Record<string, unknown>) {
+    await this.entitlements.requireStation(station, 'SHARING');
+    return this.stationConnection.respond(station, body.accepted);
+  }
+  @UseGuards(StationAuthGuard)
+  @Post('control/disconnect') async disconnectControlConnection(@CurrentStation() station: AuthenticatedStation) {
+    await this.entitlements.requireStation(station, 'SHARING');
+    return this.stationConnection.disconnect(station);
+  }
+  @UseGuards(StationAuthGuard)
+  @Patch('control/command') async updateControlCommand(@CurrentStation() station: AuthenticatedStation, @Body() dto: UpdateStationCommandDto) {
+    await this.entitlements.requireStation(station, 'SHARING');
+    return this.stationConnection.decorate(station, await this.stations.updateControlCommand(station, dto));
+  }
+  @UseGuards(StationAuthGuard)
+  @Patch('control/status') async updateControlStatus(@CurrentStation() station: AuthenticatedStation, @Body() dto: UpdateStationStatusDto) {
+    await this.entitlements.requireStation(station, 'SHARING');
+    return this.stationConnection.decorate(station, await this.stations.updateControlStatus(station, dto));
+  }
   @UseGuards(StationAuthGuard)
   @Get('media') async listMedia(@CurrentStation() station: AuthenticatedStation) { await this.entitlements.requireStation(station, 'CLOUD_SYNC'); return this.stations.listMedia(station); }
   @UseGuards(StationAuthGuard)
