@@ -16,6 +16,16 @@ interface RemoteControlPanelProps {
   stationToken: string;
 }
 
+const KHE_GOLD = '#d7b24c';
+const KHE_GOLD_DARK = '#8b6819';
+const KHE_SKY = '#dff5ff';
+const KHE_SKY_STRONG = '#8ad9f5';
+const FIREWORK_PARTICLES = Array.from({ length: 12 }, (_, index) => {
+  const angle = (Math.PI * 2 * index) / 12;
+  const radius = index % 2 === 0 ? 52 : 38;
+  return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
+});
+
 function formatDuration(totalSeconds: number): string {
   const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
   const seconds = (totalSeconds % 60).toString().padStart(2, '0');
@@ -37,7 +47,10 @@ export function RemoteControlPanel({ eventName, api, stationToken }: RemoteContr
   const lastServerSeconds = useRef(0);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
-  const comet = useRef(new Animated.Value(0)).current;
+  const starProgress = useRef(new Animated.Value(0)).current;
+  const celebration = useRef(new Animated.Value(0)).current;
+  const wasConnected = useRef(false);
+  const [trackWidth, setTrackWidth] = useState(260);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,21 +81,35 @@ export function RemoteControlPanel({ eventName, api, stationToken }: RemoteContr
 
   useEffect(() => {
     if (!connecting) {
-      comet.stopAnimation();
-      comet.setValue(0);
+      starProgress.stopAnimation();
+      starProgress.setValue(connected ? 1 : 0);
       return;
     }
+    starProgress.setValue(0);
     const animation = Animated.loop(
-      Animated.timing(comet, {
+      Animated.timing(starProgress, {
         toValue: 1,
-        duration: 1100,
-        easing: Easing.inOut(Easing.quad),
+        duration: 1450,
+        easing: Easing.linear,
         useNativeDriver: true,
       }),
     );
     animation.start();
     return () => animation.stop();
-  }, [comet, connecting]);
+  }, [connected, connecting, starProgress]);
+
+  useEffect(() => {
+    if (connected && !wasConnected.current) {
+      celebration.setValue(0);
+      Animated.timing(celebration, {
+        toValue: 1,
+        duration: 1050,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+    }
+    wasConnected.current = connected;
+  }, [celebration, connected]);
 
   useEffect(() => {
     if (control?.runtimeState !== 'RECORDING') {
@@ -164,19 +191,20 @@ export function RemoteControlPanel({ eventName, api, stationToken }: RemoteContr
   }
 
   if (!control) {
-    return <View style={styles.loading}><ActivityIndicator /><Text>Initialisation de la régie SHARING…</Text></View>;
+    return <View style={styles.loading}><ActivityIndicator color={KHE_GOLD} /><Text>Initialisation de la régie SHARING…</Text></View>;
   }
 
   const paused = control.runtimeState === 'PAUSED';
   const active = ['COUNTDOWN', 'RECORDING', 'PAUSED', 'SAVING'].includes(control.runtimeState);
   const timerLabel = control.runtimeState === 'PAUSED' ? 'PAUSE' : control.runtimeState === 'RECORDING' ? '● REC' : 'TEMPS';
   const lastRefreshLabel = lastRefreshAt ? `${Math.max(0, Math.round((Date.now() - lastRefreshAt) / 1000))} s` : '—';
+  const starTravel = Math.max(0, trackWidth - 48);
 
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
         <View style={styles.headerCopy}><Text style={styles.eyebrow}>RÉGIE SHARING</Text><Text style={styles.title}>{eventName}</Text></View>
-        <View style={styles.connectionBadge}>
+        <View style={[styles.connectionBadge, connected && styles.connectionBadgeConnected]}>
           <View style={[styles.connectionDot, connected ? styles.dotConnected : styles.dotDisconnected]} />
           <Text style={styles.connectionText}>{connected ? 'Connecté' : connectionStatus === 'PENDING' ? 'En attente' : 'Déconnecté'}</Text>
         </View>
@@ -184,16 +212,20 @@ export function RemoteControlPanel({ eventName, api, stationToken }: RemoteContr
 
       {connectionStatus === 'DISCONNECTED' || connectionStatus === 'REJECTED' ? (
         <Pressable disabled={busy} style={styles.connectCard} onPress={() => void requestConnection()}>
-          <Text style={styles.connectTitle}>{connectionStatus === 'REJECTED' ? 'Connexion refusée par CAPTURE' : 'Connexion à la station CAPTURE'}</Text>
-          <Text style={styles.connectHelp}>SHARING peut envoyer une demande à distance. CAPTURE reçoit immédiatement un message et choisit Accepter ou Refuser.</Text>
+          <View style={styles.connectionHero}><Text style={styles.heroStar}>✦</Text><Text style={styles.heroLabel}>KHE LINK</Text></View>
+          <Text style={styles.connectTitle}>{connectionStatus === 'REJECTED' ? 'Connexion refusée par CAPTURE' : 'Connecter SHARING à CAPTURE'}</Text>
+          <Text style={styles.connectHelp}>SHARING envoie une demande à distance. CAPTURE reçoit immédiatement un message et choisit Accepter ou Refuser.</Text>
           <View style={styles.connectButton}><Text style={styles.connectButtonText}>{busy ? 'ENVOI…' : 'SE CONNECTER À CAPTURE'}</Text></View>
         </Pressable>
       ) : connecting ? (
         <View style={styles.connectingCard}>
+          <View style={styles.connectionHero}><Text style={styles.heroStar}>✦</Text><Text style={styles.heroLabel}>CONNEXION KHE</Text></View>
           <Text style={styles.connectTitle}>{connectionStatus === 'PENDING' ? 'En attente de l’autorisation CAPTURE…' : 'CAPTURE autorisée, connexion en cours…'}</Text>
-          <View style={styles.cometTrack}>
-            <Animated.Text style={[styles.comet, { transform: [{ translateX: comet.interpolate({ inputRange: [0, 1], outputRange: [0, 230] }) }] }]}>✦</Animated.Text>
+          <View style={styles.starTrack} onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}>
+            <View style={styles.starTrail} />
+            <Animated.Text style={[styles.movingStar, { transform: [{ translateX: starProgress.interpolate({ inputRange: [0, 1], outputRange: [0, starTravel] }) }, { rotate: starProgress.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }] }]}>★</Animated.Text>
           </View>
+          <Text style={styles.progressCaption}>L’étoile dorée parcourt toute la liaison jusqu’à CAPTURE.</Text>
           <Text style={styles.connectHelp}>{connectionStatus === 'PENDING' ? 'Validez la fenêtre de connexion sur la tablette CAPTURE.' : 'Autorisation reçue. KHE attend le heartbeat de CAPTURE.'}</Text>
           <View style={styles.inlineActions}>
             <Pressable disabled={busy} style={styles.retryButton} onPress={() => void requestConnection()}><Text style={styles.retryText}>RENVOYER LA DEMANDE</Text></Pressable>
@@ -202,8 +234,21 @@ export function RemoteControlPanel({ eventName, api, stationToken }: RemoteContr
         </View>
       ) : (
         <View style={styles.connectedCard}>
+          <View style={styles.successVisual} pointerEvents="none">
+            <Animated.Text style={[styles.successStar, { transform: [{ scale: celebration.interpolate({ inputRange: [0, 0.35, 1], outputRange: [0.7, 1.35, 1] }) }] }]}>★</Animated.Text>
+            {FIREWORK_PARTICLES.map((particle, index) => (
+              <Animated.Text key={index} style={[styles.fireworkParticle, {
+                opacity: celebration.interpolate({ inputRange: [0, 0.15, 0.78, 1], outputRange: [0, 1, 0.9, 0] }),
+                transform: [
+                  { translateX: celebration.interpolate({ inputRange: [0, 1], outputRange: [0, particle.x] }) },
+                  { translateY: celebration.interpolate({ inputRange: [0, 1], outputRange: [0, particle.y] }) },
+                  { scale: celebration.interpolate({ inputRange: [0, 0.25, 1], outputRange: [0.4, 1.2, 0.7] }) },
+                ],
+              }]}>✦</Animated.Text>
+            ))}
+          </View>
           <View style={styles.connectedRow}>
-            <View><Text style={styles.connectedTitle}>● CAPTURE CONNECTÉE</Text><Text style={styles.connectedHelp}>Dernière synchronisation régie : {lastRefreshLabel}</Text></View>
+            <View style={{flex:1}}><Text style={styles.connectedTitle}>★ CAPTURE CONNECTÉE</Text><Text style={styles.connectedHelp}>Connexion autorisée · dernière synchronisation régie : {lastRefreshLabel}</Text></View>
             <Pressable disabled={busy} style={styles.disconnectButton} onPress={() => void disconnect()}><Text style={styles.disconnectText}>Déconnecter</Text></Pressable>
           </View>
         </View>
@@ -264,31 +309,36 @@ const styles = StyleSheet.create({
   headerCopy: { flex: 1 },
   eyebrow: { fontSize: 12, fontWeight: '900', letterSpacing: 2 },
   title: { fontSize: 24, fontWeight: '900', marginTop: 4 },
-  connectionBadge: { flexDirection: 'row', alignItems: 'center', gap: 7, borderWidth: 1, borderColor: '#d5d5d5', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 7 },
+  connectionBadge: { flexDirection: 'row', alignItems: 'center', gap: 7, borderWidth: 1, borderColor: '#bad9e7', backgroundColor:'#effaff', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 7 },
+  connectionBadgeConnected:{borderColor:KHE_GOLD,backgroundColor:'#fff9e9'},
   connectionDot: { width: 10, height: 10, borderRadius: 5 },
-  dotConnected: { backgroundColor: '#20a447' },
-  dotDisconnected: { backgroundColor: '#d93434' },
+  dotConnected: { backgroundColor: KHE_GOLD },
+  dotDisconnected: { backgroundColor: '#55bde3' },
   connectionText: { fontSize: 10, fontWeight: '900' },
-  connectCard: { borderWidth: 1, borderColor: '#111111', borderRadius: 18, padding: 16, gap: 9 },
-  connectingCard: { borderWidth: 1, borderColor: '#c9c9c9', borderRadius: 18, padding: 16, gap: 10, overflow: 'hidden' },
-  connectedCard: { borderWidth: 1, borderColor: '#20a447', borderRadius: 18, padding: 14 },
-  connectedRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
+  connectCard: { borderWidth: 2, borderColor: KHE_GOLD, backgroundColor:KHE_SKY, borderRadius: 22, padding: 18, gap: 10 },
+  connectingCard: { borderWidth: 2, borderColor: KHE_GOLD, backgroundColor:KHE_SKY, borderRadius: 22, padding: 18, gap: 11, overflow: 'hidden' },
+  connectedCard: { borderWidth: 2, borderColor: KHE_GOLD, backgroundColor:'#e9f9ff', borderRadius: 22, padding: 16, overflow:'hidden' },
+  connectionHero:{alignItems:'center',gap:3,marginBottom:2},heroStar:{fontSize:38,color:KHE_GOLD,textShadowColor:'#ffffff',textShadowRadius:9},heroLabel:{fontSize:9,letterSpacing:2.5,fontWeight:'900',color:KHE_GOLD_DARK},
+  connectedRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, zIndex:2 },
   inlineActions: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
-  connectTitle: { fontSize: 17, fontWeight: '900' },
-  connectHelp: { fontSize: 11, lineHeight: 17, opacity: 0.65 },
-  connectButton: { backgroundColor: '#111111', borderRadius: 13, paddingVertical: 13, alignItems: 'center' },
-  connectButtonText: { color: '#ffffff', fontWeight: '900', fontSize: 11, letterSpacing: 0.6 },
-  cometTrack: { height: 34, borderRadius: 17, backgroundColor: '#111111', justifyContent: 'center', paddingHorizontal: 8, overflow: 'hidden' },
-  comet: { color: '#ffffff', fontSize: 22, width: 28 },
-  retryButton: { alignSelf: 'flex-start', borderWidth: 1, borderColor: '#111111', borderRadius: 11, paddingHorizontal: 12, paddingVertical: 9 },
-  retryText: { fontWeight: '900', fontSize: 10 },
-  connectedTitle: { color: '#16863a', fontWeight: '900', fontSize: 12, letterSpacing: 0.7 },
-  connectedHelp: { fontSize: 10, opacity: 0.6, marginTop: 3 },
-  disconnectButton: { borderWidth: 1, borderColor: '#c9c9c9', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 },
-  disconnectText: { fontSize: 10, fontWeight: '800' },
+  connectTitle: { fontSize: 18, fontWeight: '900', color:'#173548',textAlign:'center' },
+  connectHelp: { fontSize: 11, lineHeight: 17, color:'#315a70',textAlign:'center' },
+  connectButton: { backgroundColor: KHE_GOLD, borderRadius: 14, paddingVertical: 14, alignItems: 'center',borderWidth:1,borderColor:'#f6df8f' },
+  connectButtonText: { color: '#332400', fontWeight: '900', fontSize: 11, letterSpacing: 0.7 },
+  starTrack: { height: 48, borderRadius: 24, backgroundColor:'#aee5f7',borderWidth:1,borderColor:'#7fc9e5', justifyContent: 'center', paddingHorizontal: 9, overflow: 'hidden' },
+  starTrail:{position:'absolute',left:18,right:18,height:4,borderRadius:2,backgroundColor:'rgba(255,255,255,.78)'},
+  movingStar: { color: KHE_GOLD, fontSize: 30, width: 38,textShadowColor:'#fff6ce',textShadowRadius:8 },
+  progressCaption:{fontSize:9,textAlign:'center',fontWeight:'800',color:'#58758a'},
+  retryButton: { alignSelf: 'flex-start', borderWidth: 1, borderColor: KHE_GOLD_DARK, backgroundColor:'#fff9e9',borderRadius: 11, paddingHorizontal: 12, paddingVertical: 9 },
+  retryText: { fontWeight: '900', fontSize: 10,color:KHE_GOLD_DARK },
+  connectedTitle: { color: KHE_GOLD_DARK, fontWeight: '900', fontSize: 13, letterSpacing: 0.7 },
+  connectedHelp: { fontSize: 10, color:'#315a70', marginTop: 3 },
+  disconnectButton: { borderWidth: 1, borderColor: KHE_GOLD_DARK, backgroundColor:'rgba(255,255,255,.72)', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 },
+  disconnectText: { fontSize: 10, fontWeight: '800',color:'#5d4810' },
+  successVisual:{height:88,alignItems:'center',justifyContent:'center',marginBottom:2},successStar:{position:'absolute',fontSize:44,color:KHE_GOLD,textShadowColor:'#fff6ce',textShadowRadius:12},fireworkParticle:{position:'absolute',fontSize:16,color:KHE_GOLD},
   liveGap: { marginTop: 8 },
-  previewPlaceholder: { minHeight: 130, borderWidth: 1, borderColor: '#d5d5d5', borderRadius: 16, alignItems: 'center', justifyContent: 'center', padding: 18 },
-  previewPlaceholderText: { textAlign: 'center', fontSize: 11, lineHeight: 17, opacity: 0.55 },
+  previewPlaceholder: { minHeight: 130, borderWidth: 1, borderColor: '#b9dcea', backgroundColor:'#f2fbff',borderRadius: 16, alignItems: 'center', justifyContent: 'center', padding: 18 },
+  previewPlaceholderText: { textAlign: 'center', fontSize: 11, lineHeight: 17, opacity: 0.6 },
   statusCard: { borderWidth: 1, borderColor: '#d5d5d5', borderRadius: 16, padding: 16 },
   statusLabel: { fontSize: 10, fontWeight: '800', opacity: 0.5 },
   statusValue: { fontSize: 20, fontWeight: '900', marginTop: 4 },
