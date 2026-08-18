@@ -128,9 +128,9 @@ export interface StationControlContract {
   maxDurationSeconds: CaptureDurationSeconds;
   elapsedSeconds: number;
   captureSeenAt: string | Date | null;
-  sharingConnectionStatus: SharingConnectionStatus;
-  sharingRequestedAt: string | Date | null;
-  sharingRespondedAt: string | Date | null;
+  sharingConnectionStatus?: SharingConnectionStatus;
+  sharingRequestedAt?: string | Date | null;
+  sharingRespondedAt?: string | Date | null;
   updatedAt: string | Date;
 }
 
