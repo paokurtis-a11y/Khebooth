@@ -2,50 +2,29 @@
 
 import { useEffect, useState } from 'react';
 import { PortalShell } from '@/components/portal-shell';
+import { DEFAULT_REGIONAL_SETTINGS, RegionalSiteSettings, normalizeRegionalSettings, type RegionKey, type RegionalSettings } from '@/components/regional-site-settings';
+import { apiRequest } from '@/lib/api';
 
-const languages = [
-  ['fr', 'Français'],
-  ['en', 'English'],
-  ['de', 'Deutsch'],
-  ['it', 'Italiano'],
-  ['es', 'Español'],
-  ['pt', 'Português'],
-] as const;
+type NotificationPreferences={enabled:boolean;soundEnabled:boolean;sound:string;soundVolume:number;vibrationEnabled:boolean;vibrationMode:string;vibrationIntensity:string};
+type Me={role:string;notificationPreferences?:NotificationPreferences};
+type SiteConfig={regionalSettings?:RegionalSettings;media?:Record<string,string>;seo?:Record<string,string>;socialLinks?:Record<string,string>;announcement?:Record<string,unknown>;contentBlocks?:Array<Record<string,unknown>>};
+const DEFAULT_NOTIFICATIONS:NotificationPreferences={enabled:true,soundEnabled:true,sound:'khe_chime',soundVolume:70,vibrationEnabled:true,vibrationMode:'double',vibrationIntensity:'medium'};
+const FLAGS={fr:'linear-gradient(90deg,#163e8c 0 33%,#fff 33% 66%,#e1262f 66%)',en:'linear-gradient(135deg,#173b75 0 38%,#fff 38% 44%,#c8102e 44% 56%,#fff 56% 62%,#173b75 62%)',de:'linear-gradient(#111 0 33%,#d71920 33% 66%,#f0ca2b 66%)',it:'linear-gradient(90deg,#159447 0 33%,#fff 33% 66%,#d72b35 66%)',es:'linear-gradient(#aa151b 0 25%,#f1bf00 25% 75%,#aa151b 75%)',pt:'linear-gradient(90deg,#187447 0 40%,#d4212b 40%)'} as const;
+const LANGUAGES=[['fr','Français'],['en','English'],['de','Deutsch'],['it','Italiano'],['es','Español'],['pt','Português']] as const;
 
-export default function SettingsPage() {
-  const [language, setLanguage] = useState('fr');
-  const [saved, setSaved] = useState(false);
+function tone(preferences:NotificationPreferences){if(!preferences.enabled)return;if(preferences.soundEnabled&&preferences.sound!=='silent'&&typeof window!=='undefined'){const W=window as typeof window&{webkitAudioContext?:typeof AudioContext};const C=window.AudioContext||W.webkitAudioContext;if(C){const ctx=new C();const osc=ctx.createOscillator();const gain=ctx.createGain();const frequencies:Record<string,number>={default:640,khe_chime:760,khe_gold:920,khe_pulse:520};osc.frequency.value=frequencies[preferences.sound]||760;osc.type=preferences.sound==='khe_pulse'?'square':'sine';gain.gain.value=(preferences.soundVolume/100)*.18;osc.connect(gain);gain.connect(ctx.destination);osc.start();gain.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.32);osc.stop(ctx.currentTime+.34);osc.addEventListener('ended',()=>void ctx.close());}}if(preferences.vibrationEnabled&&typeof navigator!=='undefined'&&'vibrate'in navigator){const intensity=preferences.vibrationIntensity==='strong'?1.4:preferences.vibrationIntensity==='light'?.7:1;const unit=Math.round(90*intensity);const patterns:Record<string,number[]>={short:[unit],double:[unit,80,unit],triple:[unit,70,unit,70,unit],long:[unit*3]};navigator.vibrate(patterns[preferences.vibrationMode]||[unit]);}}
 
-  useEffect(() => {
-    const value = window.localStorage.getItem('khe.web.language');
-    if (value) setLanguage(value);
-  }, []);
-
-  function choose(next: string) {
-    setLanguage(next);
-    window.localStorage.setItem('khe.web.language', next);
-    window.dispatchEvent(new CustomEvent('khe-language-changed', { detail: next }));
-    setSaved(true);
-  }
-
-  return <PortalShell>
-    <div className="header"><div><h1>Paramètres de l’application</h1><p>Réglages généraux de KHE Booth.</p></div></div>
-    <div className="grid client-grid">
-      <section className="card">
-        <h2 style={{ marginTop: 0 }}>Langue</h2>
-        <p className="muted">La langue sélectionnée est mémorisée sur cet appareil.</p>
-        <div className="form">
-          {languages.map(([code, label]) => (
-            <button key={code} type="button" className={language === code ? 'button' : 'button secondary'} onClick={() => choose(code)}>{language === code ? '✓ ' : ''}{label}</button>
-          ))}
-        </div>
-        {saved ? <p className="success">Langue enregistrée.</p> : null}
-      </section>
-      <section className="card">
-        <h2 style={{ marginTop: 0 }}>Application</h2>
-        <p><strong>KHE Booth</strong></p>
-        <p className="muted">Les paramètres de langue, de profil et les futurs réglages d’application sont regroupés ici.</p>
-      </section>
-    </div>
-  </PortalShell>;
+export default function SettingsPage(){
+ const[language,setLanguage]=useState('fr');const[saved,setSaved]=useState(false);const[me,setMe]=useState<Me|null>(null);const[notifications,setNotifications]=useState<NotificationPreferences>(DEFAULT_NOTIFICATIONS);const[notificationMessage,setNotificationMessage]=useState('');const[regions,setRegions]=useState<RegionalSettings>(DEFAULT_REGIONAL_SETTINGS);const[selectedRegion,setSelectedRegion]=useState<RegionKey>('SWITZERLAND');const[siteConfig,setSiteConfig]=useState<SiteConfig|null>(null);const[regionMessage,setRegionMessage]=useState('');
+ useEffect(()=>{const value=window.localStorage.getItem('khe.web.language');if(value)setLanguage(value);apiRequest<Me>('/auth/me').then((user)=>{setMe(user);setNotifications({...DEFAULT_NOTIFICATIONS,...user.notificationPreferences});}).catch(()=>undefined);},[]);
+ useEffect(()=>{if(!me||!['OWNER','ADMIN'].includes(me.role))return;apiRequest<SiteConfig>('/commerce/admin/site').then((value)=>{setSiteConfig(value);setRegions(normalizeRegionalSettings(value.regionalSettings));}).catch(()=>undefined);},[me]);
+ function choose(next:string){setLanguage(next);window.localStorage.setItem('khe.web.language',next);window.dispatchEvent(new CustomEvent('khe-language-changed',{detail:next}));setSaved(true);}
+ async function saveNotifications(next:NotificationPreferences){setNotifications(next);setNotificationMessage('Enregistrement…');try{await apiRequest('/auth/notification-preferences',{method:'PATCH',body:JSON.stringify(next)});setNotificationMessage('✓ Préférences synchronisées.');}catch(e){setNotificationMessage(e instanceof Error?e.message:'Erreur');}}
+ async function saveRegions(){if(!siteConfig)return;setRegionMessage('Synchronisation…');try{await apiRequest('/commerce/admin/site-content',{method:'PATCH',body:JSON.stringify({media:siteConfig.media||{},seo:siteConfig.seo||{},socialLinks:siteConfig.socialLinks||{},announcement:siteConfig.announcement||{},contentBlocks:siteConfig.contentBlocks||[],regionalSettings:regions})});setRegionMessage('✓ Comportement régional du site synchronisé.');}catch(e){setRegionMessage(e instanceof Error?e.message:'Erreur');}}
+ const patchNotification=(patch:Partial<NotificationPreferences>)=>{const next={...notifications,...patch};void saveNotifications(next);};
+ return <PortalShell><div className="page-header"><div><div className="eyebrow">PRÉFÉRENCES KHE</div><h1>Paramètres</h1><p className="muted">Langue, notifications, son, vibration et comportement régional du site.</p></div></div>
+ <div className="grid two" style={{alignItems:'start'}}><section className="card"><h2 style={{marginTop:0}}>Langue</h2><p className="muted">La langue est appliquée immédiatement aux zones traduites de KHE Booth.</p><div style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:10}}>{LANGUAGES.map(([code,label])=><button key={code} type="button" onClick={()=>choose(code)} style={{minHeight:64,border:language===code?'4px solid #d2ad4f':'2px solid #fff',borderRadius:14,background:FLAGS[code],color:code==='fr'||code==='it'?'#111':'#fff',fontWeight:1000,textShadow:'0 1px 2px rgba(255,255,255,.45),0 1px 3px rgba(0,0,0,.35)',boxShadow:language===code?'0 0 0 2px #111':'0 5px 15px rgba(0,0,0,.12)',cursor:'pointer'}}>{language===code?'✓ ':''}{label}</button>)}</div>{saved?<p className="success">Langue enregistrée.</p>:null}</section>
+ <section className="card" style={{display:'grid',gap:12}}><h2 style={{margin:0}}>Notifications</h2><p className="muted">Sur ordinateur, les sons personnalisés fonctionnent lorsque KHE Booth est ouvert. Les notifications système en arrière-plan restent soumises au navigateur et au système.</p><label style={{display:'flex',justifyContent:'space-between',gap:10}}>Notifications activées<input type="checkbox" checked={notifications.enabled} onChange={(e)=>patchNotification({enabled:e.target.checked})}/></label><label style={{display:'flex',justifyContent:'space-between',gap:10}}>Son<input type="checkbox" checked={notifications.soundEnabled} disabled={!notifications.enabled} onChange={(e)=>patchNotification({soundEnabled:e.target.checked})}/></label><label>Son de notification<select value={notifications.sound} disabled={!notifications.enabled||!notifications.soundEnabled} onChange={(e)=>patchNotification({sound:e.target.value})}><option value="default">Système KHE</option><option value="khe_chime">KHE Chime</option><option value="khe_gold">KHE Gold</option><option value="khe_pulse">KHE Pulse</option><option value="silent">Silencieux</option></select></label><label>Volume de prévisualisation : {notifications.soundVolume}%<input type="range" min="0" max="100" value={notifications.soundVolume} disabled={!notifications.enabled||!notifications.soundEnabled} onChange={(e)=>patchNotification({soundVolume:Number(e.target.value)})}/></label><label style={{display:'flex',justifyContent:'space-between',gap:10}}>Vibration si compatible<input type="checkbox" checked={notifications.vibrationEnabled} disabled={!notifications.enabled} onChange={(e)=>patchNotification({vibrationEnabled:e.target.checked})}/></label><div className="grid two"><label>Mode<select value={notifications.vibrationMode} disabled={!notifications.vibrationEnabled} onChange={(e)=>patchNotification({vibrationMode:e.target.value})}><option value="short">Courte</option><option value="double">Double</option><option value="triple">Triple</option><option value="long">Longue</option><option value="off">Aucune</option></select></label><label>Intensité souhaitée<select value={notifications.vibrationIntensity} disabled={!notifications.vibrationEnabled} onChange={(e)=>patchNotification({vibrationIntensity:e.target.value})}><option value="light">Légère</option><option value="medium">Moyenne</option><option value="strong">Forte</option></select></label></div><button className="button secondary" type="button" onClick={()=>tone(notifications)}>Tester son / vibration</button><p className="muted" style={{fontSize:11}}>L’intensité physique de vibration n’est pas pilotable par tous les navigateurs/appareils. KHE adapte le motif lorsque possible ; le système de l’appareil reste prioritaire.</p>{notificationMessage?<p className="success">{notificationMessage}</p>:null}</section></div>
+ {me&&['OWNER','ADMIN'].includes(me.role)?<><div style={{height:18}}/><section className="card" style={{display:'grid',gap:14}}><div><div className="eyebrow">SITE PROMOTIONNEL</div><h2>Comportement par région</h2><p className="muted">Définissez l’affichage du site pour la Suisse, zone euro, Afrique, Asie, Amériques et autres régions. Le visiteur est classé automatiquement par pays, avec possibilité de choisir sa devise.</p></div><RegionalSiteSettings value={regions} onChange={setRegions} selected={selectedRegion} onSelectedChange={setSelectedRegion} compact/><button className="button" onClick={()=>void saveRegions()}>Enregistrer les réglages régionaux</button>{regionMessage?<p className="success">{regionMessage}</p>:null}</section></>:null}
+ </PortalShell>;
 }
