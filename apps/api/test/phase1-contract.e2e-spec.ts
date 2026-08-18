@@ -185,14 +185,16 @@ suite('Phase 1 API contract (PostgreSQL integration)', () => {
       .send({ configuration: { countdownSeconds: 5 } })
       .expect(200);
 
+    const startsAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const endsAt = new Date(startsAt.getTime() + 3 * 60 * 60 * 1000);
     const event = await request(app.getHttpServer())
       .post('/api/events')
       .set(auth(operatorToken))
       .send({
         name: 'Phase 1 event',
         description: 'Contract validation',
-        startsAt: '2026-08-12T20:00:00.000Z',
-        endsAt: '2026-08-12T23:00:00.000Z',
+        startsAt: startsAt.toISOString(),
+        endsAt: endsAt.toISOString(),
         clientId: client.body.id,
         presetId: preset.body.id,
         venueName: 'KHE Test Venue',
