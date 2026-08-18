@@ -55,12 +55,17 @@ jobs:
           if (!build?.id) throw new Error('No Android EAS build found');
           const owner = build.project?.ownerAccount?.name || 'kurtis-hypnotic-event';
           const slug = build.project?.slug || 'kurtis-hypnotic-events';
+          const error = build.error || null;
           console.log(`EAS_BUILD_ID=${build.id}`);
           console.log(`EAS_STATUS=${build.status || 'UNKNOWN'}`);
           console.log(`EAS_GIT_COMMIT=${build.gitCommitHash || 'unknown'}`);
           console.log(`EAS_BUILD_PROFILE=${build.buildProfile || 'unknown'}`);
           console.log(`EAS_CREATED_AT=${build.createdAt || 'unknown'}`);
           console.log(`EAS_COMPLETED_AT=${build.completedAt || 'pending'}`);
+          console.log(`EAS_ERROR_CODE=${error?.errorCode || error?.code || 'unknown'}`);
+          console.log(`EAS_ERROR_MESSAGE=${error?.message || 'unknown'}`);
+          console.log(`EAS_ERROR_TYPE=${error?.type || 'unknown'}`);
+          console.log(`EAS_LOG_FILES=${Array.isArray(build.logFiles) ? build.logFiles.length : 0}`);
           console.log(`EAS_ARTIFACT_URL=${build.artifacts?.buildUrl || 'pending'}`);
           console.log(`EAS_BUILD_URL=https://expo.dev/accounts/${owner}/projects/${slug}/builds/${build.id}`);
           NODE
