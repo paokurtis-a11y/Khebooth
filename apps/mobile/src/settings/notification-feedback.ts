@@ -22,7 +22,7 @@ async function toneUri(sound:string):Promise<string>{const frequencies:Record<st
 export async function playNotificationFeedback(preferences:NotificationPreferences):Promise<void>{
   if(!preferences.enabled)return;
   if(preferences.vibrationEnabled&&preferences.vibrationMode!=='off'){
-    const factor=preferences.vibrationIntensity==='strong'?1.5:preferences.vibrationIntensity==='light'?.7:1;
+    const factor=preferences.vibrationIntensity==='strong'?1.5:preferences.vibrationIntensity==='light'?0.7:1;
     const unit=Math.round(90*factor);const patterns:Record<string,number[]>={short:[0,unit],double:[0,unit,80,unit],triple:[0,unit,70,unit,70,unit],long:[0,unit*3]};Vibration.vibrate(patterns[preferences.vibrationMode]||[0,unit]);
   }
   if(preferences.soundEnabled&&preferences.sound!=='silent'){
