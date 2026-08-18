@@ -7,7 +7,7 @@ import { respondSharingConnection } from '../station/sharing-connection-client';
 import { SignedUrlMediaTransfer } from './media-transfer';
 import { SyncEngine } from './sync-engine';
 
-const SYNC_INTERVAL_MS = 5_000;
+const SYNC_INTERVAL_MS = 2_000;
 const CONNECTION_POLL_INTERVAL_MS = 1_200;
 
 export function useCaptureSync(
@@ -72,7 +72,9 @@ export function useCaptureSync(
       try {
         const stationToken = await vault.getStationToken();
         if (!stationToken) return;
-        const control = await api.control(stationToken);
+        // This status update is also CAPTURE's heartbeat. It keeps SHARING aware that
+        // the capture tablet is really online even when the camera screen is not open.
+        const control = await api.updateControlStatus(stationToken, {});
         if (cancelled || control.sharingConnectionStatus !== 'PENDING') return;
 
         const requestKey = String(control.sharingRequestedAt ?? 'pending-request');
