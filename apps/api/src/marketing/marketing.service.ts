@@ -63,7 +63,7 @@ export class MarketingService {
       WHERE "organizationId"=${organizationId}::uuid AND "createdAt">=CURRENT_TIMESTAMP-${safeDays}*INTERVAL '1 day'
     `;
     const daily=await this.prisma.$queryRaw<Array<{day:Date;visits:bigint;checkouts:bigint;payments:bigint;revenueCents:bigint}>>`
-      WITH days AS (SELECT generate_series(CURRENT_DATE-${safeDays-1},CURRENT_DATE,INTERVAL '1 day')::date AS day)
+      WITH days AS (SELECT generate_series(CURRENT_DATE-(${safeDays-1})::int,CURRENT_DATE,INTERVAL '1 day')::date AS day)
       SELECT d.day,
         count(e.id) FILTER (WHERE e."eventType"='PAGE_VIEW') AS visits,
         count(e.id) FILTER (WHERE e."eventType"='CHECKOUT_STARTED') AS checkouts,
