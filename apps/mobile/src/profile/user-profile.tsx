@@ -70,10 +70,11 @@ export function UserProfile({onClose}:{onClose:()=>void}){
   }
 
   async function synchronizeAvatar(token:string,remote:StationProfileContract,current:UserProfileData):Promise<UserProfileData>{
-    if(!remote.avatarPath||remote.avatarPath===current.avatarPath&&current.avatarUri)return{...current,avatarPath:remote.avatarPath};
+    if(!remote.avatarPath)return{...current,avatarPath:null,avatarUri:null};
+    if(remote.avatarPath===current.avatarPath&&current.avatarUri)return current;
     try{
       const ticket=await api.profileAvatarDownload(token);
-      if(!ticket.pathname||!ticket.downloadUrl)return{...current,avatarPath:remote.avatarPath};
+      if(!ticket.pathname||!ticket.downloadUrl)return current;
       const directory=new Directory(Paths.document,'profile');
       await directory.create({idempotent:true,intermediates:true});
       const destination=new File(directory,`shared-avatar.${extensionForAvatar(ticket.contentType)}`);
@@ -81,7 +82,7 @@ export function UserProfile({onClose}:{onClose:()=>void}){
       const downloaded=await File.downloadFileAsync(ticket.downloadUrl,destination,{idempotent:true});
       if(!downloaded.exists||downloaded.size<=0)throw new Error('Photo de profil incomplète');
       return{...current,avatarUri:downloaded.uri,avatarPath:ticket.pathname};
-    }catch{return{...current,avatarPath:remote.avatarPath};}
+    }catch{return current;}
   }
 
   async function pullRemote(token:string,announce=false):Promise<void>{
@@ -92,7 +93,7 @@ export function UserProfile({onClose}:{onClose:()=>void}){
       let merged:UserProfileData={
         firstName:remote.firstName,lastName:remote.lastName,displayName:remote.displayName,company:remote.company,role:remote.role,email:remote.email,phone:remote.phone,
         address:remote.address,birthDate:normalizedBirthDate(remote.birthDate),city:remote.city,country:remote.country,bio:remote.bio,
-        avatarUri:profileRef.current.avatarUri,avatarPath:remote.avatarPath,
+        avatarUri:profileRef.current.avatarUri,avatarPath:profileRef.current.avatarPath,
       };
       merged=await synchronizeAvatar(token,remote,merged);
       commitLocal(merged);
