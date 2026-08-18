@@ -1,7 +1,6 @@
 import { BadRequestException, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { head, issueSignedToken, presignUrl } from '@vercel/blob';
 import { PrismaService } from '../prisma/prisma.service';
-import { blobAuthOptions } from '../storage/blob-auth';
 import type { AuthenticatedUser } from './auth.types';
 
 const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
@@ -20,9 +19,8 @@ export class ProfilePhotoService {
     if (!Number.isInteger(byteSize) || byteSize <= 0 || byteSize > MAX_AVATAR_BYTES) throw new BadRequestException('La photo doit faire moins de 5 Mo');
     const pathname = this.pathname(user);
     const expiresAtMs = Date.now() + 15 * 60 * 1000;
-    const auth = blobAuthOptions();
     try {
-      const token = await issueSignedToken({ pathname, operations: ['put'], validUntil: expiresAtMs, maximumSizeInBytes: byteSize, allowedContentTypes: [contentType], ...auth });
+      const token = await issueSignedToken({ pathname, operations: ['put'], validUntil: expiresAtMs, maximumSizeInBytes: byteSize, allowedContentTypes: [contentType] });
       const { presignedUrl } = await presignUrl(token, { access: 'private', pathname, operation: 'put', validUntil: expiresAtMs, maximumSizeInBytes: byteSize, allowedContentTypes: [contentType], allowOverwrite: true });
       return { uploadUrl: presignedUrl, pathname, expiresAt: new Date(expiresAtMs), contentType, byteSize };
     } catch (error) {
@@ -35,7 +33,7 @@ export class ProfilePhotoService {
   async finalize(user: AuthenticatedUser) {
     const pathname = this.pathname(user);
     try {
-      const blob = await head(pathname, blobAuthOptions());
+      const blob = await head(pathname);
       if (!ALLOWED.has(blob.contentType ?? '') || blob.size <= 0 || blob.size > MAX_AVATAR_BYTES) throw new BadRequestException('Photo de profil invalide');
       await this.prisma.$executeRaw`UPDATE "User" SET "avatarPath" = ${pathname}, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ${user.id}::uuid AND "organizationId" = ${user.organizationId}::uuid`;
       return this.download(pathname);
@@ -50,9 +48,8 @@ export class ProfilePhotoService {
     if (!pathname) return { avatarUrl: null, expiresAt: null };
     const expiresAtMs = Date.now() + 10 * 60 * 1000;
     try {
-      const auth = blobAuthOptions();
-      await head(pathname, auth);
-      const token = await issueSignedToken({ pathname, operations: ['get'], validUntil: expiresAtMs, ...auth });
+      await head(pathname);
+      const token = await issueSignedToken({ pathname, operations: ['get'], validUntil: expiresAtMs });
       const { presignedUrl } = await presignUrl(token, { access: 'private', pathname, operation: 'get', validUntil: expiresAtMs });
       return { avatarUrl: presignedUrl, expiresAt: new Date(expiresAtMs) };
     } catch (error) {
