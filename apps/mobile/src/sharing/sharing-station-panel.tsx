@@ -1,7 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import type { StationApi } from '../api/station-api';
+import type { StationExperienceApi } from '../api/station-api';
 import { CreativeStudio, type CreativePlan } from '../studio/creative-studio';
 import { RemoteControlPanel } from './remote-control-panel';
 import { SharingEventManager } from './sharing-event-manager';
@@ -11,7 +11,7 @@ const CREATIVE_PLAN_KEY='khe.creative.plan.v1';
 
 interface SharingStationPanelProps {
   eventName: string;
-  api: StationApi;
+  api: StationExperienceApi;
   stationToken: string;
 }
 
