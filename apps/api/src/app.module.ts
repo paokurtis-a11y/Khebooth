@@ -10,8 +10,9 @@ import { PresetsModule } from './presets/presets.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { StationsModule } from './stations/stations.module';
 import { SupportModule } from './support/support.module';
+import { TeamModule } from './team/team.module';
 
 @Module({
-  imports:[PrismaModule,HealthModule,AuthModule,ClientsModule,EventsModule,PresetsModule,MarketingModule,CommerceModule,StationsModule,MobileModule,SupportModule],
+  imports:[PrismaModule,HealthModule,AuthModule,ClientsModule,EventsModule,PresetsModule,MarketingModule,CommerceModule,StationsModule,MobileModule,SupportModule,TeamModule],
 })
 export class AppModule {}
