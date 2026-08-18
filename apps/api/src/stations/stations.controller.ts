@@ -11,6 +11,7 @@ import { UpdateStationProfileDto } from './dto/update-station-profile.dto';
 import { UpdateStationStatusDto } from './dto/update-station-status.dto';
 import { UpdateUploadProgressDto } from './dto/update-upload-progress.dto';
 import { ClientEventWorkspaceService } from './client-event-workspace.service';
+import { DesignStorageService } from './design-storage.service';
 import { MediaSharingService } from './media-sharing.service';
 import { MediaStorageService } from './media-storage.service';
 import { StationAuthGuard } from './station-auth.guard';
@@ -25,6 +26,7 @@ export class StationsController {
     private readonly stations: StationsService,
     private readonly mediaStorage: MediaStorageService,
     private readonly mediaSharing: MediaSharingService,
+    private readonly designStorage: DesignStorageService,
     private readonly stationRenewal: StationRenewalService,
     private readonly stationProfile: StationProfileService,
     private readonly stationConnection: StationConnectionService,
@@ -56,6 +58,17 @@ export class StationsController {
 
   @UseGuards(StationAuthGuard)
   @Post('client-events/:id/design-ready') markClientEventDesignReady(@CurrentStation() station:AuthenticatedStation,@Param('id',new ParseUUIDPipe()) id:string,@Body() body:Record<string,unknown>){ return this.clientEvents.markDesignReady(station,id,body); }
+
+  @UseGuards(StationAuthGuard)
+  @Post('client-events/:id/design-background-upload') async prepareDesignBackground(@CurrentStation() station:AuthenticatedStation,@Param('id',new ParseUUIDPipe()) id:string,@Body() body:Record<string,unknown>){
+    await this.entitlements.requireStation(station,'STUDIO_BASIC');
+    return this.designStorage.prepareBackgroundUpload(station,id,body);
+  }
+
+  @UseGuards(StationAuthGuard)
+  @Post('design-background-download') designBackgroundDownload(@CurrentStation() station:AuthenticatedStation,@Body() body:Record<string,unknown>){
+    return this.designStorage.backgroundDownload(station,body);
+  }
 
   @UseGuards(StationAuthGuard)
   @Post('client-events/:id/switch') switchClientEvent(@CurrentStation() station:AuthenticatedStation,@Param('id',new ParseUUIDPipe()) id:string){ return this.clientEvents.switchEvent(station,id); }
