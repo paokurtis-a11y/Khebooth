@@ -17,6 +17,9 @@ type Profile = {
   permissions?: Record<string, boolean>;
 };
 type UploadTicket={uploadUrl:string;contentType:string;byteSize:number};
+const PERMISSION_LABELS:Record<string,string>={
+  'dashboard.view':'Voir Dashboard','clients.view':'Voir clients','clients.manage':'Modifier clients','clients.delete':'Supprimer clients','events.view':'Voir événements','events.manage':'Créer / modifier événements','events.delete':'Supprimer événements','studio.view':'Voir Studio / Presets','studio.manage':'Modifier Studio / Presets','studio.delete':'Supprimer Presets','marketing.view':'Voir Marketing','marketing.manage':'Gérer Marketing','communications.manage':'Communications clients','site.manage':'Configurer le site','billing.manage':'Gérer facturation','team.manage':'Gérer équipe','reports.export':'Exporter rapports'
+};
 
 export default function ProfilePage() {
   const [profile,setProfile]=useState<Profile|null>(null);
@@ -57,14 +60,15 @@ export default function ProfilePage() {
     finally{setPhotoBusy(false);if(fileRef.current)fileRef.current.value='';}
   }
 
+  const allowedPermissions=Object.entries(profile?.permissions||{}).filter(([,allowed])=>allowed).map(([permission])=>permission);
   return <PortalShell>
     <div className="header"><div><div className="eyebrow">KHE IDENTITY</div><h1>Profil</h1><p>Votre identité KHE Booth et vos informations de contact.</p></div></div>
-    {error ? <p className="error">{error}</p> : null}{message ? <p className="success">{message}</p> : null}
+    {error ? <div className="portal-error-state" style={{marginBottom:16}}><strong>Profil indisponible</strong><p>{error}</p></div> : null}{message ? <p className="success">{message}</p> : null}
     <div className="grid two" style={{alignItems:'start'}}>
       <section className="card">
-        <div style={{display:'flex',gap:18,alignItems:'center',marginBottom:20}}>
-          <div style={{width:96,height:96,borderRadius:48,overflow:'hidden',background:'#181818',border:'3px solid #d2ad4f',display:'grid',placeItems:'center',color:'#fff',fontSize:30,fontWeight:900}}>{profile?.avatarUrl?<img src={profile.avatarUrl} alt="Photo de profil" style={{width:'100%',height:'100%',objectFit:'cover'}}/>:<span>{(firstName[0]||'K').toUpperCase()}{(lastName[0]||'').toUpperCase()}</span>}</div>
-          <div><h2 style={{margin:'0 0 5px'}}>{[firstName,lastName].filter(Boolean).join(' ')||'Votre profil KHE'}</h2><div className="muted">{role}</div><input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(event)=>{const file=event.target.files?.[0];if(file)void uploadPhoto(file);}}/><button type="button" className="button secondary" style={{marginTop:10}} disabled={photoBusy} onClick={()=>fileRef.current?.click()}>{photoBusy?'Envoi…':'Changer la photo'}</button></div>
+        <div style={{display:'flex',gap:18,alignItems:'center',marginBottom:20,flexWrap:'wrap'}}>
+          <div style={{width:96,height:96,borderRadius:48,overflow:'hidden',background:'#181818',border:'3px solid #d2ad4f',display:'grid',placeItems:'center',color:'#fff',fontSize:30,fontWeight:900,boxShadow:'0 0 0 5px rgba(214,175,82,.08)'}}>{profile?.avatarUrl?<img src={profile.avatarUrl} alt="Photo de profil" style={{width:'100%',height:'100%',objectFit:'cover'}}/>:<span>{(firstName[0]||'K').toUpperCase()}{(lastName[0]||'').toUpperCase()}</span>}</div>
+          <div style={{flex:'1 1 220px'}}><h2 style={{margin:'0 0 5px'}}>{[firstName,lastName].filter(Boolean).join(' ')||'Votre profil KHE'}</h2><div className="muted">{role}</div><input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(event)=>{const file=event.target.files?.[0];if(file)void uploadPhoto(file);}}/><button type="button" className="button secondary" style={{marginTop:10}} disabled={photoBusy} onClick={()=>fileRef.current?.click()}>{photoBusy?'Envoi…':'Changer la photo'}</button></div>
         </div>
         <form className="form" onSubmit={save}>
           <div className="grid two"><div className="field"><label htmlFor="lastName">Nom *</label><input id="lastName" required maxLength={120} value={lastName} onChange={(e)=>setLastName(e.target.value)}/></div><div className="field"><label htmlFor="firstName">Prénom *</label><input id="firstName" required maxLength={120} value={firstName} onChange={(e)=>setFirstName(e.target.value)}/></div></div>
@@ -75,7 +79,7 @@ export default function ProfilePage() {
           <button className="button" disabled={busy}>{busy?'Enregistrement…':'Enregistrer le profil'}</button>
         </form>
       </section>
-      <section className="card"><div className="eyebrow">ACCÈS & ÉQUIPE</div><h2>Vos autorisations</h2><p className="muted">Votre rôle définit un plafond de droits. Les autorisations individuelles peuvent être ajustées par un Owner/Admin.</p><div style={{display:'flex',flexWrap:'wrap',gap:7}}>{Object.entries(profile?.permissions||{}).filter(([,allowed])=>allowed).map(([permission])=><span key={permission} style={{padding:'6px 9px',borderRadius:999,background:'#f3eadc',fontSize:11,fontWeight:800}}>{permission}</span>)}</div>{['OWNER','ADMIN'].includes(role)?<Link className="button secondary" href="/team" style={{marginTop:16}}>Gérer l’équipe et les permissions</Link>:null}</section>
+      <section className="card"><div className="eyebrow">ACCÈS & ÉQUIPE</div><h2 style={{marginBottom:8}}>Vos autorisations</h2><p className="muted" style={{marginTop:0}}>Votre rôle définit un plafond de droits. Les autorisations individuelles peuvent être ajustées par un Owner/Admin.</p>{allowedPermissions.length?<div className="profile-permission-grid">{allowedPermissions.map((permission)=><div className="profile-permission-pill" key={permission}>{PERMISSION_LABELS[permission]||permission}</div>)}</div>:<div style={{padding:'14px',borderRadius:12,border:'1px solid #303a47',background:'#111820',color:'#aeb8c5'}}>Aucune autorisation supplémentaire n’est active.</div>}{['OWNER','ADMIN'].includes(role)?<Link className="button secondary" href="/team" style={{marginTop:18,width:'100%',textAlign:'center'}}>Gérer l’équipe et les permissions</Link>:null}</section>
     </div>
   </PortalShell>;
 }
