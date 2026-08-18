@@ -1,25 +1,22 @@
 name: KHE Booth EAS Build Status Probe
 
 on:
-  pull_request:
+  push:
     branches:
-      - main
-    types: [opened, synchronize, reopened, labeled]
+      - build/android-final-f62c93
     paths:
       - .github/workflows/eas-build-status-probe.yml
-      - apps/mobile/**
 
 permissions:
   contents: read
+  pull-requests: write
+  issues: write
 
 jobs:
   probe:
-    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
       - uses: pnpm/action-setup@v4
         with:
           version: 10.6.2
@@ -31,8 +28,25 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
       - name: Query exact EAS build status
+        id: eas
         working-directory: apps/mobile
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
-          eas build:view 2999d54a-1f32-4db3-9334-96bc957ea642 --json
+          eas build:view 2999d54a-1f32-4db3-9334-96bc957ea642 --json > /tmp/eas.json
+          node - <<'NODE'
+          const fs=require('fs');
+          const b=JSON.parse(fs.readFileSync('/tmp/eas.json','utf8'));
+          const out=process.env.GITHUB_OUTPUT;
+          fs.appendFileSync(out,`status=${b.status || 'UNKNOWN'}\n`);
+          fs.appendFileSync(out,`artifact=${b.artifacts?.buildUrl || ''}\n`);
+          fs.appendFileSync(out,`error=${(b.error?.message || b.error?.errorCode || '').replace(/\n/g,' ')}\n`);
+          NODE
+      - name: Publish probe result to PR 34
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STATUS: ${{ steps.eas.outputs.status }}
+          ARTIFACT: ${{ steps.eas.outputs.artifact }}
+          ERROR: ${{ steps.eas.outputs.error }}
+        run: |
+          printf 'EAS_STATUS_PROBE\nbuild_id=2999d54a-1f32-4db3-9334-96bc957ea642\nstatus=%s\nartifact=%s\nerror=%s\n' "$STATUS" "$ARTIFACT" "$ERROR" | gh pr comment 34 --body-file -
