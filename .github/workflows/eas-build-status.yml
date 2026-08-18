@@ -1,0 +1,47 @@
+name: KHE Booth EAS Build Status
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/eas-build-status.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-eas-build:
+    name: Inspect failed EAS build
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Setup Expo and EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Inspect EAS build 2999d54a
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          eas build:view 2999d54a-1f32-4db3-9334-96bc957ea642 --json --non-interactive > /tmp/build.json
+          node - <<'NODE'
+          const fs = require('fs');
+          const b = JSON.parse(fs.readFileSync('/tmp/build.json','utf8'));
+          const safe = {
+            id: b.id,
+            status: b.status,
+            platform: b.platform,
+            buildProfile: b.buildProfile,
+            gitCommitHash: b.gitCommitHash,
+            createdAt: b.createdAt,
+            updatedAt: b.updatedAt,
+            error: b.error ? { errorCode: b.error.errorCode || null, message: b.error.message || null } : null,
+            artifacts: b.artifacts ? { buildUrl: b.artifacts.buildUrl || null, applicationArchiveUrl: b.artifacts.applicationArchiveUrl || null } : null,
+            logs: Array.isArray(b.logFiles) ? b.logFiles.length : null
+          };
+          console.log('EAS_SAFE_STATUS=' + JSON.stringify(safe));
+          NODE
