@@ -1,0 +1,51 @@
+name: KHE Booth Latest EAS Android Status
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/eas-latest-status.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  status:
+    name: Read latest EAS Android builds
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Setup Expo and EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Read latest Android builds safely
+        working-directory: apps/mobile
+        run: |
+          set -euo pipefail
+          eas build:list --platform android --limit 3 --json --non-interactive > /tmp/eas-builds.json
+          node - <<'NODE'
+          const fs = require('fs');
+          const builds = JSON.parse(fs.readFileSync('/tmp/eas-builds.json','utf8'));
+          for (const [i,b] of builds.entries()) {
+            const owner=b.project?.ownerAccount?.name || 'kurtis-hypnotic-event';
+            const slug=b.project?.slug || 'kurtis-hypnotic-events';
+            console.log(`EAS_${i+1}_ID=${b.id}`);
+            console.log(`EAS_${i+1}_STATUS=${b.status || 'UNKNOWN'}`);
+            console.log(`EAS_${i+1}_GIT_COMMIT=${b.gitCommitHash || 'unknown'}`);
+            console.log(`EAS_${i+1}_PROFILE=${b.buildProfile || 'unknown'}`);
+            console.log(`EAS_${i+1}_CREATED_AT=${b.createdAt || 'unknown'}`);
+            console.log(`EAS_${i+1}_COMPLETED_AT=${b.completedAt || 'pending'}`);
+            console.log(`EAS_${i+1}_ERROR=${b.error?.message || b.error?.errorCode || 'none'}`);
+            console.log(`EAS_${i+1}_ARTIFACT=${b.artifacts?.buildUrl || 'pending'}`);
+            console.log(`EAS_${i+1}_URL=https://expo.dev/accounts/${owner}/projects/${slug}/builds/${b.id}`);
+          }
+          NODE
