@@ -99,6 +99,9 @@ export interface StationApi {
   manifest(stationToken: string): Promise<EventManifestContract>;
   liveSession(stationToken: string): Promise<StationLiveSessionContract>;
   control(stationToken: string): Promise<StationControlContract>;
+  requestControlConnection(stationToken: string): Promise<StationControlContract>;
+  respondControlConnection(stationToken: string, accepted: boolean): Promise<StationControlContract>;
+  disconnectControlConnection(stationToken: string): Promise<StationControlContract>;
   updateControlCommand(stationToken: string, command: StationControlCommandContract): Promise<StationControlContract>;
   updateControlStatus(stationToken: string, status: StationControlStatusContract): Promise<StationControlContract>;
   listMedia(stationToken: string): Promise<MediaAssetContract[]>;
@@ -209,6 +212,9 @@ export class HttpStationApi implements StationExperienceApi {
   manifest(token: string) { return this.stationRequest<EventManifestContract>('/stations/manifest', token); }
   liveSession(token: string) { return this.stationRequest<StationLiveSessionContract>('/stations/live-session', token); }
   control(token: string) { return this.stationRequest<StationControlContract>('/stations/control', token); }
+  requestControlConnection(token: string) { return this.stationRequest<StationControlContract>('/stations/control/connection-request', token, { method: 'POST' }); }
+  respondControlConnection(token: string, accepted: boolean) { return this.stationRequest<StationControlContract>('/stations/control/connection-response', token, { method: 'PATCH', body: JSON.stringify({ accepted }) }); }
+  disconnectControlConnection(token: string) { return this.stationRequest<StationControlContract>('/stations/control/disconnect', token, { method: 'POST' }); }
   updateControlCommand(token: string, command: StationControlCommandContract) { return this.stationRequest<StationControlContract>('/stations/control/command', token, { method: 'PATCH', body: JSON.stringify(command) }); }
   updateControlStatus(token: string, status: StationControlStatusContract) { return this.stationRequest<StationControlContract>('/stations/control/status', token, { method: 'PATCH', body: JSON.stringify(status) }); }
   profile(token: string) { return this.stationRequest<StationProfileContract>('/stations/profile', token); }
