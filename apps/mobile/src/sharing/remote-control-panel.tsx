@@ -7,12 +7,12 @@ import type {
 import { CAPTURE_DURATIONS, VISUAL_EFFECTS } from '@khe/contracts';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
-import type { StationApi } from '../api/station-api';
+import type { StationExperienceApi } from '../api/station-api';
 import { SharingLivePreview } from '../live/live-preview';
 
 interface RemoteControlPanelProps {
   eventName: string;
-  api: StationApi;
+  api: StationExperienceApi;
   stationToken: string;
 }
 
@@ -33,7 +33,6 @@ const effectLabels: Record<VisualEffect, string> = {
 export function RemoteControlPanel({ eventName, api, stationToken }: RemoteControlPanelProps) {
   const [control, setControl] = useState<StationControlContract | null>(null);
   const [displaySeconds, setDisplaySeconds] = useState(0);
-  const [connectionRequested, setConnectionRequested] = useState(false);
   const [lastRefreshAt, setLastRefreshAt] = useState(0);
   const lastServerSeconds = useRef(0);
   const [busy, setBusy] = useState(false);
@@ -42,8 +41,6 @@ export function RemoteControlPanel({ eventName, api, stationToken }: RemoteContr
 
   useEffect(() => {
     let cancelled = false;
-    let timer: ReturnType<typeof setInterval> | null = null;
-
     const refresh = async () => {
       try {
         const next = await api.control(stationToken);
@@ -52,26 +49,22 @@ export function RemoteControlPanel({ eventName, api, stationToken }: RemoteContr
           lastServerSeconds.current = next.elapsedSeconds;
           setDisplaySeconds(next.elapsedSeconds);
           setLastRefreshAt(Date.now());
-          setMessage('');
         }
       } catch (error) {
         if (!cancelled) setMessage(error instanceof Error ? error.message : 'Commande distante indisponible.');
       }
     };
-
     void refresh();
-    timer = setInterval(() => void refresh(), connectionRequested ? 450 : 900);
-    return () => {
-      cancelled = true;
-      if (timer) clearInterval(timer);
-    };
-  }, [api, connectionRequested, stationToken]);
+    const timer = setInterval(() => void refresh(), 700);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [api, stationToken]);
 
+  const connectionStatus = control?.sharingConnectionStatus ?? 'DISCONNECTED';
   const captureOnline = control?.captureSeenAt
     ? Date.now() - new Date(control.captureSeenAt).getTime() < 5000
     : false;
-  const connected = Boolean(connectionRequested && captureOnline);
-  const connecting = Boolean(connectionRequested && !connected);
+  const connected = connectionStatus === 'ACCEPTED' && captureOnline;
+  const connecting = connectionStatus === 'PENDING' || (connectionStatus === 'ACCEPTED' && !captureOnline);
 
   useEffect(() => {
     if (!connecting) {
@@ -103,32 +96,39 @@ export function RemoteControlPanel({ eventName, api, stationToken }: RemoteContr
   }, [control?.runtimeState, control?.elapsedSeconds, control?.maxDurationSeconds]);
 
   async function requestConnection(): Promise<void> {
-    setConnectionRequested(true);
-    setMessage('Connexion à la station CAPTURE en cours…');
+    setBusy(true);
+    setMessage('Demande de connexion envoyée à CAPTURE…');
     try {
-      const next = await api.control(stationToken);
+      const next = await api.requestControlConnection(stationToken);
       setControl(next);
       setLastRefreshAt(Date.now());
-      if (next.captureSeenAt && Date.now() - new Date(next.captureSeenAt).getTime() < 5000) {
-        setMessage('Station CAPTURE connectée.');
+      if (next.sharingConnectionStatus === 'ACCEPTED') {
+        setMessage('CAPTURE avait déjà autorisé cette station SHARING.');
       } else {
-        setMessage('Recherche de la station CAPTURE… Vérifiez qu’elle est ouverte sur le même événement.');
+        setMessage('Demande envoyée. Une fenêtre Accepter / Refuser s’affiche maintenant sur CAPTURE.');
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Connexion à CAPTURE impossible pour le moment.');
+    } finally {
+      setBusy(false);
     }
   }
 
-  function disconnectLocally(): void {
-    setConnectionRequested(false);
-    setMessage('Régie SHARING déconnectée de CAPTURE. Les stations restent activées sur l’événement.');
+  async function disconnect(): Promise<void> {
+    setBusy(true);
+    try {
+      const next = await api.disconnectControlConnection(stationToken);
+      setControl(next);
+      setMessage('SHARING est déconnectée de CAPTURE. Vous pourrez redemander la connexion à tout moment.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Déconnexion impossible pour le moment.');
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function command(commandName: Exclude<RemoteCaptureCommand, 'NONE'>): Promise<void> {
-    if (!connected) {
-      setMessage('Connectez d’abord SHARING à la station CAPTURE.');
-      return;
-    }
+    if (!connected) { setMessage('CAPTURE doit d’abord accepter la connexion SHARING.'); return; }
     setBusy(true);
     try {
       const next = await api.updateControlCommand(stationToken, { command: commandName });
@@ -136,16 +136,11 @@ export function RemoteControlPanel({ eventName, api, stationToken }: RemoteContr
       setMessage(`Commande ${commandName} envoyée à la station CAPTURE.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Impossible d’envoyer la commande.');
-    } finally {
-      setBusy(false);
-    }
+    } finally { setBusy(false); }
   }
 
   async function selectEffect(selectedEffect: VisualEffect): Promise<void> {
-    if (!connected) {
-      setMessage('Connectez d’abord SHARING à la station CAPTURE.');
-      return;
-    }
+    if (!connected) { setMessage('CAPTURE doit d’abord accepter la connexion SHARING.'); return; }
     setBusy(true);
     try {
       const next = await api.updateControlCommand(stationToken, { selectedEffect });
@@ -153,16 +148,11 @@ export function RemoteControlPanel({ eventName, api, stationToken }: RemoteContr
       setMessage(`Effet ${effectLabels[selectedEffect]} sélectionné.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Impossible de modifier l’effet.');
-    } finally {
-      setBusy(false);
-    }
+    } finally { setBusy(false); }
   }
 
   async function selectDuration(maxDurationSeconds: CaptureDurationSeconds): Promise<void> {
-    if (!connected) {
-      setMessage('Connectez d’abord SHARING à la station CAPTURE.');
-      return;
-    }
+    if (!connected) { setMessage('CAPTURE doit d’abord accepter la connexion SHARING.'); return; }
     setBusy(true);
     try {
       const next = await api.updateControlCommand(stationToken, { maxDurationSeconds });
@@ -170,18 +160,11 @@ export function RemoteControlPanel({ eventName, api, stationToken }: RemoteContr
       setMessage(`Durée maximum réglée à ${maxDurationSeconds} secondes sur CAPTURE.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Impossible de modifier la durée.');
-    } finally {
-      setBusy(false);
-    }
+    } finally { setBusy(false); }
   }
 
   if (!control) {
-    return (
-      <View style={styles.loading}>
-        <ActivityIndicator />
-        <Text>Initialisation de la régie SHARING…</Text>
-      </View>
-    );
+    return <View style={styles.loading}><ActivityIndicator /><Text>Initialisation de la régie SHARING…</Text></View>;
   }
 
   const paused = control.runtimeState === 'PAUSED';
@@ -192,46 +175,36 @@ export function RemoteControlPanel({ eventName, api, stationToken }: RemoteContr
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
-        <View style={styles.headerCopy}>
-          <Text style={styles.eyebrow}>RÉGIE SHARING</Text>
-          <Text style={styles.title}>{eventName}</Text>
-        </View>
+        <View style={styles.headerCopy}><Text style={styles.eyebrow}>RÉGIE SHARING</Text><Text style={styles.title}>{eventName}</Text></View>
         <View style={styles.connectionBadge}>
           <View style={[styles.connectionDot, connected ? styles.dotConnected : styles.dotDisconnected]} />
-          <Text style={styles.connectionText}>{connected ? 'Connecté' : 'Déconnecté'}</Text>
+          <Text style={styles.connectionText}>{connected ? 'Connecté' : connectionStatus === 'PENDING' ? 'En attente' : 'Déconnecté'}</Text>
         </View>
       </View>
 
-      {!connectionRequested ? (
-        <Pressable style={styles.connectCard} onPress={() => void requestConnection()}>
-          <Text style={styles.connectTitle}>Connectez-vous à la station CAPTURE</Text>
-          <Text style={styles.connectHelp}>Touchez ici pour rechercher la station CAPTURE de ce même événement et activer la régie à distance.</Text>
-          <View style={styles.connectButton}><Text style={styles.connectButtonText}>SE CONNECTER À CAPTURE</Text></View>
+      {connectionStatus === 'DISCONNECTED' || connectionStatus === 'REJECTED' ? (
+        <Pressable disabled={busy} style={styles.connectCard} onPress={() => void requestConnection()}>
+          <Text style={styles.connectTitle}>{connectionStatus === 'REJECTED' ? 'Connexion refusée par CAPTURE' : 'Connexion à la station CAPTURE'}</Text>
+          <Text style={styles.connectHelp}>SHARING peut envoyer une demande à distance. CAPTURE reçoit immédiatement un message et choisit Accepter ou Refuser.</Text>
+          <View style={styles.connectButton}><Text style={styles.connectButtonText}>{busy ? 'ENVOI…' : 'SE CONNECTER À CAPTURE'}</Text></View>
         </Pressable>
       ) : connecting ? (
         <View style={styles.connectingCard}>
-          <Text style={styles.connectTitle}>Connexion à CAPTURE…</Text>
+          <Text style={styles.connectTitle}>{connectionStatus === 'PENDING' ? 'En attente de l’autorisation CAPTURE…' : 'CAPTURE autorisée, connexion en cours…'}</Text>
           <View style={styles.cometTrack}>
-            <Animated.Text
-              style={[
-                styles.comet,
-                { transform: [{ translateX: comet.interpolate({ inputRange: [0, 1], outputRange: [0, 230] }) }] },
-              ]}
-            >
-              ✦
-            </Animated.Text>
+            <Animated.Text style={[styles.comet, { transform: [{ translateX: comet.interpolate({ inputRange: [0, 1], outputRange: [0, 230] }) }] }]}>✦</Animated.Text>
           </View>
-          <Text style={styles.connectHelp}>KHE recherche la présence réelle de CAPTURE. L’état passera automatiquement au vert dès que son heartbeat est reçu.</Text>
-          <Pressable style={styles.retryButton} onPress={() => void requestConnection()}><Text style={styles.retryText}>RÉESSAYER MAINTENANT</Text></Pressable>
+          <Text style={styles.connectHelp}>{connectionStatus === 'PENDING' ? 'Validez la fenêtre de connexion sur la tablette CAPTURE.' : 'Autorisation reçue. KHE attend le heartbeat de CAPTURE.'}</Text>
+          <View style={styles.inlineActions}>
+            <Pressable disabled={busy} style={styles.retryButton} onPress={() => void requestConnection()}><Text style={styles.retryText}>RENVOYER LA DEMANDE</Text></Pressable>
+            <Pressable disabled={busy} style={styles.disconnectButton} onPress={() => void disconnect()}><Text style={styles.disconnectText}>Annuler</Text></Pressable>
+          </View>
         </View>
       ) : (
         <View style={styles.connectedCard}>
           <View style={styles.connectedRow}>
-            <View>
-              <Text style={styles.connectedTitle}>● CAPTURE CONNECTÉE</Text>
-              <Text style={styles.connectedHelp}>Dernière synchronisation régie : {lastRefreshLabel}</Text>
-            </View>
-            <Pressable style={styles.disconnectButton} onPress={disconnectLocally}><Text style={styles.disconnectText}>Déconnecter</Text></Pressable>
+            <View><Text style={styles.connectedTitle}>● CAPTURE CONNECTÉE</Text><Text style={styles.connectedHelp}>Dernière synchronisation régie : {lastRefreshLabel}</Text></View>
+            <Pressable disabled={busy} style={styles.disconnectButton} onPress={() => void disconnect()}><Text style={styles.disconnectText}>Déconnecter</Text></Pressable>
           </View>
         </View>
       )}
@@ -239,7 +212,7 @@ export function RemoteControlPanel({ eventName, api, stationToken }: RemoteContr
       <View>
         <Text style={styles.sectionTitle}>APERÇU LIVE CAPTURE</Text>
         <View style={styles.liveGap}>
-          {connectionRequested ? <SharingLivePreview api={api} stationToken={stationToken} /> : <View style={styles.previewPlaceholder}><Text style={styles.previewPlaceholderText}>Connectez SHARING à CAPTURE pour afficher l’aperçu live.</Text></View>}
+          {connected ? <SharingLivePreview api={api} stationToken={stationToken} /> : <View style={styles.previewPlaceholder}><Text style={styles.previewPlaceholderText}>L’aperçu live démarrera automatiquement après l’acceptation de CAPTURE.</Text></View>}
         </View>
       </View>
 
@@ -258,27 +231,16 @@ export function RemoteControlPanel({ eventName, api, stationToken }: RemoteContr
       <Text style={styles.sectionTitle}>DURÉE MAXIMUM</Text>
       <View style={styles.durationRow}>
         {CAPTURE_DURATIONS.map((seconds) => (
-          <Pressable
-            key={seconds}
-            disabled={busy || active || !connected}
-            onPress={() => void selectDuration(seconds)}
-            style={[styles.durationButton, control.maxDurationSeconds === seconds && styles.durationButtonActive, (busy || active || !connected) && styles.disabled]}
-          >
+          <Pressable key={seconds} disabled={busy || active || !connected} onPress={() => void selectDuration(seconds)} style={[styles.durationButton, control.maxDurationSeconds === seconds && styles.durationButtonActive, (busy || active || !connected) && styles.disabled]}>
             <Text style={control.maxDurationSeconds === seconds ? styles.durationTextActive : styles.durationText}>{seconds}s</Text>
           </Pressable>
         ))}
       </View>
 
       <View style={styles.commandRow}>
-        <Pressable disabled={busy || active || !connected} onPress={() => void command('START')} style={[styles.commandButton, (busy || active || !connected) && styles.disabled]}>
-          <Text style={styles.commandText}>● REC</Text>
-        </Pressable>
-        <Pressable disabled={busy || (!paused && control.runtimeState !== 'RECORDING') || !connected} onPress={() => void command(paused ? 'RESUME' : 'PAUSE')} style={[styles.commandButton, (busy || (!paused && control.runtimeState !== 'RECORDING') || !connected) && styles.disabled]}>
-          <Text style={styles.commandText}>{paused ? '▶ REPRENDRE' : 'Ⅱ PAUSE'}</Text>
-        </Pressable>
-        <Pressable disabled={busy || !active || !connected} onPress={() => void command('STOP')} style={[styles.commandButton, (busy || !active || !connected) && styles.disabled]}>
-          <Text style={styles.commandText}>■ STOP</Text>
-        </Pressable>
+        <Pressable disabled={busy || active || !connected} onPress={() => void command('START')} style={[styles.commandButton, (busy || active || !connected) && styles.disabled]}><Text style={styles.commandText}>● REC</Text></Pressable>
+        <Pressable disabled={busy || (!paused && control.runtimeState !== 'RECORDING') || !connected} onPress={() => void command(paused ? 'RESUME' : 'PAUSE')} style={[styles.commandButton, (busy || (!paused && control.runtimeState !== 'RECORDING') || !connected) && styles.disabled]}><Text style={styles.commandText}>{paused ? '▶ REPRENDRE' : 'Ⅱ PAUSE'}</Text></Pressable>
+        <Pressable disabled={busy || !active || !connected} onPress={() => void command('STOP')} style={[styles.commandButton, (busy || !active || !connected) && styles.disabled]}><Text style={styles.commandText}>■ STOP</Text></Pressable>
       </View>
 
       <Text style={styles.sectionTitle}>EFFETS VISUELS</Text>
@@ -290,7 +252,6 @@ export function RemoteControlPanel({ eventName, api, stationToken }: RemoteContr
         ))}
       </View>
       <Text style={styles.effectNote}>L’effet choisi est transmis à CAPTURE et enregistré dans l’état de régie. Son rendu final sera appliqué par le pipeline vidéo pour ne pas altérer le fichier source hors ligne.</Text>
-
       {message ? <Text style={styles.message}>{message}</Text> : null}
     </View>
   );
@@ -312,6 +273,7 @@ const styles = StyleSheet.create({
   connectingCard: { borderWidth: 1, borderColor: '#c9c9c9', borderRadius: 18, padding: 16, gap: 10, overflow: 'hidden' },
   connectedCard: { borderWidth: 1, borderColor: '#20a447', borderRadius: 18, padding: 14 },
   connectedRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
+  inlineActions: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   connectTitle: { fontSize: 17, fontWeight: '900' },
   connectHelp: { fontSize: 11, lineHeight: 17, opacity: 0.65 },
   connectButton: { backgroundColor: '#111111', borderRadius: 13, paddingVertical: 13, alignItems: 'center' },
