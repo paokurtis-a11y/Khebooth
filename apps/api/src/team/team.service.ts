@@ -6,7 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { KHE_PERMISSIONS, resolvedPermissions, type PermissionOverrides } from '../auth/permissions';
 import type { AuthenticatedUser } from '../auth/auth.types';
 
-interface MemberRow {
+export interface MemberRow {
   id: string;
   organizationId: string;
   email: string;
@@ -18,7 +18,7 @@ interface MemberRow {
   permissions: unknown;
   createdAt: Date;
 }
-interface InvitationRow {
+export interface InvitationRow {
   id: string;
   organizationId: string;
   email: string;
