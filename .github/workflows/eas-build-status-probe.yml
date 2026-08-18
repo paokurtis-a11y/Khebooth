@@ -1,0 +1,33 @@
+name: KHE Booth EAS Build Status Probe
+
+on:
+  push:
+    branches:
+      - build/android-final-f62c93
+    paths:
+      - .github/workflows/eas-build-status-probe.yml
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.6.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Query exact EAS build status
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          eas build:view 2999d54a-1f32-4db3-9334-96bc957ea642 --json
