@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { CommerceModule } from '../commerce/commerce.module';
 import { EventsModule } from '../events/events.module';
 import { MediaSharingService } from './media-sharing.service';
 import { MediaStorageService } from './media-storage.service';
@@ -11,7 +12,7 @@ import { StationsController } from './stations.controller';
 import { StationsService } from './stations.service';
 
 @Module({
-  imports: [AuthModule, EventsModule],
+  imports: [AuthModule, EventsModule, CommerceModule],
   controllers: [StationsController, PublicMediaController],
   providers: [StationsService, StationRenewalService, StationProfileService, MediaStorageService, MediaSharingService, StationAuthGuard],
 })

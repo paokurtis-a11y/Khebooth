@@ -18,22 +18,15 @@ function resolveWebOrigins() {
       }
     }
   }
-
   return [...TRUSTED_WEB_ORIGINS];
 }
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { rawBody: true });
   app.setGlobalPrefix('api');
-  app.enableCors({
-    origin: resolveWebOrigins(),
-  });
+  app.enableCors({ origin: resolveWebOrigins() });
   app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-    }),
+    new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
   );
   await app.listen(process.env.PORT ?? 3001);
 }
