@@ -2,6 +2,7 @@ import * as SecureStore from 'expo-secure-store';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { StartupIntro } from '../branding/startup-intro';
 import { API_BASE_URL } from '../config';
 
 export const APP_VERSION = '0.3.0';
@@ -149,6 +150,7 @@ export function TermsContent() {
 }
 
 export function TermsGate({ children }: { children: ReactNode }) {
+  const [introDone,setIntroDone]=useState(false);
   const [checking, setChecking] = useState(true);
   const [accepted, setAccepted] = useState(false);
 
@@ -158,6 +160,8 @@ export function TermsGate({ children }: { children: ReactNode }) {
       setChecking(false);
     });
   }, []);
+
+  if(!introDone)return <StartupIntro onDone={()=>setIntroDone(true)}/>;
 
   if (checking) {
     return <View style={styles.center}><ActivityIndicator /><Text>Vérification des conditions d’utilisation…</Text></View>;
