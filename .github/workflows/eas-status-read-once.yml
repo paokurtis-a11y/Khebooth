@@ -1,0 +1,56 @@
+name: KHE Booth EAS Status Read Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/eas-status-read-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.6.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: Setup Expo and EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Link existing Expo project
+        working-directory: apps/mobile
+        run: eas init --account kurtis-hypnotic-event --non-interactive --force
+      - name: Read target build safely
+        working-directory: apps/mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          eas build:list --platform android --limit 20 --json --non-interactive > /tmp/eas-list.json
+          node - <<'NODE'
+          const fs = require('fs');
+          const builds = JSON.parse(fs.readFileSync('/tmp/eas-list.json', 'utf8'));
+          const id = '238ec2b4-7be1-41cb-b0fd-21f1da5c5311';
+          const b = Array.isArray(builds) ? builds.find(x => x?.id === id) : null;
+          if (!b) throw new Error('Target EAS build not found in recent Android builds');
+          const e = b.error || null;
+          console.log(`EAS_BUILD_ID=${b.id}`);
+          console.log(`EAS_STATUS=${b.status || 'UNKNOWN'}`);
+          console.log(`EAS_GIT_COMMIT=${b.gitCommitHash || 'unknown'}`);
+          console.log(`EAS_BUILD_PROFILE=${b.buildProfile || 'unknown'}`);
+          console.log(`EAS_CREATED_AT=${b.createdAt || 'unknown'}`);
+          console.log(`EAS_COMPLETED_AT=${b.completedAt || 'pending'}`);
+          console.log(`EAS_ERROR_CODE=${e?.errorCode || e?.code || 'none'}`);
+          console.log(`EAS_ERROR_MESSAGE=${e?.message || 'none'}`);
+          console.log(`EAS_ARTIFACT_URL=${b.artifacts?.buildUrl || b.artifacts?.applicationArchiveUrl || 'pending'}`);
+          NODE
