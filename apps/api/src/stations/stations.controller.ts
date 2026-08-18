@@ -72,7 +72,7 @@ export class StationsController {
   @UseGuards(StationAuthGuard)
   @Get('live-session') async liveSession(@CurrentStation() station: AuthenticatedStation) {
     await this.entitlements.requireStation(station, 'SHARING');
-    if (station.mode === 'SHARING') await this.stationConnection.request(station);
+    await this.stationConnection.requireAccepted(station);
     return this.stations.liveSession(station);
   }
   @UseGuards(StationAuthGuard)
@@ -98,6 +98,7 @@ export class StationsController {
   @UseGuards(StationAuthGuard)
   @Patch('control/command') async updateControlCommand(@CurrentStation() station: AuthenticatedStation, @Body() dto: UpdateStationCommandDto) {
     await this.entitlements.requireStation(station, 'SHARING');
+    await this.stationConnection.requireAccepted(station);
     return this.stationConnection.decorate(station, await this.stations.updateControlCommand(station, dto));
   }
   @UseGuards(StationAuthGuard)
