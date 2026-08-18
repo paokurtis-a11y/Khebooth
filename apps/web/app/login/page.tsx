@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { SecurePasswordField } from '@/components/secure-password-field';
 import { apiRequest, getAccessToken, setAccessToken, setSessionUser } from '@/lib/api';
 
 type LoginResponse = {
@@ -50,10 +51,7 @@ export default function LoginPage() {
             <label htmlFor="email">Adresse email</label>
             <input id="email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
-          <div className="field">
-            <label htmlFor="password">Mot de passe</label>
-            <input id="password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
-          </div>
+          <SecurePasswordField label="Mot de passe" name="password" autoComplete="current-password" required value={password} onChange={setPassword} />
           {error ? <div className="error" role="alert">{error}</div> : null}
           <button className="button" type="submit" disabled={submitting}>
             {submitting ? 'Connexion…' : 'Se connecter'}
