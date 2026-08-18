@@ -14,6 +14,7 @@ import { ClientEventWorkspaceService } from './client-event-workspace.service';
 import { DesignStorageService } from './design-storage.service';
 import { MediaSharingService } from './media-sharing.service';
 import { MediaStorageService } from './media-storage.service';
+import { ProfileStorageService } from './profile-storage.service';
 import { StationAuthGuard } from './station-auth.guard';
 import { StationConnectionService } from './station-connection.service';
 import { StationProfileService } from './station-profile.service';
@@ -27,6 +28,7 @@ export class StationsController {
     private readonly mediaStorage: MediaStorageService,
     private readonly mediaSharing: MediaSharingService,
     private readonly designStorage: DesignStorageService,
+    private readonly profileStorage: ProfileStorageService,
     private readonly stationRenewal: StationRenewalService,
     private readonly stationProfile: StationProfileService,
     private readonly stationConnection: StationConnectionService,
@@ -43,6 +45,15 @@ export class StationsController {
 
   @UseGuards(StationAuthGuard)
   @Patch('profile') updateProfile(@CurrentStation() station: AuthenticatedStation, @Body() dto: UpdateStationProfileDto) { return this.stationProfile.update(station, dto); }
+
+  @UseGuards(StationAuthGuard)
+  @Post('profile/avatar-upload') prepareProfileAvatar(@CurrentStation() station:AuthenticatedStation,@Body() body:Record<string,unknown>){ return this.profileStorage.prepareAvatarUpload(station,body); }
+
+  @UseGuards(StationAuthGuard)
+  @Post('profile/avatar-confirm') confirmProfileAvatar(@CurrentStation() station:AuthenticatedStation,@Body() body:Record<string,unknown>){ return this.profileStorage.confirmAvatar(station,body); }
+
+  @UseGuards(StationAuthGuard)
+  @Get('profile/avatar-download') profileAvatarDownload(@CurrentStation() station:AuthenticatedStation){ return this.profileStorage.avatarDownload(station); }
 
   @UseGuards(StationAuthGuard)
   @Get('notification-preferences') notificationPreferences(@CurrentStation() station:AuthenticatedStation){ return this.stationProfile.notificationPreferences(station); }
