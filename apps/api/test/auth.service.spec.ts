@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { UserRole } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { AuthService } from '../src/auth/auth.service';
+import { ProfilePhotoService } from '../src/auth/profile-photo.service';
 import { PrismaService } from '../src/prisma/prisma.service';
 
 jest.mock('argon2', () => ({ verify: jest.fn() }));
@@ -24,20 +25,43 @@ describe('AuthService', () => {
     updatedAt: new Date(),
   };
 
+  const profileRow = {
+    id: user.id,
+    organizationId: user.organizationId,
+    email: user.email,
+    role: UserRole.OWNER,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    phone: null,
+    avatarPath: null,
+    permissions: {},
+    termsAcceptedRevision: null,
+    termsAcceptedAt: null,
+    notificationPreferences: {},
+    isActive: true,
+  };
+
   const prisma = {
     user: { findFirst: jest.fn() },
     auditLog: { create: jest.fn() },
+    $queryRaw: jest.fn(),
   } as unknown as PrismaService;
 
   const jwt = {
     signAsync: jest.fn().mockResolvedValue('signed-jwt'),
   } as unknown as JwtService;
 
-  const service = new AuthService(prisma, jwt);
+  const photos = {
+    download: jest.fn().mockResolvedValue({ avatarUrl: null, expiresAt: null }),
+  } as unknown as ProfilePhotoService;
+
+  const service = new AuthService(prisma, jwt, photos);
   const verifyMock = argon2.verify as jest.MockedFunction<typeof argon2.verify>;
 
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.spyOn(prisma, '$queryRaw').mockResolvedValue([profileRow] as never);
+    jest.spyOn(photos, 'download').mockResolvedValue({ avatarUrl: null, expiresAt: null });
   });
 
   it('normalizes email, verifies Argon2 and returns a JWT without passwordHash', async () => {
@@ -62,6 +86,7 @@ describe('AuthService', () => {
     expect(verifyMock).toHaveBeenCalledWith(user.passwordHash, 'correct-password');
     expect(result.accessToken).toBe('signed-jwt');
     expect(result.user).not.toHaveProperty('passwordHash');
+    expect(result.user.role).toBe(UserRole.OWNER);
   });
 
   it('rejects an invalid password', async () => {
