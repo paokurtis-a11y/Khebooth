@@ -99,9 +99,6 @@ export interface StationApi {
   manifest(stationToken: string): Promise<EventManifestContract>;
   liveSession(stationToken: string): Promise<StationLiveSessionContract>;
   control(stationToken: string): Promise<StationControlContract>;
-  requestControlConnection(stationToken: string): Promise<StationControlContract>;
-  respondControlConnection(stationToken: string, accepted: boolean): Promise<StationControlContract>;
-  disconnectControlConnection(stationToken: string): Promise<StationControlContract>;
   updateControlCommand(stationToken: string, command: StationControlCommandContract): Promise<StationControlContract>;
   updateControlStatus(stationToken: string, status: StationControlStatusContract): Promise<StationControlContract>;
   listMedia(stationToken: string): Promise<MediaAssetContract[]>;
@@ -117,6 +114,9 @@ export interface StationApi {
 
 /** Extended client-facing station contract used by Profile, Settings and SHARING workspace. */
 export interface StationExperienceApi extends StationApi {
+  requestControlConnection(stationToken: string): Promise<StationControlContract>;
+  respondControlConnection(stationToken: string, accepted: boolean): Promise<StationControlContract>;
+  disconnectControlConnection(stationToken: string): Promise<StationControlContract>;
   profile(stationToken: string): Promise<StationProfileContract>;
   updateProfile(stationToken: string, profile: StationProfileUpdate): Promise<StationProfileContract>;
   notificationPreferences(stationToken: string): Promise<NotificationPreferencesContract>;
