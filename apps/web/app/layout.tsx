@@ -3,6 +3,7 @@ import { WebDisplayPreferenceBootstrap } from '@/components/web-display-preferen
 import { WebStartupIntro } from '@/components/web-startup-intro';
 import './globals.css';
 import './responsive-fixes.css';
+import './site-editor.css';
 
 export const metadata: Metadata = {
   title: {
