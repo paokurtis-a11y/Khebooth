@@ -2,7 +2,7 @@ import type { AspectRatio, StationMode } from '@khe/contracts';
 import { registerRootComponent } from 'expo';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import * as SecureStore from 'expo-secure-store';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Alert, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { HttpStationApi } from './api/station-api';
 import { CameraCapture } from './capture/camera-capture';
@@ -35,6 +35,17 @@ function refreshErrorMessage(error: unknown): string {
   if (/fetch failed|network request failed|unknownhost|unable to resolve host|timed?\s*out/i.test(detail)) return `Réseau indisponible : le cache local reste conservé. ${detail}`.trim();
   if (/NativeDatabase|prepareAsync|SQLite|NullPointerException|database/i.test(detail)) return `Stockage local indisponible : le cache existant reste conservé. ${detail}`.trim();
   return `Actualisation impossible : le cache local reste conservé. ${detail}`.trim();
+}
+
+function BackPage({ onBack, children }: { onBack: () => void; children: ReactNode }) {
+  return (
+    <SafeAreaView style={styles.backPage}>
+      <View style={styles.backBar}>
+        <Pressable style={styles.backButton} onPress={onBack}><Text style={styles.backText}>← RETOUR</Text></Pressable>
+      </View>
+      <View style={styles.backContent}>{children}</View>
+    </SafeAreaView>
+  );
 }
 
 function App() {
@@ -222,14 +233,14 @@ function App() {
   const returnToMenu=()=>setMenuOpen(true);
   if (loading) return <SafeAreaView style={styles.center}><ActivityIndicator /><Text style={styles.muted}>Initialisation du stockage offline…</Text></SafeAreaView>;
   if (station && standbyLocked) return <StandbyScreen verifyPassword={verifyLockPassword} onUnlocked={unlockStandby} />;
-  if (aboutOpen) return <AboutAndTerms onClose={() => {setAboutOpen(false);returnToMenu();}} />;
-  if (guideOpen) return <UserGuide onClose={() => {setGuideOpen(false);returnToMenu();}} />;
-  if (languageOpen) return <LanguageAndRegion onClose={() => {setLanguageOpen(false);returnToMenu();}} onChanged={setAppLanguage} />;
-  if (settingsOpen) return <SettingsScreen onClose={() => {setSettingsOpen(false);returnToMenu();}} />;
-  if (studioOpen) return <CreativeStudio onClose={() => {setStudioOpen(false);returnToMenu();}} />;
-  if (profileOpen) return <UserProfile onClose={() => {setProfileOpen(false);returnToMenu();}} />;
-  if (cameraOpen && station?.mode === 'CAPTURE' && stationToken) return <CameraCapture eventId={station.session.eventId} store={store} api={api} stationToken={stationToken} onClose={() => setCameraOpen(false)} onCaptured={handleCaptured} />;
-  if (galleryOpen && station?.mode === 'CAPTURE') return <MediaGallery eventId={station.session.eventId} eventName={eventName ?? station.session.eventId} store={store} onClose={() => setGalleryOpen(false)} />;
+  if (aboutOpen) return <BackPage onBack={() => setAboutOpen(false)}><AboutAndTerms onClose={() => {setAboutOpen(false);returnToMenu();}} /></BackPage>;
+  if (guideOpen) return <BackPage onBack={() => setGuideOpen(false)}><UserGuide onClose={() => {setGuideOpen(false);returnToMenu();}} /></BackPage>;
+  if (languageOpen) return <BackPage onBack={() => setLanguageOpen(false)}><LanguageAndRegion onClose={() => {setLanguageOpen(false);returnToMenu();}} onChanged={setAppLanguage} /></BackPage>;
+  if (settingsOpen) return <BackPage onBack={() => setSettingsOpen(false)}><SettingsScreen onClose={() => {setSettingsOpen(false);returnToMenu();}} /></BackPage>;
+  if (studioOpen) return <BackPage onBack={() => setStudioOpen(false)}><CreativeStudio onClose={() => {setStudioOpen(false);returnToMenu();}} /></BackPage>;
+  if (profileOpen) return <BackPage onBack={() => setProfileOpen(false)}><UserProfile onClose={() => {setProfileOpen(false);returnToMenu();}} /></BackPage>;
+  if (cameraOpen && station?.mode === 'CAPTURE' && stationToken) return <BackPage onBack={() => setCameraOpen(false)}><CameraCapture eventId={station.session.eventId} store={store} api={api} stationToken={stationToken} onClose={() => setCameraOpen(false)} onCaptured={handleCaptured} /></BackPage>;
+  if (galleryOpen && station?.mode === 'CAPTURE') return <BackPage onBack={() => setGalleryOpen(false)}><MediaGallery eventId={station.session.eventId} eventName={eventName ?? station.session.eventId} store={store} onClose={() => setGalleryOpen(false)} /></BackPage>;
 
   return (
     <SafeAreaView style={styles.page}>
@@ -279,6 +290,7 @@ function Root() { return <TermsGate><App /></TermsGate>; }
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#101010' }, pageScroll: { flex: 1 }, pageContent: { flexGrow: 1, justifyContent: 'center', padding: 20, paddingBottom: 44 }, pageContentLandscape: { justifyContent: 'flex-start', paddingVertical: 16 }, center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  backPage: { flex: 1, backgroundColor: '#101010' }, backBar: { paddingHorizontal: 14, paddingTop: 8, paddingBottom: 6, backgroundColor: '#101010' }, backButton: { alignSelf: 'flex-start', borderWidth: 1, borderColor: '#ffffff', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 9 }, backText: { color: '#ffffff', fontSize: 11, fontWeight: '900', letterSpacing: 0.7 }, backContent: { flex: 1 },
   card: { width: '100%', maxWidth: 760, alignSelf: 'center', backgroundColor: '#fff', borderRadius: 24, padding: 22, gap: 8 }, cardLandscape: { maxWidth: 980 }, brand: { fontSize: 13, letterSpacing: 3, fontWeight: '800', paddingTop: 4 }, title: { fontSize: 30, lineHeight: 36, fontWeight: '800' }, muted: { opacity: 0.6, lineHeight: 18 }, section: { marginTop: 18, gap: 10 }, label: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', opacity: 0.55 }, value: { fontSize: 18, fontWeight: '700' }, small: { fontSize: 12, opacity: 0.65 },
   modeRow: { flexDirection: 'row', gap: 10 }, modeButton: { flex: 1, borderWidth: 1, borderColor: '#c9c9c9', borderRadius: 12, padding: 12, alignItems: 'center' }, modeButtonActive: { backgroundColor: '#111', borderColor: '#111' }, modeText: { fontWeight: '700' }, modeTextActive: { color: '#fff', fontWeight: '700' }, input: { borderWidth: 1, borderColor: '#d6d6d6', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: '#fff' }, activationHelp: { fontSize: 12, lineHeight: 17, opacity: 0.6 }, primaryButton: { marginTop: 8, backgroundColor: '#111', borderRadius: 12, padding: 14, alignItems: 'center' }, primaryButtonText: { color: '#fff', fontWeight: '800' },
   awakeCard: { borderWidth: 1, borderColor: '#d5d5d5', borderRadius: 16, padding: 14, gap: 10 }, awakeCopy: { gap: 3 }, awakeTitle: { fontSize: 10, fontWeight: '900', letterSpacing: 1.5, opacity: 0.55 }, awakeStatus: { fontSize: 17, fontWeight: '900' }, awakeHelp: { fontSize: 11, lineHeight: 16, opacity: 0.62 }, awakeButton: { borderWidth: 1, borderColor: '#111', borderRadius: 11, paddingVertical: 11, alignItems: 'center' }, awakeButtonActive: { backgroundColor: '#111' }, awakeButtonTextActive: { color: '#fff', fontWeight: '900', fontSize: 11 },
