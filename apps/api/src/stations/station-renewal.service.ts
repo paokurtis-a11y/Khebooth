@@ -60,7 +60,20 @@ export class StationRenewalService {
       data: { expiresAt },
     });
 
-    const stationToken = await this.jwt.signAsync(payload, {
+    // Rebuild the station claims instead of re-signing the verified JWT payload.
+    // verifyAsync preserves registered claims such as exp/iat/sub, while signAsync
+    // also receives a fresh expiresIn/subject below. Re-signing the full payload
+    // therefore makes jsonwebtoken reject the token because exp is already present.
+    const stationClaims: StationTokenPayload = {
+      typ: 'station',
+      sessionId: renewed.id,
+      organizationId: renewed.organizationId,
+      eventId: renewed.eventId,
+      deviceId: renewed.deviceId,
+      mode: renewed.mode,
+    };
+
+    const stationToken = await this.jwt.signAsync(stationClaims, {
       subject: renewed.id,
       expiresIn: RENEWED_SESSION_TTL_SECONDS,
     });
