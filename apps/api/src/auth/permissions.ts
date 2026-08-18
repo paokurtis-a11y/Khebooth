@@ -46,6 +46,7 @@ export const ROLE_PERMISSION_DEFAULTS: Record<string, Record<KhePermission, bool
   SHARE_HOST: {
     ...Object.fromEntries(KHE_PERMISSIONS.map((permission) => [permission, false])) as Record<KhePermission, boolean>,
     'dashboard.view': true,
+    'clients.view': true,
     'events.view': true,
     'studio.view': true,
   },
