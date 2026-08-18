@@ -78,7 +78,12 @@ export function SharingStationPanel({ eventName, api, stationToken }: SharingSta
   return (
     <View style={styles.readyShell}>
       {flowMessage?<View style={styles.flowBanner}><Text style={styles.flowText}>{flowMessage}</Text></View>:null}
-      <SharingEventManager api={api} stationToken={stationToken} onCreated={(eventId,eventTitle)=>void startDesign(eventId,eventTitle)} />
+      <SharingEventManager
+        api={api}
+        stationToken={stationToken}
+        onCreated={(eventId,eventTitle)=>void startDesign(eventId,eventTitle)}
+        onReady={(eventTitle)=>setFlowMessage(`✓ « ${eventTitle} » est prêt et sera sélectionné automatiquement sur CAPTURE et SHARING dans quelques secondes.`)}
+      />
       <RemoteControlPanel eventName={eventName} api={api} stationToken={stationToken} />
       <SharingMediaGallery eventName={eventName} api={api} stationToken={stationToken} />
     </View>
