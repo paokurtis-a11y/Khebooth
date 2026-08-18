@@ -1,6 +1,6 @@
-trigger=2026-08-18T13:52:00+02:00
-reason=khe-booth-team-regional-autonomous-client-events-apk
-release_source_commit=c82e02228afa7d9e58e6359f1d06d5bdbcadc744
+trigger=2026-08-18T14:15:00+02:00
+reason=khe-booth-final-android-after-team-regional-client-events
+release_source_commit=f62c93bfa40030623936b9620986f56ab26a68f5
 validated_mobile_ci_run=32132363448
-validated_general_ci_run=32132363445
+validated_general_ci_run=32135016158
 neon_production_migration=18e27256-a14a-4fee-9cb8-c3338cd4a205
