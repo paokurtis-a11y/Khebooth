@@ -25,6 +25,10 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
+      - name: Link existing Expo project
+        working-directory: apps/mobile
+        run: eas init --account kurtis-hypnotic-event --non-interactive --force
+
       - name: Read latest Android build safely
         working-directory: apps/mobile
         shell: bash
