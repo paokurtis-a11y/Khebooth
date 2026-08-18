@@ -1,7 +1,6 @@
-trigger=2026-08-17T21:06:00+02:00
-reason=khe-booth-secure-guest-qr-apk
-merged_public_share_commit=bcf24364583da019d6de4b29917dff22c107e510
-validated_mobile_ci_run=32057372807
-validated_general_ci_run=32057372817
-production_web_deployment=dpl_G6NZnp984bfwyLsc6gApXQgi3LG7
-production_api_deployment=dpl_4pJSj7S51i2MCz3KndfRyfcVEM8U
+trigger=2026-08-18T13:52:00+02:00
+reason=khe-booth-team-regional-autonomous-client-events-apk
+release_source_commit=c82e02228afa7d9e58e6359f1d06d5bdbcadc744
+validated_mobile_ci_run=32132363448
+validated_general_ci_run=32132363445
+neon_production_migration=18e27256-a14a-4fee-9cb8-c3338cd4a205
