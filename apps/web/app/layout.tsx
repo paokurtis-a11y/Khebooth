@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { WebDisplayPreferenceBootstrap } from '@/components/web-display-preferences';
 import { WebStartupIntro } from '@/components/web-startup-intro';
 import './globals.css';
+import './responsive-fixes.css';
 
 export const metadata: Metadata = {
   title: {
