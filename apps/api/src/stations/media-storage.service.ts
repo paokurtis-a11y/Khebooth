@@ -8,12 +8,12 @@ import {
 import { MediaSyncState, StationMode, UploadState } from '@prisma/client';
 import { head, issueSignedToken, presignUrl } from '@vercel/blob';
 import { PrismaService } from '../prisma/prisma.service';
+import { blobAuthOptions } from '../storage/blob-auth';
 import type { AuthenticatedStation } from './station-auth.types';
 
 const UPLOAD_TICKET_TTL_MS = 15 * 60 * 1000;
 const DOWNLOAD_TICKET_TTL_MS = 10 * 60 * 1000;
 const MAX_MEDIA_BYTES = 2 * 1024 * 1024 * 1024;
-const DEFAULT_BLOB_STORE_ID = 'store_UBIkUPi0TciEoO1f';
 
 function extensionForMimeType(mimeType: string): string {
   switch (mimeType) {
@@ -39,10 +39,10 @@ export class MediaStorageService {
 
     const pathname = this.pathnameFor(media);
     const expiresAtMs = Date.now() + UPLOAD_TICKET_TTL_MS;
-    const storeId = this.blobStoreId();
+    const auth = blobAuthOptions();
 
     try {
-      const existing = await head(pathname, { storeId });
+      const existing = await head(pathname, auth);
       if (existing.size === media.byteSize && existing.contentType === media.mimeType) {
         await this.ensureUploadSession(media.id, media.byteSize, media.byteSize);
         return {
@@ -68,7 +68,7 @@ export class MediaStorageService {
         validUntil: expiresAtMs,
         maximumSizeInBytes: media.byteSize,
         allowedContentTypes: [media.mimeType],
-        storeId,
+        ...auth,
       });
       const { presignedUrl } = await presignUrl(signedToken, {
         access: 'private',
@@ -90,6 +90,7 @@ export class MediaStorageService {
       };
     } catch (error) {
       const detail = error instanceof Error ? error.message : 'Blob signing failed';
+      console.error('[blob][media] signing failed:', detail);
       throw new ServiceUnavailableException(`Media storage unavailable: ${detail}`);
     }
   }
@@ -98,12 +99,13 @@ export class MediaStorageService {
     this.assertCapture(station);
     const media = await this.getEventMedia(station, mediaId, true);
     const pathname = this.pathnameFor(media);
-    const storeId = this.blobStoreId();
+    const auth = blobAuthOptions();
 
     let blob: Awaited<ReturnType<typeof head>>;
     try {
-      blob = await head(pathname, { storeId });
-    } catch {
+      blob = await head(pathname, auth);
+    } catch (error) {
+      console.error('[blob][media] finalize HEAD failed:', error instanceof Error ? error.message : 'Blob HEAD failed');
       throw new BadRequestException('Cloud media object is not available yet');
     }
     if (blob.size !== media.byteSize) {
@@ -144,9 +146,9 @@ export class MediaStorageService {
       throw new BadRequestException('Media is not synchronized yet');
     }
     const pathname = this.pathnameFor(media);
-    const storeId = this.blobStoreId();
+    const auth = blobAuthOptions();
     try {
-      const blob = await head(pathname, { storeId });
+      const blob = await head(pathname, auth);
       if (blob.size !== media.byteSize || blob.contentType !== media.mimeType) {
         throw new BadRequestException('Stored media verification failed');
       }
@@ -155,7 +157,7 @@ export class MediaStorageService {
         pathname,
         operations: ['get'],
         validUntil: expiresAtMs,
-        storeId,
+        ...auth,
       });
       const { presignedUrl } = await presignUrl(signedToken, {
         access: 'private',
@@ -167,12 +169,9 @@ export class MediaStorageService {
     } catch (error) {
       if (error instanceof BadRequestException) throw error;
       const detail = error instanceof Error ? error.message : 'Blob access failed';
+      console.error('[blob][media] download signing failed:', detail);
       throw new ServiceUnavailableException(`Media storage unavailable: ${detail}`);
     }
-  }
-
-  private blobStoreId(): string {
-    return process.env.BLOB_STORE_ID?.trim() || DEFAULT_BLOB_STORE_ID;
   }
 
   private async ensureUploadSession(mediaAssetId: string, totalBytes: number, uploadedBytes: number) {
