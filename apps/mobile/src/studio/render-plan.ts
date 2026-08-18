@@ -64,6 +64,7 @@ export async function updateCaptureRenderJob(localId: string, patch: Partial<Cap
 
 export function renderSummary(job: CaptureRenderJob): string {
   const effects: string[] = [job.plan.speed];
+  if (job.plan.background) effects.push('Fond personnalisé');
   if (job.plan.boomerang) effects.push('Boomerang');
   if (job.plan.reverse) effects.push('Reverse');
   if (job.plan.freezeFrame) effects.push('Freeze');
