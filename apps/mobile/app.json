@@ -29,6 +29,12 @@
         }
       ],
       [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Autoriser KHE Booth à utiliser votre localisation précise lorsque vous activez cette option dans les paramètres."
+        }
+      ],
+      [
         "expo-camera",
         {
           "cameraPermission": "Autoriser KHE Booth à utiliser la caméra pour les captures événementielles.",
