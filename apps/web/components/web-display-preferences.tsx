@@ -9,7 +9,7 @@ export type WebDisplayPreferences={textScale:WebTextScale;textStyle:WebTextStyle
 export const DEFAULT_WEB_DISPLAY:WebDisplayPreferences={textScale:'NORMAL',textStyle:'MODERN'};
 export const WEB_DISPLAY_KEY='khe.web.display.v1';
 
-const scales:Record<WebTextScale,number>={SMALL:.92,NORMAL:1,LARGE:1.12,XLARGE:1.24};
+const scales:Record<WebTextScale,number>={SMALL:.94,NORMAL:1,LARGE:1.08,XLARGE:1.16};
 const fonts:Record<WebTextStyle,string>={
   CLASSIC:'Georgia, Times New Roman, serif',
   MODERN:'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif',
@@ -32,10 +32,13 @@ export function loadWebDisplayPreferences():WebDisplayPreferences{
 
 export function applyWebDisplayPreferences(preferences:WebDisplayPreferences):void{
   if(typeof document==='undefined')return;
-  document.documentElement.dataset.kheTextScale=preferences.textScale;
-  document.documentElement.dataset.kheTextStyle=preferences.textStyle;
-  document.documentElement.style.setProperty('--khe-user-scale',String(scales[preferences.textScale]));
-  document.body.style.setProperty('zoom',String(scales[preferences.textScale]));
+  const root=document.documentElement;
+  root.dataset.kheTextScale=preferences.textScale;
+  root.dataset.kheTextStyle=preferences.textStyle;
+  root.style.setProperty('--khe-user-scale',String(scales[preferences.textScale]));
+  root.style.setProperty('--khe-user-font',fonts[preferences.textStyle]);
+  // Never use CSS zoom here: it changes layout geometry and caused cards/tables to overlap on tablets.
+  document.body.style.removeProperty('zoom');
   document.body.style.fontFamily=fonts[preferences.textStyle];
 }
 
