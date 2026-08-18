@@ -14,7 +14,21 @@ export class EventsService {
     private readonly entitlements: EntitlementsService,
   ) {}
 
-  list(organizationId: string) {
+  async completeEndedEvents(organizationId?: string) {
+    const now = new Date();
+    const result = await this.prisma.event.updateMany({
+      where: {
+        ...(organizationId ? { organizationId } : {}),
+        endsAt: { not: null, lte: now },
+        status: { in: [EventStatus.DRAFT, EventStatus.READY, EventStatus.ACTIVE] },
+      },
+      data: { status: EventStatus.COMPLETED },
+    });
+    return { completed: result.count, checkedAt: now };
+  }
+
+  async list(organizationId: string) {
+    await this.completeEndedEvents(organizationId);
     return this.prisma.event.findMany({
       where: { organizationId },
       include: { client: true, preset: true },
@@ -23,6 +37,7 @@ export class EventsService {
   }
 
   async get(organizationId: string, id: string) {
+    await this.completeEndedEvents(organizationId);
     const event = await this.prisma.event.findFirst({
       where: { id, organizationId },
       include: { client: true, preset: true },
@@ -36,6 +51,8 @@ export class EventsService {
     if (dto.endsAt && new Date(dto.endsAt) < new Date(dto.startsAt)) {
       throw new BadRequestException('endsAt must be after startsAt');
     }
+    const endsAt = dto.endsAt ? new Date(dto.endsAt) : undefined;
+    const status = endsAt && endsAt <= new Date() ? EventStatus.COMPLETED : dto.status ?? EventStatus.DRAFT;
     const event = await this.prisma.event.create({
       data: {
         organizationId,
@@ -44,10 +61,10 @@ export class EventsService {
         clientId: dto.clientId,
         presetId: dto.presetId,
         startsAt: new Date(dto.startsAt),
-        endsAt: dto.endsAt ? new Date(dto.endsAt) : undefined,
+        endsAt,
         venueName: dto.venueName,
         venueAddress: dto.venueAddress,
-        status: dto.status ?? EventStatus.DRAFT,
+        status,
       },
     });
     await this.audit(organizationId, userId, 'EVENT_CREATED', event.id);
@@ -60,11 +77,16 @@ export class EventsService {
     const startsAt = dto.startsAt ? new Date(dto.startsAt) : current.startsAt;
     const endsAt = dto.endsAt ? new Date(dto.endsAt) : current.endsAt;
     if (endsAt && endsAt < startsAt) throw new BadRequestException('endsAt must be after startsAt');
+    const requestedStatus = dto.status;
+    const status = endsAt && endsAt <= new Date() && requestedStatus !== EventStatus.ARCHIVED
+      ? EventStatus.COMPLETED
+      : requestedStatus;
 
     const event = await this.prisma.event.update({
       where: { id },
       data: {
         ...dto,
+        status,
         startsAt: dto.startsAt ? new Date(dto.startsAt) : undefined,
         endsAt: dto.endsAt ? new Date(dto.endsAt) : undefined,
       },
@@ -82,6 +104,7 @@ export class EventsService {
 
   async activate(organizationId: string, userId: string, id: string) {
     const event = await this.get(organizationId, id);
+    if (event.endsAt && event.endsAt <= new Date()) throw new BadRequestException('Un événement terminé ne peut pas être activé. Modifiez sa date de fin si nécessaire.');
     const access = await this.entitlements.forEvent(organizationId, id);
     if (access.clientId && access.maxActiveEvents !== null && event.status !== EventStatus.ACTIVE) {
       const activeCount = await this.prisma.event.count({
