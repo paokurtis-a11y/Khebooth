@@ -33,13 +33,48 @@ export interface StationProfileContract {
   role: string;
   email: string;
   phone: string;
+  address: string;
+  birthDate: string | Date | null;
+  avatarPath: string | null;
   city: string;
   country: string;
   bio: string;
   updatedAt: string | Date;
 }
 
-export type StationProfileUpdate = Omit<StationProfileContract, 'organizationId' | 'updatedAt'>;
+export type StationProfileUpdate = Omit<StationProfileContract, 'organizationId' | 'updatedAt' | 'avatarPath'>;
+
+export interface ProfileAvatarUploadTicket {
+  pathname: string;
+  uploadUrl: string;
+  expiresAt: string | Date;
+  contentType: string;
+  byteSize: number;
+}
+
+export interface ProfileAvatarDownloadTicket {
+  pathname: string | null;
+  downloadUrl: string | null;
+  expiresAt: string | Date | null;
+  contentType?: string;
+  byteSize?: number;
+}
+
+export interface DesignBackgroundUploadTicket {
+  pathname: string;
+  uploadUrl: string;
+  expiresAt: string | Date;
+  contentType: string;
+  byteSize: number;
+}
+
+export interface DesignBackgroundDownloadTicket {
+  pathname: string;
+  downloadUrl: string;
+  expiresAt: string | Date;
+  contentType: string;
+  byteSize: number;
+}
 
 export interface ClientEventContract {
   id: string;
@@ -119,11 +154,16 @@ export interface StationExperienceApi extends StationApi {
   disconnectControlConnection(stationToken: string): Promise<StationControlContract>;
   profile(stationToken: string): Promise<StationProfileContract>;
   updateProfile(stationToken: string, profile: StationProfileUpdate): Promise<StationProfileContract>;
+  prepareProfileAvatarUpload(stationToken: string, contentType: string, byteSize: number): Promise<ProfileAvatarUploadTicket>;
+  confirmProfileAvatar(stationToken: string, pathname: string): Promise<{ pathname: string; confirmed: boolean }>;
+  profileAvatarDownload(stationToken: string): Promise<ProfileAvatarDownloadTicket>;
   notificationPreferences(stationToken: string): Promise<NotificationPreferencesContract>;
   updateNotificationPreferences(stationToken: string, preferences: NotificationPreferencesContract): Promise<NotificationPreferencesContract>;
   clientWorkspace(stationToken: string): Promise<ClientWorkspaceContract>;
   createClientEvent(stationToken: string, event: CreateClientEventRequest): Promise<CreateClientEventResponse>;
   markClientEventDesignReady(stationToken: string, eventId: string, designConfig: Record<string, unknown>): Promise<ClientWorkspaceContract>;
+  prepareDesignBackgroundUpload(stationToken: string, eventId: string, contentType: string, byteSize: number): Promise<DesignBackgroundUploadTicket>;
+  designBackgroundDownload(stationToken: string, pathname: string): Promise<DesignBackgroundDownloadTicket>;
   switchClientEvent(stationToken: string, eventId: string): Promise<SwitchedStationResponse>;
 }
 
@@ -219,11 +259,16 @@ export class HttpStationApi implements StationExperienceApi {
   updateControlStatus(token: string, status: StationControlStatusContract) { return this.stationRequest<StationControlContract>('/stations/control/status', token, { method: 'PATCH', body: JSON.stringify(status) }); }
   profile(token: string) { return this.stationRequest<StationProfileContract>('/stations/profile', token); }
   updateProfile(token: string, profile: StationProfileUpdate) { return this.stationRequest<StationProfileContract>('/stations/profile', token, { method: 'PATCH', body: JSON.stringify(profile) }); }
+  prepareProfileAvatarUpload(token: string, contentType: string, byteSize: number) { return this.stationRequest<ProfileAvatarUploadTicket>('/stations/profile/avatar-upload', token, { method: 'POST', body: JSON.stringify({ contentType, byteSize }) }); }
+  confirmProfileAvatar(token: string, pathname: string) { return this.stationRequest<{ pathname: string; confirmed: boolean }>('/stations/profile/avatar-confirm', token, { method: 'POST', body: JSON.stringify({ pathname }) }); }
+  profileAvatarDownload(token: string) { return this.stationRequest<ProfileAvatarDownloadTicket>('/stations/profile/avatar-download', token); }
   notificationPreferences(token: string) { return this.stationRequest<NotificationPreferencesContract>('/stations/notification-preferences', token); }
   updateNotificationPreferences(token: string, preferences: NotificationPreferencesContract) { return this.stationRequest<NotificationPreferencesContract>('/stations/notification-preferences', token, { method: 'PATCH', body: JSON.stringify(preferences) }); }
   clientWorkspace(token: string) { return this.stationRequest<ClientWorkspaceContract>('/stations/client-workspace', token); }
   createClientEvent(token: string, event: CreateClientEventRequest) { return this.stationRequest<CreateClientEventResponse>('/stations/client-events', token, { method: 'POST', body: JSON.stringify(event) }); }
   markClientEventDesignReady(token: string, eventId: string, designConfig: Record<string, unknown>) { return this.stationRequest<ClientWorkspaceContract>(`/stations/client-events/${encodeURIComponent(eventId)}/design-ready`, token, { method: 'POST', body: JSON.stringify({ designConfig }) }); }
+  prepareDesignBackgroundUpload(token: string, eventId: string, contentType: string, byteSize: number) { return this.stationRequest<DesignBackgroundUploadTicket>(`/stations/client-events/${encodeURIComponent(eventId)}/design-background-upload`, token, { method: 'POST', body: JSON.stringify({ contentType, byteSize }) }); }
+  designBackgroundDownload(token: string, pathname: string) { return this.stationRequest<DesignBackgroundDownloadTicket>('/stations/design-background-download', token, { method: 'POST', body: JSON.stringify({ pathname }) }); }
   async switchClientEvent(token: string, eventId: string) {
     const current = this.resolvedToken(token);
     const response = await this.stationRequest<SwitchedStationResponse>(`/stations/client-events/${encodeURIComponent(eventId)}/switch`, current, { method: 'POST' });
