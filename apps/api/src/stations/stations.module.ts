@@ -8,6 +8,7 @@ import { MediaSharingService } from './media-sharing.service';
 import { MediaStorageService } from './media-storage.service';
 import { PublicMediaController } from './public-media.controller';
 import { StationAuthGuard } from './station-auth.guard';
+import { StationConnectionService } from './station-connection.service';
 import { StationProfileService } from './station-profile.service';
 import { StationRenewalService } from './station-renewal.service';
 import { StationsController } from './stations.controller';
@@ -16,6 +17,6 @@ import { StationsService } from './stations.service';
 @Module({
   imports: [AuthModule, EventsModule, CommerceModule, SubscriptionsModule],
   controllers: [StationsController, PublicMediaController],
-  providers: [StationsService, StationRenewalService, StationProfileService, ClientEventWorkspaceService, MediaStorageService, MediaSharingService, StationAuthGuard],
+  providers: [StationsService, StationRenewalService, StationProfileService, ClientEventWorkspaceService, MediaStorageService, MediaSharingService, StationConnectionService, StationAuthGuard],
 })
 export class StationsModule {}
