@@ -74,17 +74,21 @@ export class ClientEventWorkspaceService{
     const access=await this.entitlements.requireStation(station,'SHARING');
     const name=dto.name.trim();const description=dto.description.trim();const startsAt=new Date(dto.startsAt);const endsAt=new Date(dto.endsAt);
     if(!name||!description)throw new BadRequestException('Nom et description sont obligatoires.');
-    if(Number.isNaN(startsAt.getTime())||Number.isNaN(endsAt.getTime()))throw new BadRequestException('Dates invalides.');
+    if(Number.isNaN(startsAt.getTime())||Number.isNaN(endsAt.getTime()))throw new BadRequestException('Le début et la fin sont obligatoires et doivent être des dates valides.');
     if(endsAt<=startsAt)throw new BadRequestException('La date de fin doit être après la date de début.');
     if(endsAt<=new Date())throw new BadRequestException('La date de fin doit être dans le futur.');
-    const event=await this.prisma.event.create({data:{organizationId:station.organizationId,clientId,name,description,startsAt,endsAt,status:EventStatus.DRAFT}});
+
+    const studioAllowed=Boolean(access.entitlements.STUDIO_BASIC);
+    const readyAt=studioAllowed?null:new Date();
+    const initialStatus=studioAllowed?EventStatus.DRAFT:EventStatus.READY;
+    const event=await this.prisma.event.create({data:{organizationId:station.organizationId,clientId,name,description,startsAt,endsAt,status:initialStatus}});
     await this.prisma.$executeRaw`
       INSERT INTO "ClientWorkspaceState" ("clientId","organizationId","selectedEventId","designConfig","designReadyAt","updatedAt")
-      VALUES (${clientId}::uuid,${station.organizationId}::uuid,${event.id}::uuid,'{}'::jsonb,NULL,CURRENT_TIMESTAMP)
-      ON CONFLICT ("clientId") DO UPDATE SET "selectedEventId"=EXCLUDED."selectedEventId","designConfig"='{}'::jsonb,"designReadyAt"=NULL,"updatedAt"=CURRENT_TIMESTAMP
+      VALUES (${clientId}::uuid,${station.organizationId}::uuid,${event.id}::uuid,'{}'::jsonb,${readyAt},CURRENT_TIMESTAMP)
+      ON CONFLICT ("clientId") DO UPDATE SET "selectedEventId"=EXCLUDED."selectedEventId","designConfig"='{}'::jsonb,"designReadyAt"=EXCLUDED."designReadyAt","updatedAt"=CURRENT_TIMESTAMP
     `;
-    await this.prisma.auditLog.create({data:{organizationId:station.organizationId,action:'CLIENT_EVENT_CREATED_FROM_SHARING',entityType:'Event',entityId:event.id,metadata:{clientId,stationSessionId:station.sessionId,plan:access.plan}}});
-    return{event,plan:access.plan,entitlements:access.entitlements,nextStep:access.entitlements.STUDIO_BASIC?'STUDIO':'READY'};
+    await this.prisma.auditLog.create({data:{organizationId:station.organizationId,action:'CLIENT_EVENT_CREATED_FROM_SHARING',entityType:'Event',entityId:event.id,metadata:{clientId,stationSessionId:station.sessionId,plan:access.plan,nextStep:studioAllowed?'STUDIO':'READY'}}});
+    return{event:{...event,status:initialStatus},plan:access.plan,entitlements:access.entitlements,nextStep:studioAllowed?'STUDIO':'READY'};
   }
 
   async markDesignReady(station:AuthenticatedStation,eventId:string,payload:Record<string,unknown>){
