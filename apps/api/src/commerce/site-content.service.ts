@@ -1,9 +1,10 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { LocalizedSiteService } from './localized-site.service';
 
 @Injectable()
 export class SiteContentService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly localizedSite: LocalizedSiteService) {}
 
   async update(organizationId:string,payload:Record<string,unknown>){
     const media=payload.media&&typeof payload.media==='object'?payload.media:{};
@@ -11,7 +12,8 @@ export class SiteContentService {
     const socialLinks=payload.socialLinks&&typeof payload.socialLinks==='object'?payload.socialLinks:{};
     const announcement=payload.announcement&&typeof payload.announcement==='object'?payload.announcement:{};
     const contentBlocks=Array.isArray(payload.contentBlocks)?payload.contentBlocks:[];
-    if(JSON.stringify(payload).length>100_000)throw new BadRequestException('Marketing configuration is too large');
+    const regionalSettings=this.localizedSite.normalizeRegionalSettings(payload.regionalSettings);
+    if(JSON.stringify(payload).length>150_000)throw new BadRequestException('Marketing configuration is too large');
     await this.prisma.$executeRaw`
       INSERT INTO "MarketingSiteConfig" ("organizationId") VALUES (${organizationId}::uuid)
       ON CONFLICT ("organizationId") DO NOTHING
@@ -19,9 +21,10 @@ export class SiteContentService {
     await this.prisma.$executeRaw`
       UPDATE "MarketingSiteConfig" SET media=${JSON.stringify(media)}::jsonb,seo=${JSON.stringify(seo)}::jsonb,
         "socialLinks"=${JSON.stringify(socialLinks)}::jsonb,announcement=${JSON.stringify(announcement)}::jsonb,
-        "contentBlocks"=${JSON.stringify(contentBlocks)}::jsonb,"updatedAt"=CURRENT_TIMESTAMP
+        "contentBlocks"=${JSON.stringify(contentBlocks)}::jsonb,"regionalSettings"=${JSON.stringify(regionalSettings)}::jsonb,
+        "updatedAt"=CURRENT_TIMESTAMP
       WHERE "organizationId"=${organizationId}::uuid
     `;
-    return {saved:true};
+    return {saved:true,regionalSettings};
   }
 }
