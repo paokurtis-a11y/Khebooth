@@ -39,6 +39,7 @@ export class ClientEventWorkspaceService{
   }
 
   async workspace(station:AuthenticatedStation){
+    await this.events.completeEndedEvents(station.organizationId);
     const context=await this.context(station);const clientId=context.clientId!;await this.ensureWorkspace(station,clientId);
     const rows=await this.prisma.$queryRaw<WorkspaceRow[]>`
       SELECT "clientId","organizationId","selectedEventId","designConfig","designReadyAt","updatedAt"
