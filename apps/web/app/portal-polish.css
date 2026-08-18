@@ -1,0 +1,121 @@
+/* KHE Booth portal readability & premium responsive layer */
+.shell,.content,.content *{min-width:0}
+.content{color:#f7f8fa}
+.content h1,.content h2,.content h3{color:#fff;letter-spacing:-.02em}
+.content h1{line-height:1.05}
+.content p{line-height:1.55}
+.content .muted{color:#aab4c2}
+.content .eyebrow{color:#e3c66f;letter-spacing:.18em}
+
+.content .card{
+  background:linear-gradient(145deg,#151a22 0%,#10151c 100%);
+  border:1px solid #2b3441;
+  box-shadow:0 16px 42px rgba(0,0,0,.18),inset 0 1px 0 rgba(255,255,255,.025);
+}
+.content .card>h2:first-child,.content .card>h3:first-child{margin-top:0}
+
+.content label{color:#e6eaf0;font-weight:750;line-height:1.35}
+.content input:not([type='checkbox']):not([type='radio']):not([type='range']),
+.content textarea,
+.content select{
+  width:100%;
+  min-height:48px;
+  margin-top:7px;
+  border:1px solid #394453;
+  border-radius:12px;
+  background:#0b1017;
+  color:#f8fafc;
+  padding:11px 13px;
+  outline:none;
+  transition:border-color .16s ease,box-shadow .16s ease,background .16s ease;
+}
+.content textarea{min-height:104px;resize:vertical}
+.content input::placeholder,.content textarea::placeholder{color:#697587}
+.content input:focus,.content textarea:focus,.content select:focus{border-color:#d6af52;box-shadow:0 0 0 3px rgba(214,175,82,.14);background:#0d131b}
+.content input:disabled,.content textarea:disabled,.content select:disabled{opacity:.62;cursor:not-allowed}
+.content input[type='checkbox'],.content input[type='radio']{width:20px;height:20px;min-width:20px;accent-color:#d6af52;cursor:pointer}
+.content input[type='range']{accent-color:#d6af52;width:100%}
+.content fieldset{border:1px solid #323c49;border-radius:15px;padding:14px 16px;background:#10161e;color:#eef2f6}
+.content legend{padding:0 7px;color:#e5c96f;font-size:12px;font-weight:900;letter-spacing:.08em}
+
+.content .button{min-height:44px;border-radius:12px;padding:10px 16px;line-height:1.2}
+.content .button.secondary{background:#171e27;border-color:#394454;color:#f4f6f8}
+.content .button.secondary:hover{border-color:#d6af52;background:#1b222c}
+.content .button.danger{color:#ff9aa6;border-color:#74404a;background:rgba(116,31,45,.12)}
+.content .button:focus-visible,.content a:focus-visible,.content input:focus-visible,.content select:focus-visible,.content textarea:focus-visible{outline:2px solid #f0d47d;outline-offset:3px}
+
+.content .table{color:#eef2f6}
+.content .table th{color:#aeb8c5;font-size:12px;letter-spacing:.03em;background:#111720}
+.content .table td{border-bottom-color:#2b3441}
+.content .table tr:hover td{background:rgba(255,255,255,.018)}
+
+.portal-section-title{display:grid;gap:5px;margin-bottom:16px}
+.portal-section-title h2{margin:0;font-size:clamp(22px,3vw,30px)}
+.portal-section-title p{margin:0;color:#aab4c2}
+
+.team-invite-card{display:grid;gap:18px}
+.team-permission-groups{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.team-permission-group{display:grid;align-content:start;gap:10px;padding:15px;border:1px solid #303a47;border-radius:16px;background:#10161e}
+.team-permission-group-title{display:flex;align-items:center;justify-content:space-between;gap:10px;color:#f4d77d;font-size:12px;font-weight:950;letter-spacing:.08em;text-transform:uppercase}
+.team-permission-group-title span{display:grid;place-items:center;width:27px;height:27px;border-radius:50%;background:rgba(214,175,82,.12);color:#e4c76e}
+.team-permission-option{position:relative;display:grid!important;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;padding:12px 13px;border:1px solid #2d3744;border-radius:13px;background:#151b23;color:#f4f6f8!important;font-size:13px!important;font-weight:800!important;cursor:pointer;transition:border-color .15s ease,background .15s ease,transform .15s ease}
+.team-permission-option:hover{border-color:#526071;background:#18202a;transform:translateY(-1px)}
+.team-permission-option input{margin:0!important}
+.team-member-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.team-member-card{display:grid;gap:16px}
+.team-member-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding-bottom:13px;border-bottom:1px solid #2c3542}
+.team-member-name{font-size:17px;font-weight:950;color:#fff;overflow-wrap:anywhere}
+.team-member-email{margin-top:4px;color:#9ea9b7;font-size:12px;overflow-wrap:anywhere}
+.team-status{display:inline-flex;align-items:center;gap:6px;padding:7px 10px;border-radius:999px;font-size:10px;font-weight:950;letter-spacing:.06em;white-space:nowrap;border:1px solid}
+.team-status.active{color:#91e4b4;background:rgba(42,135,83,.12);border-color:rgba(89,194,128,.35)}
+.team-status.inactive{color:#ff9ba6;background:rgba(145,44,58,.14);border-color:rgba(235,99,114,.32)}
+.team-role-box{display:grid;gap:7px}
+.team-role-box>span{font-size:12px;color:#aeb8c5;font-weight:800}
+.team-member-permissions{display:grid;gap:9px;max-height:420px;overflow:auto;padding-right:4px;scrollbar-color:#495462 #111720}
+.team-member-permission{display:grid!important;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;padding:12px 13px;border:1px solid #303a47;border-radius:13px;background:#111820;color:#f5f7f9!important;font-size:12px!important;font-weight:800!important}
+.team-member-permission.disabled{opacity:.72}
+.team-member-actions{display:flex;gap:9px;flex-wrap:wrap;padding-top:3px}
+.team-invitation-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 0;border-bottom:1px solid #2c3542}
+.team-invitation-row:last-child{border-bottom:0}
+
+.profile-permission-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:14px}
+.profile-permission-pill{display:flex;align-items:center;gap:9px;min-height:44px;padding:10px 12px;border-radius:12px;border:1px solid #34404e;background:#111820;color:#eef2f6;font-size:12px;font-weight:800;overflow-wrap:anywhere}
+.profile-permission-pill::before{content:'✓';display:grid;place-items:center;width:21px;height:21px;min-width:21px;border-radius:50%;background:rgba(214,175,82,.15);color:#e5c86f;font-size:11px}
+
+.settings-premium-card{display:grid;gap:16px;margin-bottom:18px;border:1px solid rgba(214,175,82,.38)!important;background:radial-gradient(circle at 90% 0%,rgba(138,217,245,.10),transparent 35%),linear-gradient(145deg,#151b23,#10151c)!important}
+.settings-preview-card{padding:18px;border-radius:16px;border:1px solid #354250;background:#0c1219;color:#f7f8fa}
+.settings-preview-card p{color:#aab7c5!important}
+.settings-choice-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px}
+
+.portal-error-state{display:grid;gap:13px;max-width:760px;padding:22px;border:1px solid rgba(241,109,122,.32);border-radius:18px;background:linear-gradient(145deg,rgba(78,24,34,.26),#11161d)}
+.portal-error-state h2{margin:0}.portal-error-state p{margin:0;color:#c7ced7}
+
+@media(max-width:1000px){
+  .team-permission-groups{grid-template-columns:1fr}
+  .team-member-grid{grid-template-columns:1fr}
+  .profile-permission-grid{grid-template-columns:1fr}
+}
+
+@media(max-width:800px){
+  .content{padding:18px 14px 34px!important}
+  .content .card{padding:17px!important;border-radius:17px}
+  .content h1{font-size:clamp(28px,9vw,38px)}
+  .content h2{font-size:clamp(21px,6.5vw,28px)}
+  .content p,.content label{font-size:14px}
+  .content input:not([type='checkbox']):not([type='radio']):not([type='range']),.content textarea,.content select{min-height:50px;font-size:16px}
+  .content input[type='checkbox'],.content input[type='radio']{width:23px;height:23px;min-width:23px}
+  .team-member-head,.team-invitation-row{align-items:flex-start;flex-direction:column}
+  .team-status{align-self:flex-start}
+  .team-member-actions{display:grid;grid-template-columns:1fr;width:100%}
+  .team-member-actions .button{width:100%}
+  .team-permission-option,.team-member-permission{min-height:58px;font-size:13px!important}
+  .profile-permission-pill{font-size:13px}
+}
+
+@media(max-width:520px){
+  .content{padding:14px 10px 30px!important}
+  .content .card{padding:15px!important}
+  .content .toolbar{display:grid;grid-template-columns:1fr;width:100%}
+  .content .toolbar>.button,.content .toolbar>button,.content .toolbar>select{width:100%}
+  .team-permission-group{padding:12px}
+}

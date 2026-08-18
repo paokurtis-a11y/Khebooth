@@ -1,6 +1,7 @@
 import * as LocalAuthentication from 'expo-local-authentication';
 import { useEffect, useState } from 'react';
-import { Pressable, SafeAreaView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { SecurePasswordField } from './secure-password-field';
 
 interface StandbyScreenProps {
   verifyPassword: (password: string) => Promise<boolean>;
@@ -89,17 +90,7 @@ export function StandbyScreen({ verifyPassword, onUnlocked }: StandbyScreenProps
         </Pressable>
 
         <Text style={styles.or}>ou avec le mot de passe KHE</Text>
-        <TextInput
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          autoCapitalize="none"
-          autoCorrect={false}
-          placeholder="Mot de passe KHE"
-          placeholderTextColor="#777777"
-          style={styles.input}
-          onSubmitEditing={() => void unlockWithPassword()}
-        />
+        <SecurePasswordField value={password} onChangeText={setPassword} placeholder="Mot de passe KHE" onSubmitEditing={() => void unlockWithPassword()} />
         <Pressable disabled={busy || !password} onPress={() => void unlockWithPassword()} style={styles.secondaryButton}>
           <Text style={styles.secondaryText}>VALIDER LE MOT DE PASSE</Text>
         </Pressable>
@@ -121,7 +112,6 @@ const styles = StyleSheet.create({
   primaryButton: { backgroundColor: '#111111', borderRadius: 13, padding: 15, alignItems: 'center' },
   primaryText: { color: '#ffffff', fontWeight: '900' },
   or: { textAlign: 'center', fontSize: 11, opacity: 0.55, marginTop: 2 },
-  input: { borderWidth: 1, borderColor: '#d0d0d0', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 },
   secondaryButton: { borderWidth: 1, borderColor: '#111111', borderRadius: 12, padding: 13, alignItems: 'center' },
   secondaryText: { fontWeight: '900', fontSize: 11 },
   message: { fontSize: 11, lineHeight: 16, opacity: 0.65 },

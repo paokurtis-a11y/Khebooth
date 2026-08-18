@@ -1,5 +1,11 @@
 import type { Metadata } from 'next';
+import { WebDisplayPreferenceBootstrap } from '@/components/web-display-preferences';
+import { WebStartupIntro } from '@/components/web-startup-intro';
 import './globals.css';
+import './responsive-fixes.css';
+import './site-editor.css';
+import './portal-polish.css';
+import './portal-navigation.css';
 
 export const metadata: Metadata = {
   title: {
@@ -14,7 +20,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="fr">
-      <body>{children}</body>
+      <body><WebDisplayPreferenceBootstrap /><WebStartupIntro />{children}</body>
     </html>
   );
 }

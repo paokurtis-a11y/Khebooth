@@ -13,6 +13,9 @@ import {
   type NotificationPreferences,
 } from './notification-feedback';
 
+export type TextScalePreference='SMALL'|'NORMAL'|'LARGE'|'XLARGE';
+export type TextStylePreference='CLASSIC'|'MODERN'|'ELEGANT'|'COMFORT';
+
 export interface AppSettings {
   wifiPreferred: boolean;
   askBeforeMobileData: boolean;
@@ -21,6 +24,8 @@ export interface AppSettings {
   animatedGalleryPreviews: boolean;
   keepScreenAwakeDuringEvent: boolean;
   preciseLocationEnabled: boolean;
+  textScale: TextScalePreference;
+  textStyle: TextStylePreference;
 }
 
 const SETTINGS_KEY = 'khe.app.settings.v1';
@@ -34,7 +39,12 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   animatedGalleryPreviews: true,
   keepScreenAwakeDuringEvent: true,
   preciseLocationEnabled: false,
+  textScale:'NORMAL',
+  textStyle:'MODERN',
 };
+
+export const TEXT_SCALE_MULTIPLIER:Record<TextScalePreference,number>={SMALL:.9,NORMAL:1,LARGE:1.16,XLARGE:1.34};
+export const TEXT_STYLE_FONT:Record<TextStylePreference,string|undefined>={CLASSIC:'serif',MODERN:'sans-serif-medium',ELEGANT:'serif',COMFORT:'sans-serif'};
 
 export async function loadAppSettings(): Promise<AppSettings> {
   const raw = await SecureStore.getItemAsync(SETTINGS_KEY);
@@ -190,6 +200,9 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
     }
   }
 
+  const previewMultiplier=TEXT_SCALE_MULTIPLIER[settings.textScale];
+  const previewFont=TEXT_STYLE_FONT[settings.textStyle];
+
   return (
     <View style={styles.page}>
       <ScrollView contentContainerStyle={styles.scroll}>
@@ -197,9 +210,22 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
           <View style={{ flex: 1 }}>
             <Text style={styles.brand}>KHE BOOTH</Text>
             <Text style={styles.title}>Paramètres</Text>
-            <Text style={styles.help}>Personnalisez le confort, le réseau, la localisation et les notifications.</Text>
+            <Text style={styles.help}>Personnalisez le confort, l’affichage, le réseau, la localisation et les notifications.</Text>
           </View>
           <Pressable style={styles.close} onPress={onClose}><Text style={styles.closeText}>Fermer</Text></Pressable>
+        </View>
+
+        <View style={styles.sectionCard}>
+          <Text style={styles.cardTitle}>AFFICHAGE & LISIBILITÉ</Text>
+          <Text style={styles.sectionTitle}>Taille et style des écritures</Text>
+          <Text style={styles.help}>Choisissez une présentation confortable. Le choix est conservé sur cette tablette et sert de préférence d’affichage KHE.</Text>
+          <ChoiceRow label="Taille du texte" value={settings.textScale} onChange={(textScale)=>update({textScale:textScale as TextScalePreference})} values={[["SMALL","Petit"],["NORMAL","Normal"],["LARGE","Grand"],["XLARGE","Très grand"]]} />
+          <ChoiceRow label="Style d’écriture" value={settings.textStyle} onChange={(textStyle)=>update({textStyle:textStyle as TextStylePreference})} values={[["CLASSIC","Classique"],["MODERN","Moderne"],["ELEGANT","Élégant"],["COMFORT","Confort"]]} />
+          <View style={styles.previewCard}>
+            <Text style={[styles.previewLabel,{fontFamily:previewFont}]}>APERÇU EN DIRECT</Text>
+            <Text style={[styles.previewTitle,{fontFamily:previewFont,fontSize:22*previewMultiplier,lineHeight:28*previewMultiplier}]}>KHE Booth — votre événement</Text>
+            <Text style={[styles.previewBody,{fontFamily:previewFont,fontSize:13*previewMultiplier,lineHeight:19*previewMultiplier}]}>Ce texte montre immédiatement la taille et le style sélectionnés pour améliorer votre confort de lecture.</Text>
+          </View>
         </View>
 
         <View style={styles.networkCard}>
@@ -277,6 +303,7 @@ const styles = StyleSheet.create({
   choiceActive: { backgroundColor: '#d2ad4f', borderColor: '#d2ad4f' },
   choiceText: { color: '#ddd', fontSize: 11, fontWeight: '800' },
   choiceTextActive: { color: '#111' },
+  previewCard:{backgroundColor:'#f5fbff',borderWidth:1,borderColor:'#8ad9f5',borderRadius:16,padding:16,gap:7},previewLabel:{fontSize:9,fontWeight:'900',letterSpacing:1.5,color:'#8b6819'},previewTitle:{color:'#17242b',fontWeight:'900'},previewBody:{color:'#4f6672'},
   testButton: { backgroundColor: '#b31520', borderRadius: 12, padding: 12, alignItems: 'center' },
   testText: { color: '#fff', fontWeight: '900' },
   outlineButton: { borderWidth: 1, borderColor: '#d2ad4f', borderRadius: 12, padding: 11, alignItems: 'center' },

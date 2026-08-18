@@ -60,14 +60,14 @@ export default function NewEventPage() {
 
   return (
     <PortalShell>
-      <div className="header"><div><h1>Créer un événement</h1><p>Configuration initiale de l’expérience photobooth.</p></div></div>
-      {error ? <p className="error">{error}</p> : null}
+      <div className="header"><div><div className="eyebrow">NOUVEL ÉVÉNEMENT</div><h1>Créer un événement</h1><p>Configuration initiale de l’expérience photobooth.</p></div></div>
+      {error ? <div className="portal-error-state" style={{marginBottom:16}}><strong>Création impossible</strong><p>{error}</p></div> : null}
       <section className="card">
         <form className="form" onSubmit={submit}>
           <div className="field"><label htmlFor="name">Nom de l’événement</label><input id="name" required maxLength={180} value={name} onChange={(e) => setName(e.target.value)} /></div>
           <div className="field"><label htmlFor="client">Client</label><select id="client" value={clientId} onChange={(e) => setClientId(e.target.value)}><option value="">Aucun client</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select></div>
           <div className="field"><label htmlFor="preset">Preset</label><select id="preset" value={presetId} onChange={(e) => setPresetId(e.target.value)}><option value="">Aucun preset</option>{presets.map((preset) => <option key={preset.id} value={preset.id}>{preset.name} — {preset.aspectRatio}</option>)}</select></div>
-          <div className="grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+          <div className="grid two">
             <div className="field"><label htmlFor="startsAt">Début</label><input id="startsAt" type="datetime-local" required value={startsAt} onChange={(e) => setStartsAt(e.target.value)} /></div>
             <div className="field"><label htmlFor="endsAt">Fin</label><input id="endsAt" type="datetime-local" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} /></div>
           </div>
