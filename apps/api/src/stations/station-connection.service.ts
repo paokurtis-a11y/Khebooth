@@ -84,6 +84,14 @@ export class StationConnectionService {
     return this.readDecorated(station);
   }
 
+  async requireAccepted(station: AuthenticatedStation): Promise<void> {
+    if (station.mode !== StationMode.SHARING) return;
+    const state = await this.readState(station.eventId);
+    if (state?.sharingConnectionStatus !== 'ACCEPTED') {
+      throw new ForbiddenException('CAPTURE must accept the SHARING connection before remote control or live preview can start');
+    }
+  }
+
   private async readDecorated(station: AuthenticatedStation) {
     const control = await this.prisma.stationRemoteControl.findUnique({ where: { eventId: station.eventId } });
     if (!control) throw new BadRequestException('Station control state is not initialized');
