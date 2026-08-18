@@ -5,29 +5,36 @@ import { AuthService } from './auth.service';
 import type { AuthenticatedUser } from './auth.types';
 import { LoginDto } from './dto/login.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { ProfilePhotoService } from './profile-photo.service';
 
-interface AuthRequest extends Request {
-  user: AuthenticatedUser;
-}
+interface AuthRequest extends Request { user: AuthenticatedUser; }
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(private readonly authService: AuthService, private readonly photos: ProfilePhotoService) {}
 
-  @Post('login')
-  login(@Body() dto: LoginDto) {
-    return this.authService.login(dto);
-  }
+  @Post('login') login(@Body() dto: LoginDto) { return this.authService.login(dto); }
 
   @UseGuards(AuthGuard('jwt'))
-  @Get('me')
-  me(@Req() request: AuthRequest) {
-    return this.authService.profile(request.user.id);
-  }
+  @Get('me') me(@Req() request: AuthRequest) { return this.authService.profile(request.user.id); }
 
   @UseGuards(AuthGuard('jwt'))
-  @Patch('profile')
-  updateProfile(@Req() request: AuthRequest, @Body() dto: UpdateProfileDto) {
-    return this.authService.updateProfile(request.user.id, dto);
+  @Patch('profile') updateProfile(@Req() request: AuthRequest, @Body() dto: UpdateProfileDto) { return this.authService.updateProfile(request.user.id, dto); }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Post('profile/photo-upload') prepareProfilePhoto(@Req() request: AuthRequest, @Body() body: Record<string, unknown>) { return this.photos.prepare(request.user, body); }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Post('profile/photo-finalize') finalizeProfilePhoto(@Req() request: AuthRequest) { return this.photos.finalize(request.user); }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Get('terms') terms() { return this.authService.terms(); }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Post('terms/accept') acceptTerms(@Req() request: AuthRequest) { return this.authService.acceptTerms(request.user.id); }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Patch('notification-preferences') updateNotificationPreferences(@Req() request: AuthRequest, @Body() body: Record<string, unknown>) {
+    return this.authService.updateNotificationPreferences(request.user.id, body);
   }
 }

@@ -4,6 +4,8 @@ import { PassportModule } from '@nestjs/passport';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
+import { PermissionsGuard } from './permissions.guard';
+import { ProfilePhotoService } from './profile-photo.service';
 
 const jwtSecret = process.env.JWT_SECRET?.trim();
 if (!jwtSecret) {
@@ -28,7 +30,7 @@ const jwtExpiresInSeconds =
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
-  exports: [JwtModule],
+  providers: [AuthService, JwtStrategy, ProfilePhotoService, PermissionsGuard],
+  exports: [JwtModule, ProfilePhotoService, PermissionsGuard],
 })
 export class AuthModule {}

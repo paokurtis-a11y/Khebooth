@@ -44,6 +44,7 @@ describe('EventsService activation and manifest', () => {
     event: {
       findFirst: jest.fn(),
       update: jest.fn(),
+      updateMany: jest.fn(),
       count: jest.fn(),
     },
     eventActivation: {
@@ -68,6 +69,7 @@ describe('EventsService activation and manifest', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.spyOn(prisma.event, 'updateMany').mockResolvedValue({ count: 0 });
     jest.spyOn(prisma.event, 'findFirst').mockResolvedValue(eventRecord);
     jest.spyOn(entitlements, 'forEvent').mockResolvedValue({
       clientId: null,

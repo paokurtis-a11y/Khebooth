@@ -1,12 +1,17 @@
+import * as SecureStore from 'expo-secure-store';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import type { StationApi } from '../api/station-api';
+import type { StationExperienceApi } from '../api/station-api';
+import { CreativeStudio, type CreativePlan } from '../studio/creative-studio';
 import { RemoteControlPanel } from './remote-control-panel';
+import { SharingEventManager } from './sharing-event-manager';
 import { SharingMediaGallery } from './sharing-media-gallery';
+
+const CREATIVE_PLAN_KEY='khe.creative.plan.v1';
 
 interface SharingStationPanelProps {
   eventName: string;
-  api: StationApi;
+  api: StationExperienceApi;
   stationToken: string;
 }
 
@@ -14,6 +19,8 @@ export function SharingStationPanel({ eventName, api, stationToken }: SharingSta
   const [ready, setReady] = useState(false);
   const [checking, setChecking] = useState(true);
   const [error, setError] = useState('');
+  const [flowMessage,setFlowMessage]=useState('');
+  const [designEvent,setDesignEvent]=useState<{id:string;name:string}|null>(null);
   const checkingRef = useRef(false);
 
   async function initialize(): Promise<void> {
@@ -22,7 +29,7 @@ export function SharingStationPanel({ eventName, api, stationToken }: SharingSta
     setChecking(true);
     setError('');
     try {
-      await Promise.all([api.control(stationToken), api.listMedia(stationToken)]);
+      await Promise.all([api.control(stationToken), api.listMedia(stationToken), api.clientWorkspace(stationToken)]);
       setReady(true);
     } catch (cause) {
       setReady(false);
@@ -35,13 +42,34 @@ export function SharingStationPanel({ eventName, api, stationToken }: SharingSta
 
   useEffect(() => { void initialize(); }, [api, stationToken]);
 
+  async function startDesign(eventId:string,eventTitle:string){
+    setFlowMessage(`Événement « ${eventTitle} » créé. Préparez maintenant son design.`);
+    await SecureStore.deleteItemAsync(CREATIVE_PLAN_KEY).catch(()=>undefined);
+    setDesignEvent({id:eventId,name:eventTitle});
+  }
+
+  async function closeDesign(){
+    const pending=designEvent;if(!pending)return;
+    const raw=await SecureStore.getItemAsync(CREATIVE_PLAN_KEY);
+    if(!raw){setDesignEvent(null);setFlowMessage(`« ${pending.name} » reste en brouillon : enregistrez un design dans le Studio pour l’envoyer automatiquement vers CAPTURE.`);return;}
+    let plan:CreativePlan;
+    try{plan=JSON.parse(raw) as CreativePlan;}catch{setDesignEvent(null);setFlowMessage('Le design local est illisible. L’événement reste en brouillon.');return;}
+    try{
+      await api.markClientEventDesignReady(stationToken,pending.id,plan as unknown as Record<string,unknown>);
+      setFlowMessage(`✓ « ${pending.name} » est prêt. KHE Booth l’envoie maintenant automatiquement à CAPTURE et SHARING.`);
+    }catch(cause){setFlowMessage(cause instanceof Error?cause.message:'Impossible de valider le design.');}
+    finally{setDesignEvent(null);}
+  }
+
+  if(designEvent)return <CreativeStudio onClose={()=>void closeDesign()}/>;
+
   if (!ready) {
     return (
       <View style={styles.statusCard}>
         <View style={styles.statusHeader}><View style={styles.dot} /><Text style={styles.eyebrow}>RÉGIE SHARING</Text></View>
         <Text style={styles.title}>{checking ? 'Connexion à KHE Booth…' : 'Connexion interrompue'}</Text>
         {checking ? <ActivityIndicator color="#d2ad4f" size="large" /> : null}
-        <Text style={styles.help}>{checking ? 'Vérification de la session, de CAPTURE et de la galerie Cloud.' : error}</Text>
+        <Text style={styles.help}>{checking ? 'Vérification de la session, de CAPTURE, des événements client et de la galerie Cloud.' : error}</Text>
         {!checking ? <Pressable style={styles.retry} onPress={() => void initialize()}><Text style={styles.retryText}>RÉESSAYER LA CONNEXION</Text></Pressable> : null}
       </View>
     );
@@ -49,6 +77,13 @@ export function SharingStationPanel({ eventName, api, stationToken }: SharingSta
 
   return (
     <View style={styles.readyShell}>
+      {flowMessage?<View style={styles.flowBanner}><Text style={styles.flowText}>{flowMessage}</Text></View>:null}
+      <SharingEventManager
+        api={api}
+        stationToken={stationToken}
+        onCreated={(eventId,eventTitle)=>void startDesign(eventId,eventTitle)}
+        onReady={(eventTitle)=>setFlowMessage(`✓ « ${eventTitle} » est prêt et sera sélectionné automatiquement sur CAPTURE et SHARING dans quelques secondes.`)}
+      />
       <RemoteControlPanel eventName={eventName} api={api} stationToken={stationToken} />
       <SharingMediaGallery eventName={eventName} api={api} stationToken={stationToken} />
     </View>
@@ -57,6 +92,8 @@ export function SharingStationPanel({ eventName, api, stationToken }: SharingSta
 
 const styles = StyleSheet.create({
   readyShell: { gap: 14 },
+  flowBanner:{backgroundColor:'#e8f6ed',borderWidth:1,borderColor:'#9bc8aa',borderRadius:14,padding:12},
+  flowText:{color:'#185a32',fontSize:12,lineHeight:18,fontWeight:'800'},
   statusCard: { marginTop: 16, backgroundColor: '#111113', borderRadius: 22, padding: 22, gap: 14, borderWidth: 1, borderColor: '#30291d' },
   statusHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   dot: { width: 9, height: 9, borderRadius: 5, backgroundColor: '#d2ad4f' },

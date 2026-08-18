@@ -1,6 +1,7 @@
 import type { AspectRatio, StationMode } from '@khe/contracts';
 import { registerRootComponent } from 'expo';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
+import * as SecureStore from 'expo-secure-store';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { HttpStationApi } from './api/station-api';
@@ -21,10 +22,13 @@ import { CreativeStudio } from './studio/creative-studio';
 import { useCaptureSync } from './sync/capture-sync-runner';
 
 const EVENT_KEEP_AWAKE_TAG = 'khe-booth-event';
+const CREATIVE_PLAN_KEY='khe.creative.plan.v1';
 
 function makeInstallationId(): string {
   return `khe-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 }
+
+function kheEventNumber(eventId:string):string{return`KHE-EVT-${eventId.replace(/-/g,'').slice(0,8).toUpperCase()}`;}
 
 function refreshErrorMessage(error: unknown): string {
   const detail = error instanceof Error ? error.message : String(error ?? '');
@@ -112,6 +116,31 @@ function App() {
     return () => { void deactivateKeepAwake(EVENT_KEEP_AWAKE_TAG).catch(() => undefined); };
   }, [keepAwakeEnabled, station]);
 
+  useEffect(()=>{
+    if(!station||!stationToken||cameraOpen)return;
+    let cancelled=false;let running=false;
+    const synchronize=async()=>{
+      if(running)return;running=true;
+      try{
+        const workspace=await api.clientWorkspace(stationToken);
+        if(!workspace.shouldSwitch||!workspace.selectedEvent)return;
+        const response=await api.switchClientEvent(stationToken,workspace.selectedEvent.id);
+        const persisted:PersistedStationContext={session:response.session,installationId:station.installationId,mode:station.mode,savedAt:new Date().toISOString()};
+        await vault.saveStationToken(response.stationToken);
+        await store.saveStation(persisted);
+        await store.saveManifest(response.session.eventId,response.manifest);
+        if(response.designConfig&&Object.keys(response.designConfig).length){await SecureStore.setItemAsync(CREATIVE_PLAN_KEY,JSON.stringify(response.designConfig),{keychainAccessible:SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY});}
+        if(cancelled)return;
+        setStation(persisted);setStationToken(response.stationToken);setEventName(response.manifest.event.name);
+        setMessage(`✓ Nouvel événement « ${response.manifest.event.name} » synchronisé automatiquement sur ${station.mode}.`);
+      }catch{
+        // Les stations sans client ou temporairement hors ligne conservent leur contexte local.
+      }finally{running=false;}
+    };
+    void synchronize();const timer=setInterval(()=>void synchronize(),5000);
+    return()=>{cancelled=true;clearInterval(timer);};
+  },[api,cameraOpen,station,stationToken,store,vault]);
+
   async function activate(): Promise<void> {
     setBusy(true); setMessage('');
     try {
@@ -190,14 +219,15 @@ function App() {
     setMessage(`Capture ${format} conservée localement (${Math.max(1, Math.round(media.byteSize / 1024 / 1024))} Mo) et placée en attente de synchronisation.`);
   }
 
+  const returnToMenu=()=>setMenuOpen(true);
   if (loading) return <SafeAreaView style={styles.center}><ActivityIndicator /><Text style={styles.muted}>Initialisation du stockage offline…</Text></SafeAreaView>;
   if (station && standbyLocked) return <StandbyScreen verifyPassword={verifyLockPassword} onUnlocked={unlockStandby} />;
-  if (aboutOpen) return <AboutAndTerms onClose={() => setAboutOpen(false)} />;
-  if (guideOpen) return <UserGuide onClose={() => setGuideOpen(false)} />;
-  if (languageOpen) return <LanguageAndRegion onClose={() => setLanguageOpen(false)} onChanged={setAppLanguage} />;
-  if (settingsOpen) return <SettingsScreen onClose={() => setSettingsOpen(false)} />;
-  if (studioOpen) return <CreativeStudio onClose={() => setStudioOpen(false)} />;
-  if (profileOpen) return <UserProfile onClose={() => setProfileOpen(false)} />;
+  if (aboutOpen) return <AboutAndTerms onClose={() => {setAboutOpen(false);returnToMenu();}} />;
+  if (guideOpen) return <UserGuide onClose={() => {setGuideOpen(false);returnToMenu();}} />;
+  if (languageOpen) return <LanguageAndRegion onClose={() => {setLanguageOpen(false);returnToMenu();}} onChanged={setAppLanguage} />;
+  if (settingsOpen) return <SettingsScreen onClose={() => {setSettingsOpen(false);returnToMenu();}} />;
+  if (studioOpen) return <CreativeStudio onClose={() => {setStudioOpen(false);returnToMenu();}} />;
+  if (profileOpen) return <UserProfile onClose={() => {setProfileOpen(false);returnToMenu();}} />;
   if (cameraOpen && station?.mode === 'CAPTURE' && stationToken) return <CameraCapture eventId={station.session.eventId} store={store} api={api} stationToken={stationToken} onClose={() => setCameraOpen(false)} onCaptured={handleCaptured} />;
   if (galleryOpen && station?.mode === 'CAPTURE') return <MediaGallery eventId={station.session.eventId} eventName={eventName ?? station.session.eventId} store={store} onClose={() => setGalleryOpen(false)} />;
 
@@ -235,7 +265,7 @@ function App() {
 
               {station.mode === 'SHARING' && !securityOptionsHidden ? <View style={styles.securityCard}><Text style={styles.awakeTitle}>SÉCURITÉ DE LA RÉGIE • FACULTATIF</Text><Text style={styles.securityTitle}>{lockConfigured ? 'Mot de passe KHE configuré' : 'Créer un mot de passe KHE'}</Text><Text style={styles.awakeHelp}>{lockConfigured ? 'Vous pouvez le remplacer ou ignorer cette section.' : 'Le mot de passe n’est nécessaire que si vous souhaitez utiliser la veille sécurisée KHE.'}</Text><TextInput value={newLockPassword} onChangeText={setNewLockPassword} secureTextEntry={!showLockPassword} autoCapitalize="none" autoCorrect={false} placeholder={lockConfigured ? 'Nouveau mot de passe' : 'Mot de passe KHE'} style={styles.input} /><TextInput value={confirmLockPassword} onChangeText={setConfirmLockPassword} secureTextEntry={!showLockPassword} autoCapitalize="none" autoCorrect={false} placeholder="Confirmer le mot de passe" style={styles.input} /><Pressable style={styles.visibilityButton} onPress={() => setShowLockPassword((current) => !current)}><Text style={styles.visibilityText}>{showLockPassword ? '🙈 Masquer les mots de passe' : '👁 Afficher les mots de passe'}</Text></Pressable><Pressable disabled={!newLockPassword || !confirmLockPassword} onPress={() => void saveLockPassword()} style={styles.securityButton}><Text style={styles.securityButtonText}>{lockConfigured ? 'MODIFIER LE MOT DE PASSE' : 'ENREGISTRER LE MOT DE PASSE'}</Text></Pressable><Pressable style={styles.skipButton} onPress={() => setSecurityOptionsHidden(true)}><Text style={styles.skipButtonText}>Passer cette configuration</Text></Pressable></View> : null}
 
-              {station.mode === 'SHARING' && stationToken ? <SharingStationPanel eventName={eventName ?? 'Événement KHE Booth'} api={api} stationToken={stationToken} /> : <><Text style={styles.label}>Station active</Text><Text style={styles.value}>{station.mode}</Text><Text style={styles.label}>Événement</Text><Text style={styles.value}>{eventName ?? station.session.eventId}</Text><Text style={styles.label}>Session</Text><Text style={styles.small}>{station.session.id}</Text><Pressable disabled={busy} style={styles.primaryButton} onPress={() => void refreshManifest()}><Text style={styles.primaryButtonText}>{busy ? 'Synchronisation…' : 'Actualiser le manifest'}</Text></Pressable><View style={styles.captureActions}><Pressable disabled={busy || !stationToken} style={styles.captureButton} onPress={() => setCameraOpen(true)}><Text style={styles.captureButtonText}>Ouvrir la caméra</Text></Pressable><Pressable disabled={busy} style={styles.galleryButton} onPress={() => setGalleryOpen(true)}><Text style={styles.galleryButtonText}>Galerie</Text></Pressable></View><Text style={styles.notice}>Le Studio créatif du menu définit les textes, cadres, effets et la musique destinés au rendu des prochaines prises.</Text></>}
+              {station.mode === 'SHARING' && stationToken ? <SharingStationPanel eventName={eventName ?? 'Événement KHE Booth'} api={api} stationToken={stationToken} /> : <><Text style={styles.label}>Station active</Text><Text style={styles.value}>{station.mode}</Text><Text style={styles.label}>Événement</Text><Text style={styles.value}>{eventName ?? station.session.eventId}</Text><Text style={styles.label}>N° d’identification KHE</Text><Text style={styles.value}>{kheEventNumber(station.session.eventId)}</Text><Pressable disabled={busy} style={styles.primaryButton} onPress={() => void refreshManifest()}><Text style={styles.primaryButtonText}>{busy ? 'Synchronisation…' : 'Actualiser le manifest'}</Text></Pressable><View style={styles.captureActions}><Pressable disabled={busy || !stationToken} style={styles.captureButton} onPress={() => setCameraOpen(true)}><Text style={styles.captureButtonText}>Ouvrir la caméra</Text></Pressable><Pressable disabled={busy} style={styles.galleryButton} onPress={() => setGalleryOpen(true)}><Text style={styles.galleryButtonText}>Galerie</Text></Pressable></View><Text style={styles.notice}>Le Studio créatif du menu définit les textes, cadres, effets et la musique destinés au rendu des prochaines prises.</Text></>}
             </View>
           ) : <View style={styles.section}><Text style={styles.label}>Mode de la tablette</Text><View style={styles.modeRow}>{(['CAPTURE', 'SHARING'] as const).map((candidate) => <Pressable key={candidate} onPress={() => setMode(candidate)} style={[styles.modeButton, mode === candidate && styles.modeButtonActive]}><Text style={mode === candidate ? styles.modeTextActive : styles.modeText}>{candidate}</Text></Pressable>)}</View><Text style={styles.label}>Code d’activation</Text><TextInput autoCapitalize="characters" autoCorrect={false} value={code} onChangeText={setCode} placeholder="KHE-123456" style={styles.input} /><Text style={styles.activationHelp}>Aucun Event ID à saisir : KHE Booth retrouve automatiquement l’événement lié à ce code.</Text><Pressable disabled={busy || !code.trim()} style={styles.primaryButton} onPress={() => void activate()}><Text style={styles.primaryButtonText}>{busy ? 'Activation…' : 'Activer cette station'}</Text></Pressable><Pressable style={styles.termsLink} onPress={() => setAboutOpen(true)}><Text style={styles.termsLinkText}>Conditions d’utilisation • Version {APP_VERSION}</Text></Pressable></View>}
           {message ? <Text style={styles.message}>{message}</Text> : null}

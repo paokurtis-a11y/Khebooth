@@ -41,6 +41,59 @@ export interface StationProfileContract {
 
 export type StationProfileUpdate = Omit<StationProfileContract, 'organizationId' | 'updatedAt'>;
 
+export interface ClientEventContract {
+  id: string;
+  name: string;
+  description: string | null;
+  startsAt: string | Date;
+  endsAt: string | Date | null;
+  status: string;
+  clientId: string | null;
+  createdAt: string | Date;
+  updatedAt: string | Date;
+}
+
+export interface ClientWorkspaceContract {
+  clientId: string;
+  plan: string;
+  entitlements: Record<string, boolean>;
+  currentEventId: string;
+  selectedEvent: ClientEventContract | null;
+  designConfig: Record<string, unknown>;
+  designReadyAt: string | Date | null;
+  shouldSwitch: boolean;
+  events: ClientEventContract[];
+}
+
+export interface CreateClientEventRequest {
+  name: string;
+  description: string;
+  startsAt: string;
+  endsAt: string;
+}
+
+export interface CreateClientEventResponse {
+  event: ClientEventContract;
+  plan: string;
+  entitlements: Record<string, boolean>;
+  nextStep: 'STUDIO' | 'READY';
+}
+
+export interface SwitchedStationResponse extends StationRedeemResponseContract {
+  designConfig?: Record<string, unknown>;
+}
+
+export interface NotificationPreferencesContract {
+  enabled: boolean;
+  soundEnabled: boolean;
+  sound: string;
+  soundVolume: number;
+  vibrationEnabled: boolean;
+  vibrationMode: string;
+  vibrationIntensity: string;
+}
+
+/** Core contract used by offline media/sync tests and low-level station features. */
 export interface StationApi {
   redeem(request: StationRedeemRequestContract): Promise<StationRedeemResponseContract>;
   manifest(stationToken: string): Promise<EventManifestContract>;
@@ -59,6 +112,18 @@ export interface StationApi {
   finalizeUpload(stationToken: string, mediaId: string): Promise<FinalizeUploadResponseContract>;
 }
 
+/** Extended client-facing station contract used by Profile, Settings and SHARING workspace. */
+export interface StationExperienceApi extends StationApi {
+  profile(stationToken: string): Promise<StationProfileContract>;
+  updateProfile(stationToken: string, profile: StationProfileUpdate): Promise<StationProfileContract>;
+  notificationPreferences(stationToken: string): Promise<NotificationPreferencesContract>;
+  updateNotificationPreferences(stationToken: string, preferences: NotificationPreferencesContract): Promise<NotificationPreferencesContract>;
+  clientWorkspace(stationToken: string): Promise<ClientWorkspaceContract>;
+  createClientEvent(stationToken: string, event: CreateClientEventRequest): Promise<CreateClientEventResponse>;
+  markClientEventDesignReady(stationToken: string, eventId: string, designConfig: Record<string, unknown>): Promise<ClientWorkspaceContract>;
+  switchClientEvent(stationToken: string, eventId: string): Promise<SwitchedStationResponse>;
+}
+
 class StationApiHttpError extends Error {
   constructor(readonly status: number, message: string) {
     super(message);
@@ -66,7 +131,7 @@ class StationApiHttpError extends Error {
   }
 }
 
-export class HttpStationApi implements StationApi {
+export class HttpStationApi implements StationExperienceApi {
   private readonly renewedTokens = new Map<string, string>();
   private renewalPromise: Promise<string> | null = null;
 
@@ -95,20 +160,16 @@ export class HttpStationApi implements StationApi {
         ...(init?.headers ?? {}),
       },
     });
-
     if (!response.ok) {
       let message = `HTTP ${response.status}`;
       try {
-        const payload = (await response.json()) as { message?: string | string[] };
+        const payload = await response.json() as { message?: string | string[] };
         if (Array.isArray(payload.message)) message = payload.message.join(', ');
         else if (payload.message) message = payload.message;
-      } catch {
-        // Keep the status-based message when the server body is not JSON.
-      }
+      } catch {}
       throw new StationApiHttpError(response.status, message);
     }
-
-    return (await response.json()) as T;
+    return await response.json() as T;
   }
 
   private async renewToken(stationToken: string): Promise<string> {
@@ -124,9 +185,7 @@ export class HttpStationApi implements StationApi {
           keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
         });
         return response.stationToken;
-      }).finally(() => {
-        this.renewalPromise = null;
-      });
+      }).finally(() => { this.renewalPromise = null; });
     }
     return this.renewalPromise;
   }
@@ -134,12 +193,8 @@ export class HttpStationApi implements StationApi {
   private async stationRequest<T>(path: string, stationToken: string, init?: RequestInit): Promise<T> {
     const execute = (token: string) => this.request<T>(path, {
       ...init,
-      headers: {
-        ...(init?.headers ?? {}),
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { ...(init?.headers ?? {}), Authorization: `Bearer ${token}` },
     });
-
     const current = this.resolvedToken(stationToken);
     try {
       return await execute(current);
@@ -150,71 +205,36 @@ export class HttpStationApi implements StationApi {
     }
   }
 
-  redeem(request: StationRedeemRequestContract): Promise<StationRedeemResponseContract> {
-    return this.request('/stations/redeem', { method: 'POST', body: JSON.stringify(request) });
+  redeem(request: StationRedeemRequestContract) { return this.request<StationRedeemResponseContract>('/stations/redeem', { method: 'POST', body: JSON.stringify(request) }); }
+  manifest(token: string) { return this.stationRequest<EventManifestContract>('/stations/manifest', token); }
+  liveSession(token: string) { return this.stationRequest<StationLiveSessionContract>('/stations/live-session', token); }
+  control(token: string) { return this.stationRequest<StationControlContract>('/stations/control', token); }
+  updateControlCommand(token: string, command: StationControlCommandContract) { return this.stationRequest<StationControlContract>('/stations/control/command', token, { method: 'PATCH', body: JSON.stringify(command) }); }
+  updateControlStatus(token: string, status: StationControlStatusContract) { return this.stationRequest<StationControlContract>('/stations/control/status', token, { method: 'PATCH', body: JSON.stringify(status) }); }
+  profile(token: string) { return this.stationRequest<StationProfileContract>('/stations/profile', token); }
+  updateProfile(token: string, profile: StationProfileUpdate) { return this.stationRequest<StationProfileContract>('/stations/profile', token, { method: 'PATCH', body: JSON.stringify(profile) }); }
+  notificationPreferences(token: string) { return this.stationRequest<NotificationPreferencesContract>('/stations/notification-preferences', token); }
+  updateNotificationPreferences(token: string, preferences: NotificationPreferencesContract) { return this.stationRequest<NotificationPreferencesContract>('/stations/notification-preferences', token, { method: 'PATCH', body: JSON.stringify(preferences) }); }
+  clientWorkspace(token: string) { return this.stationRequest<ClientWorkspaceContract>('/stations/client-workspace', token); }
+  createClientEvent(token: string, event: CreateClientEventRequest) { return this.stationRequest<CreateClientEventResponse>('/stations/client-events', token, { method: 'POST', body: JSON.stringify(event) }); }
+  markClientEventDesignReady(token: string, eventId: string, designConfig: Record<string, unknown>) { return this.stationRequest<ClientWorkspaceContract>(`/stations/client-events/${encodeURIComponent(eventId)}/design-ready`, token, { method: 'POST', body: JSON.stringify({ designConfig }) }); }
+  async switchClientEvent(token: string, eventId: string) {
+    const current = this.resolvedToken(token);
+    const response = await this.stationRequest<SwitchedStationResponse>(`/stations/client-events/${encodeURIComponent(eventId)}/switch`, current, { method: 'POST' });
+    this.renewedTokens.set(token, response.stationToken);
+    this.renewedTokens.set(current, response.stationToken);
+    await SecureStore.setItemAsync(STATION_TOKEN_KEY, response.stationToken, {
+      keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+    });
+    return response;
   }
-
-  manifest(stationToken: string): Promise<EventManifestContract> {
-    return this.stationRequest('/stations/manifest', stationToken);
-  }
-
-  liveSession(stationToken: string): Promise<StationLiveSessionContract> {
-    return this.stationRequest('/stations/live-session', stationToken);
-  }
-
-  control(stationToken: string): Promise<StationControlContract> {
-    return this.stationRequest('/stations/control', stationToken);
-  }
-
-  updateControlCommand(stationToken: string, command: StationControlCommandContract): Promise<StationControlContract> {
-    return this.stationRequest('/stations/control/command', stationToken, { method: 'PATCH', body: JSON.stringify(command) });
-  }
-
-  updateControlStatus(stationToken: string, status: StationControlStatusContract): Promise<StationControlContract> {
-    return this.stationRequest('/stations/control/status', stationToken, { method: 'PATCH', body: JSON.stringify(status) });
-  }
-
-  profile(stationToken: string): Promise<StationProfileContract> {
-    return this.stationRequest('/stations/profile', stationToken);
-  }
-
-  updateProfile(stationToken: string, profile: StationProfileUpdate): Promise<StationProfileContract> {
-    return this.stationRequest('/stations/profile', stationToken, { method: 'PATCH', body: JSON.stringify(profile) });
-  }
-
-  listMedia(stationToken: string): Promise<MediaAssetContract[]> {
-    return this.stationRequest('/stations/media', stationToken);
-  }
-
-  createMedia(stationToken: string, media: SyntheticMediaCreateContract): Promise<MediaAssetContract> {
-    return this.stationRequest('/stations/media', stationToken, { method: 'POST', body: JSON.stringify(media) });
-  }
-
-  prepareBlobUpload(stationToken: string, mediaId: string): Promise<BlobUploadTicketContract & { alreadyUploaded?: boolean }> {
-    return this.stationRequest(`/stations/media/${encodeURIComponent(mediaId)}/blob-upload`, stationToken, { method: 'POST' });
-  }
-
-  mediaDownload(stationToken: string, mediaId: string): Promise<MediaDownloadTicketContract> {
-    return this.stationRequest(`/stations/media/${encodeURIComponent(mediaId)}/download`, stationToken);
-  }
-
-  createMediaShare(stationToken: string, mediaId: string): Promise<MediaShareContract> {
-    return this.stationRequest(`/stations/media/${encodeURIComponent(mediaId)}/share`, stationToken, { method: 'POST' });
-  }
-
-  revokeMediaShare(stationToken: string, shareId: string): Promise<{ id: string; revoked: boolean }> {
-    return this.stationRequest(`/stations/shares/${encodeURIComponent(shareId)}/revoke`, stationToken, { method: 'POST' });
-  }
-
-  initializeUpload(stationToken: string, mediaId: string): Promise<UploadSessionContract> {
-    return this.stationRequest(`/stations/media/${encodeURIComponent(mediaId)}/upload`, stationToken, { method: 'POST' });
-  }
-
-  updateUpload(stationToken: string, mediaId: string, uploadedBytes: number): Promise<UploadSessionContract> {
-    return this.stationRequest(`/stations/media/${encodeURIComponent(mediaId)}/upload`, stationToken, { method: 'PATCH', body: JSON.stringify({ uploadedBytes }) });
-  }
-
-  finalizeUpload(stationToken: string, mediaId: string): Promise<FinalizeUploadResponseContract> {
-    return this.stationRequest(`/stations/media/${encodeURIComponent(mediaId)}/finalize`, stationToken, { method: 'POST' });
-  }
+  listMedia(token: string) { return this.stationRequest<MediaAssetContract[]>('/stations/media', token); }
+  createMedia(token: string, media: SyntheticMediaCreateContract) { return this.stationRequest<MediaAssetContract>('/stations/media', token, { method: 'POST', body: JSON.stringify(media) }); }
+  prepareBlobUpload(token: string, id: string) { return this.stationRequest<BlobUploadTicketContract & { alreadyUploaded?: boolean }>(`/stations/media/${encodeURIComponent(id)}/blob-upload`, token, { method: 'POST' }); }
+  mediaDownload(token: string, id: string) { return this.stationRequest<MediaDownloadTicketContract>(`/stations/media/${encodeURIComponent(id)}/download`, token); }
+  createMediaShare(token: string, id: string) { return this.stationRequest<MediaShareContract>(`/stations/media/${encodeURIComponent(id)}/share`, token, { method: 'POST' }); }
+  revokeMediaShare(token: string, id: string) { return this.stationRequest<{ id: string; revoked: boolean }>(`/stations/shares/${encodeURIComponent(id)}/revoke`, token, { method: 'POST' }); }
+  initializeUpload(token: string, id: string) { return this.stationRequest<UploadSessionContract>(`/stations/media/${encodeURIComponent(id)}/upload`, token, { method: 'POST' }); }
+  updateUpload(token: string, id: string, uploadedBytes: number) { return this.stationRequest<UploadSessionContract>(`/stations/media/${encodeURIComponent(id)}/upload`, token, { method: 'PATCH', body: JSON.stringify({ uploadedBytes }) }); }
+  finalizeUpload(token: string, id: string) { return this.stationRequest<FinalizeUploadResponseContract>(`/stations/media/${encodeURIComponent(id)}/finalize`, token, { method: 'POST' }); }
 }
