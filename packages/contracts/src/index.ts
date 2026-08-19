@@ -164,6 +164,7 @@ export interface SyntheticMediaCreateContract {
   contentHash: string;
   byteSize: number;
   mimeType: string;
+  displayName?: string;
   capturedAt?: string | Date;
 }
 
@@ -172,12 +173,15 @@ export interface MediaAssetContract {
   organizationId: string;
   eventId: string;
   localId: string;
+  displayName?: string | null;
   contentHash: string;
   byteSize: number;
   mimeType: string;
   syncState: MediaSyncState;
   capturedAt: string | Date | null;
   acknowledgedAt: string | Date | null;
+  trashedAt?: string | Date | null;
+  trashExpiresAt?: string | Date | null;
   /** Short-lived signed cloud URL when the media bytes are durably stored. */
   downloadUrl?: string | null;
   /** Guest-facing URL intended to be encoded in the SHARING QR code. */
