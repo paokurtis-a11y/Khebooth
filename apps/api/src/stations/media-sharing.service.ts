@@ -12,7 +12,6 @@ import { PrismaService } from '../prisma/prisma.service';
 import type { AuthenticatedStation } from './station-auth.types';
 
 const DOWNLOAD_TICKET_TTL_MS = 10 * 60 * 1000;
-const DEFAULT_BLOB_STORE_ID = 'store_UBIkUPi0TciEoO1f';
 const DEFAULT_PUBLIC_SHARE_BASE_URL = 'https://khebooth-rdvo.vercel.app';
 
 interface ShareRow {
@@ -110,9 +109,8 @@ export class MediaSharingService {
     if (!share) throw new NotFoundException('Media share not found');
 
     const pathname = this.pathnameFor(share);
-    const storeId = this.blobStoreId();
     try {
-      const blob = await head(pathname, { storeId });
+      const blob = await head(pathname);
       if (blob.size !== share.byteSize || blob.contentType !== share.mimeType) {
         throw new BadRequestException('Stored media verification failed');
       }
@@ -121,7 +119,6 @@ export class MediaSharingService {
         pathname,
         operations: ['get'],
         validUntil: expiresAtMs,
-        storeId,
       });
       const { presignedUrl } = await presignUrl(signedToken, {
         access: 'private',
@@ -142,6 +139,7 @@ export class MediaSharingService {
     } catch (error) {
       if (error instanceof BadRequestException) throw error;
       const detail = error instanceof Error ? error.message : 'Blob access failed';
+      console.error('[blob][guest-share] access failed:', detail);
       throw new ServiceUnavailableException(`Media storage unavailable: ${detail}`);
     }
   }
@@ -154,10 +152,6 @@ export class MediaSharingService {
 
   private hashToken(token: string): string {
     return createHash('sha256').update(token).digest('hex');
-  }
-
-  private blobStoreId(): string {
-    return process.env.BLOB_STORE_ID?.trim() || DEFAULT_BLOB_STORE_ID;
   }
 
   private pathnameFor(media: { organizationId: string; eventId: string; mediaAssetId: string; mimeType: string }): string {
