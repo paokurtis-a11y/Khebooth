@@ -1,3 +1,32 @@
+ALTER TABLE "MediaAsset"
+  ADD COLUMN "displayName" TEXT,
+  ADD COLUMN "trashedAt" TIMESTAMP(3),
+  ADD COLUMN "trashExpiresAt" TIMESTAMP(3);
+
+WITH ranked AS (
+  SELECT
+    m.id,
+    e.name AS event_name,
+    CASE WHEN m."mimeType" LIKE 'image/%' THEN 'PHOTO' ELSE 'VIDEO' END AS media_kind,
+    ROW_NUMBER() OVER (PARTITION BY m."eventId" ORDER BY m."createdAt", m.id) AS seq
+  FROM "MediaAsset" m
+  INNER JOIN "Event" e ON e.id = m."eventId"
+)
+UPDATE "MediaAsset" m
+SET "displayName" = CONCAT(
+  'KHE ',
+  NULLIF(TRIM(REGEXP_REPLACE(r.event_name, '[^[:alnum:]À-ÿ _-]+', '', 'g')), ''),
+  CASE WHEN NULLIF(TRIM(REGEXP_REPLACE(r.event_name, '[^[:alnum:]À-ÿ _-]+', '', 'g')), '') IS NULL THEN '' ELSE ' ' END,
+  r.media_kind,
+  ' ',
+  LPAD(r.seq::text, 3, '0')
+)
+FROM ranked r
+WHERE r.id = m.id AND m."displayName" IS NULL;
+
+CREATE INDEX "MediaAsset_eventId_trashedAt_idx" ON "MediaAsset"("eventId", "trashedAt");
+CREATE INDEX "MediaAsset_trashExpiresAt_idx" ON "MediaAsset"("trashExpiresAt") WHERE "trashedAt" IS NOT NULL;
+
 CREATE TABLE "SharingBusinessSettings" (
   "id" UUID NOT NULL DEFAULT gen_random_uuid(),
   "organizationId" UUID NOT NULL,
@@ -75,3 +104,46 @@ ALTER TABLE "SocialDeliverySession"
 ALTER TABLE "SocialDeliverySession"
   ADD CONSTRAINT "SocialDeliverySession_mediaAssetId_fkey"
   FOREIGN KEY ("mediaAssetId") REFERENCES "MediaAsset"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+CREATE TABLE "StationNotificationRead" (
+  "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+  "notificationId" UUID NOT NULL,
+  "deviceId" UUID NOT NULL,
+  "readAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "StationNotificationRead_pkey" PRIMARY KEY ("id")
+);
+
+CREATE UNIQUE INDEX "StationNotificationRead_notificationId_deviceId_key" ON "StationNotificationRead"("notificationId", "deviceId");
+CREATE INDEX "StationNotificationRead_deviceId_readAt_idx" ON "StationNotificationRead"("deviceId", "readAt");
+
+ALTER TABLE "StationNotificationRead"
+  ADD CONSTRAINT "StationNotificationRead_notificationId_fkey"
+  FOREIGN KEY ("notificationId") REFERENCES "AppNotification"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "StationNotificationRead"
+  ADD CONSTRAINT "StationNotificationRead_deviceId_fkey"
+  FOREIGN KEY ("deviceId") REFERENCES "Device"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+CREATE TABLE "MobileCommunicationSettings" (
+  "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+  "organizationId" UUID NOT NULL,
+  "updateReminderHours" INTEGER NOT NULL DEFAULT 48,
+  "reportCadenceHours" INTEGER NOT NULL DEFAULT 24,
+  "updateNotificationsEnabled" BOOLEAN NOT NULL DEFAULT TRUE,
+  "automatedReportsEnabled" BOOLEAN NOT NULL DEFAULT TRUE,
+  "updateTitle" TEXT NOT NULL DEFAULT 'KHE Booth évolue ✨',
+  "updateBody" TEXT NOT NULL DEFAULT 'Une nouvelle version plus attractive et plus performante est disponible. Téléchargez-la pour profiter des nouvelles fonctionnalités, tout en continuant à utiliser votre version actuelle si vous le souhaitez.',
+  "lastUpdateReminderAt" TIMESTAMP(3),
+  "lastReportAt" TIMESTAMP(3),
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "MobileCommunicationSettings_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "MobileCommunicationSettings_updateReminderHours_check" CHECK ("updateReminderHours" BETWEEN 24 AND 336),
+  CONSTRAINT "MobileCommunicationSettings_reportCadenceHours_check" CHECK ("reportCadenceHours" BETWEEN 24 AND 720)
+);
+
+CREATE UNIQUE INDEX "MobileCommunicationSettings_organizationId_key" ON "MobileCommunicationSettings"("organizationId");
+
+ALTER TABLE "MobileCommunicationSettings"
+  ADD CONSTRAINT "MobileCommunicationSettings_organizationId_fkey"
+  FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
