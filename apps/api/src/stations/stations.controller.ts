@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
 import { CommerceService } from '../commerce/commerce.service';
 import { EntitlementsService } from '../subscriptions/entitlements.service';
 import type { AuthenticatedStation } from './station-auth.types';
@@ -15,6 +15,7 @@ import { DesignStorageService } from './design-storage.service';
 import { MediaSharingService } from './media-sharing.service';
 import { MediaStorageService } from './media-storage.service';
 import { ProfileStorageService } from './profile-storage.service';
+import { SharingBusinessService } from './sharing-business.service';
 import { StationAuthGuard } from './station-auth.guard';
 import { StationConnectionService } from './station-connection.service';
 import { StationProfileService } from './station-profile.service';
@@ -27,6 +28,7 @@ export class StationsController {
     private readonly stations: StationsService,
     private readonly mediaStorage: MediaStorageService,
     private readonly mediaSharing: MediaSharingService,
+    private readonly sharingBusiness: SharingBusinessService,
     private readonly designStorage: DesignStorageService,
     private readonly profileStorage: ProfileStorageService,
     private readonly stationRenewal: StationRenewalService,
@@ -130,6 +132,18 @@ export class StationsController {
     await this.entitlements.requireStation(station, 'SHARING');
     return this.stationConnection.decorate(station, await this.stations.updateControlStatus(station, dto));
   }
+
+  @UseGuards(StationAuthGuard)
+  @Get('sharing-business-settings') async sharingBusinessSettings(@CurrentStation() station: AuthenticatedStation) {
+    await this.entitlements.requireStation(station, 'SHARING_ADVANCED');
+    return this.sharingBusiness.settings(station);
+  }
+  @UseGuards(StationAuthGuard)
+  @Patch('sharing-business-settings') async updateSharingBusinessSettings(@CurrentStation() station: AuthenticatedStation, @Body() body: Record<string, unknown>) {
+    await this.entitlements.requireStation(station, 'SHARING_ADVANCED');
+    return this.sharingBusiness.updateSettings(station, body);
+  }
+
   @UseGuards(StationAuthGuard)
   @Get('media') async listMedia(@CurrentStation() station: AuthenticatedStation) { await this.entitlements.requireStation(station, 'CLOUD_SYNC'); return this.stations.listMedia(station); }
   @UseGuards(StationAuthGuard)
@@ -140,6 +154,16 @@ export class StationsController {
   @Get('media/:id/download') async mediaDownload(@CurrentStation() station: AuthenticatedStation, @Param('id', new ParseUUIDPipe()) id: string) { await this.entitlements.requireStation(station, 'CLOUD_SYNC'); return this.mediaStorage.downloadTicket(station, id); }
   @UseGuards(StationAuthGuard)
   @Post('media/:id/share') async createMediaShare(@CurrentStation() station: AuthenticatedStation, @Param('id', new ParseUUIDPipe()) id: string) { await this.entitlements.requireStation(station, 'GUEST_QR'); return this.mediaSharing.createShare(station, id); }
+  @UseGuards(StationAuthGuard)
+  @Post('media/:id/social-share') async createSocialShare(@CurrentStation() station: AuthenticatedStation, @Param('id', new ParseUUIDPipe()) id: string, @Body() body: Record<string, unknown>) {
+    await this.entitlements.requireStation(station, 'SOCIAL_AUTOMATION');
+    return this.sharingBusiness.createSocialShare(station, id, body.provider);
+  }
+  @UseGuards(StationAuthGuard)
+  @Delete('media/:id') async deleteMedia(@CurrentStation() station: AuthenticatedStation, @Param('id', new ParseUUIDPipe()) id: string) {
+    await this.entitlements.requireStation(station, 'SHARING_ADVANCED');
+    return this.sharingBusiness.deleteMedia(station, id);
+  }
   @UseGuards(StationAuthGuard)
   @Post('shares/:id/revoke') async revokeMediaShare(@CurrentStation() station: AuthenticatedStation, @Param('id', new ParseUUIDPipe()) id: string) { await this.entitlements.requireStation(station, 'GUEST_QR'); return this.mediaSharing.revokeShare(station, id); }
   @UseGuards(StationAuthGuard)
