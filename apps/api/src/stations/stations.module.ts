@@ -5,8 +5,10 @@ import { EventsModule } from '../events/events.module';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { ClientEventWorkspaceService } from './client-event-workspace.service';
 import { DesignStorageService } from './design-storage.service';
+import { MediaCatalogService } from './media-catalog.service';
 import { MediaSharingService } from './media-sharing.service';
 import { MediaStorageService } from './media-storage.service';
+import { MediaTrashService } from './media-trash.service';
 import { ProfileStorageService } from './profile-storage.service';
 import { PublicMediaController } from './public-media.controller';
 import { PublicSocialController } from './public-social.controller';
@@ -21,6 +23,6 @@ import { StationsService } from './stations.service';
 @Module({
   imports: [AuthModule, EventsModule, CommerceModule, SubscriptionsModule],
   controllers: [StationsController, PublicMediaController, PublicSocialController],
-  providers: [StationsService, StationRenewalService, StationProfileService, ClientEventWorkspaceService, DesignStorageService, ProfileStorageService, MediaStorageService, MediaSharingService, SharingBusinessService, StationConnectionService, StationAuthGuard],
+  providers: [StationsService, StationRenewalService, StationProfileService, ClientEventWorkspaceService, DesignStorageService, ProfileStorageService, MediaStorageService, MediaCatalogService, MediaSharingService, MediaTrashService, SharingBusinessService, StationConnectionService, StationAuthGuard],
 })
 export class StationsModule {}
