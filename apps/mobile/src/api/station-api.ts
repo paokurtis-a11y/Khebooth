@@ -24,6 +24,33 @@ export interface MediaShareContract {
   createdAt: string | Date;
 }
 
+export type SocialProvider = 'WHATSAPP' | 'TIKTOK' | 'FACEBOOK' | 'INSTAGRAM' | 'X' | 'TELEGRAM' | 'YOUTUBE';
+export type SharingGalleryLayout = 'MASONRY' | 'GRID' | 'COMPACT';
+export type SharingMediaFit = 'COVER' | 'CONTAIN';
+
+export interface SharingBusinessSettingsContract {
+  socialLinks: Partial<Record<SocialProvider, string>>;
+  galleryLayout: SharingGalleryLayout;
+  portraitColumns: number;
+  landscapeColumns: number;
+  videoAutoplay: boolean;
+  mediaFit: SharingMediaFit;
+  updatedAt: string | Date;
+}
+
+export interface SocialShareContract {
+  id: string;
+  mediaId: string;
+  provider: SocialProvider;
+  shareUrl: string;
+  createdAt: string | Date;
+  capability: {
+    messageDelivery: boolean;
+    directPublishing: boolean;
+    followVerification: string;
+  };
+}
+
 export interface StationProfileContract {
   organizationId: string;
   firstName: string;
@@ -165,6 +192,10 @@ export interface StationExperienceApi extends StationApi {
   prepareDesignBackgroundUpload(stationToken: string, eventId: string, contentType: string, byteSize: number): Promise<DesignBackgroundUploadTicket>;
   designBackgroundDownload(stationToken: string, pathname: string): Promise<DesignBackgroundDownloadTicket>;
   switchClientEvent(stationToken: string, eventId: string): Promise<SwitchedStationResponse>;
+  sharingBusinessSettings(stationToken: string): Promise<SharingBusinessSettingsContract>;
+  updateSharingBusinessSettings(stationToken: string, settings: Partial<SharingBusinessSettingsContract>): Promise<SharingBusinessSettingsContract>;
+  createSocialShare(stationToken: string, mediaId: string, provider: SocialProvider): Promise<SocialShareContract>;
+  deleteSharingMedia(stationToken: string, mediaId: string): Promise<{ id: string; deleted: boolean }>;
 }
 
 class StationApiHttpError extends Error {
@@ -279,6 +310,10 @@ export class HttpStationApi implements StationExperienceApi {
     });
     return response;
   }
+  sharingBusinessSettings(token: string) { return this.stationRequest<SharingBusinessSettingsContract>('/stations/sharing-business-settings', token); }
+  updateSharingBusinessSettings(token: string, settings: Partial<SharingBusinessSettingsContract>) { return this.stationRequest<SharingBusinessSettingsContract>('/stations/sharing-business-settings', token, { method: 'PATCH', body: JSON.stringify(settings) }); }
+  createSocialShare(token: string, id: string, provider: SocialProvider) { return this.stationRequest<SocialShareContract>(`/stations/media/${encodeURIComponent(id)}/social-share`, token, { method: 'POST', body: JSON.stringify({ provider }) }); }
+  deleteSharingMedia(token: string, id: string) { return this.stationRequest<{ id: string; deleted: boolean }>(`/stations/media/${encodeURIComponent(id)}`, token, { method: 'DELETE' }); }
   listMedia(token: string) { return this.stationRequest<MediaAssetContract[]>('/stations/media', token); }
   createMedia(token: string, media: SyntheticMediaCreateContract) { return this.stationRequest<MediaAssetContract>('/stations/media', token, { method: 'POST', body: JSON.stringify(media) }); }
   prepareBlobUpload(token: string, id: string) { return this.stationRequest<BlobUploadTicketContract & { alreadyUploaded?: boolean }>(`/stations/media/${encodeURIComponent(id)}/blob-upload`, token, { method: 'POST' }); }
