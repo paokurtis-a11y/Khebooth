@@ -14,6 +14,8 @@ type ClientContextRow={clientId:string|null;subscriptionPlan:string|null;subscri
 type WorkspaceRow={clientId:string;organizationId:string;selectedEventId:string|null;designConfig:unknown;designReadyAt:Date|null;updatedAt:Date};
 type EventRow={id:string;name:string;description:string|null;startsAt:Date;endsAt:Date|null;status:string;clientId:string|null;createdAt:Date;updatedAt:Date};
 
+type AccessSnapshot={entitlements:Record<string,boolean>};
+
 @Injectable()
 export class ClientEventWorkspaceService{
   constructor(private readonly prisma:PrismaService,private readonly jwt:JwtService,private readonly events:EventsService,private readonly entitlements:EntitlementsService){}
@@ -29,6 +31,13 @@ export class ClientEventWorkspaceService{
   }
 
   private assertSharing(station:AuthenticatedStation){if(station.mode!==StationMode.SHARING)throw new ForbiddenException('La création d’événement client est disponible depuis la régie SHARING.');}
+
+  private enforceBranding(value:unknown,access:AccessSnapshot):Record<string,unknown>{
+    const design=value&&typeof value==='object'&&!Array.isArray(value)?{...(value as Record<string,unknown>)}:{};
+    if(!access.entitlements.REMOVE_KHE_BRANDING)design.showKheBranding=true;
+    else if(typeof design.showKheBranding!=='boolean')design.showKheBranding=true;
+    return design;
+  }
 
   private async ensureWorkspace(station:AuthenticatedStation,clientId:string){
     await this.prisma.$executeRaw`
@@ -63,7 +72,7 @@ export class ClientEventWorkspaceService{
       entitlements:access.entitlements,
       currentEventId:station.eventId,
       selectedEvent,
-      designConfig:state?.designConfig??{},
+      designConfig:this.enforceBranding(state?.designConfig??{},access),
       designReadyAt:state?.designReadyAt??null,
       shouldSwitch:Boolean(selectedEvent&&state?.designReadyAt&&selectedEvent.id!==station.eventId),
       events,
@@ -85,8 +94,8 @@ export class ClientEventWorkspaceService{
     const event=await this.prisma.event.create({data:{organizationId:station.organizationId,clientId,name,description,startsAt,endsAt,status:initialStatus}});
     await this.prisma.$executeRaw`
       INSERT INTO "ClientWorkspaceState" ("clientId","organizationId","selectedEventId","designConfig","designReadyAt","updatedAt")
-      VALUES (${clientId}::uuid,${station.organizationId}::uuid,${event.id}::uuid,'{}'::jsonb,${readyAt},CURRENT_TIMESTAMP)
-      ON CONFLICT ("clientId") DO UPDATE SET "selectedEventId"=EXCLUDED."selectedEventId","designConfig"='{}'::jsonb,"designReadyAt"=EXCLUDED."designReadyAt","updatedAt"=CURRENT_TIMESTAMP
+      VALUES (${clientId}::uuid,${station.organizationId}::uuid,${event.id}::uuid,'{"showKheBranding":true}'::jsonb,${readyAt},CURRENT_TIMESTAMP)
+      ON CONFLICT ("clientId") DO UPDATE SET "selectedEventId"=EXCLUDED."selectedEventId","designConfig"='{"showKheBranding":true}'::jsonb,"designReadyAt"=EXCLUDED."designReadyAt","updatedAt"=CURRENT_TIMESTAMP
     `;
     await this.prisma.auditLog.create({data:{organizationId:station.organizationId,action:'CLIENT_EVENT_CREATED_FROM_SHARING',entityType:'Event',entityId:event.id,metadata:{clientId,stationSessionId:station.sessionId,plan:access.plan,nextStep:studioAllowed?'STUDIO':'READY'}}});
     return{event:{...event,status:initialStatus},plan:access.plan,entitlements:access.entitlements,nextStep:studioAllowed?'STUDIO':'READY'};
@@ -98,7 +107,8 @@ export class ClientEventWorkspaceService{
     if(!target)throw new NotFoundException('Événement client introuvable.');
     const access=await this.entitlements.forEvent(station.organizationId,station.eventId);
     if(!access.entitlements.STUDIO_BASIC)throw new ForbiddenException('Votre abonnement ne donne pas accès au Studio créatif.');
-    const designConfig=payload.designConfig&&typeof payload.designConfig==='object'&&!Array.isArray(payload.designConfig)?payload.designConfig:{};
+    const rawDesign=payload.designConfig&&typeof payload.designConfig==='object'&&!Array.isArray(payload.designConfig)?payload.designConfig:{};
+    const designConfig=this.enforceBranding(rawDesign,access);
     const serialized=JSON.stringify(designConfig);if(serialized.length>100_000)throw new BadRequestException('Le design est trop volumineux.');
     const now=new Date();const nextStatus=target.endsAt&&target.endsAt<=now?EventStatus.COMPLETED:EventStatus.READY;
     await this.prisma.$transaction([
@@ -109,7 +119,7 @@ export class ClientEventWorkspaceService{
         ON CONFLICT ("clientId") DO UPDATE SET "selectedEventId"=EXCLUDED."selectedEventId","designConfig"=EXCLUDED."designConfig","designReadyAt"=EXCLUDED."designReadyAt","updatedAt"=CURRENT_TIMESTAMP
       `,
     ]);
-    await this.prisma.auditLog.create({data:{organizationId:station.organizationId,action:'CLIENT_EVENT_DESIGN_READY',entityType:'Event',entityId:eventId,metadata:{clientId,stationSessionId:station.sessionId,mode:station.mode}}});
+    await this.prisma.auditLog.create({data:{organizationId:station.organizationId,action:'CLIENT_EVENT_DESIGN_READY',entityType:'Event',entityId:eventId,metadata:{clientId,stationSessionId:station.sessionId,mode:station.mode,showKheBranding:designConfig.showKheBranding!==false}}});
     return this.workspace(station);
   }
 
@@ -125,6 +135,8 @@ export class ClientEventWorkspaceService{
     if(!target)throw new NotFoundException('Événement client introuvable.');
     if(target.endsAt&&target.endsAt<=new Date())throw new BadRequestException('Cet événement est déjà terminé.');
 
+    const access=await this.entitlements.forEvent(station.organizationId,eventId);
+    const designConfig=this.enforceBranding(state.designConfig,access);
     const now=new Date();let next=await this.prisma.stationSession.findFirst({where:{organizationId:station.organizationId,eventId,deviceId:station.deviceId,mode:station.mode,revokedAt:null,expiresAt:{gt:now}},orderBy:{createdAt:'desc'}});
     if(!next){next=await this.prisma.stationSession.create({data:{organizationId:station.organizationId,eventId,deviceId:station.deviceId,activationId:null,mode:station.mode,expiresAt:new Date(Date.now()+STATION_SESSION_TTL_SECONDS*1000)}});}
     await this.prisma.stationSession.updateMany({where:{id:station.sessionId,expiresAt:{gt:new Date(Date.now()+SWITCH_OVERLAP_SECONDS*1000)}},data:{expiresAt:new Date(Date.now()+SWITCH_OVERLAP_SECONDS*1000)}});
@@ -132,6 +144,6 @@ export class ClientEventWorkspaceService{
     const stationToken=await this.jwt.signAsync(payload,{subject:next.id,expiresIn:STATION_SESSION_TTL_SECONDS});
     const manifest=await this.events.manifest(station.organizationId,eventId);
     await this.prisma.auditLog.create({data:{organizationId:station.organizationId,action:'STATION_EVENT_AUTO_SWITCHED',entityType:'StationSession',entityId:next.id,metadata:{fromEventId:station.eventId,toEventId:eventId,mode:station.mode,deviceId:station.deviceId}}});
-    return{stationToken,session:{id:next.id,organizationId:next.organizationId,eventId:next.eventId,deviceId:next.deviceId,mode:next.mode,expiresAt:next.expiresAt},manifest,designConfig:state.designConfig};
+    return{stationToken,session:{id:next.id,organizationId:next.organizationId,eventId:next.eventId,deviceId:next.deviceId,mode:next.mode,expiresAt:next.expiresAt},manifest,designConfig};
   }
 }
