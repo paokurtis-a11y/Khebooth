@@ -74,6 +74,7 @@ export class MediaStorageService {
         validUntil: expiresAtMs,
         maximumSizeInBytes: media.byteSize,
         allowedContentTypes: [media.mimeType],
+        addRandomSuffix: false,
         allowOverwrite: true,
       });
       return {
