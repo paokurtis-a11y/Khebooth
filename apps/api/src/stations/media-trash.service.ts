@@ -54,7 +54,7 @@ export class MediaTrashService{
     if(!rows[0])throw new NotFoundException('Média absent de la corbeille');return{...rows[0],restored:true};
   }
 
-  async purgeExpired(limit=200){
+  async purgeExpiredTrash(limit=200){
     const rows=await this.prisma.$queryRaw<PurgeRow[]>`
       SELECT "id","organizationId","eventId","mimeType" FROM "MediaAsset"
       WHERE "trashedAt" IS NOT NULL AND "trashExpiresAt"<=CURRENT_TIMESTAMP
