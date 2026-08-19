@@ -10,10 +10,11 @@ import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { MarketingService } from './marketing.service';
 import { PublicMarketingService } from './public-marketing.service';
+import { ReportExportService } from './report-export.service';
 
 @Controller('marketing')
 export class MarketingController {
-  constructor(private readonly marketing:MarketingService,private readonly publicMarketing:PublicMarketingService) {}
+  constructor(private readonly marketing:MarketingService,private readonly publicMarketing:PublicMarketingService,private readonly reports:ReportExportService) {}
   @Post('public/track') track(@Body() body:Record<string,unknown>){return this.marketing.trackPublic(body);}
   @Get('public/promotion') promotion(){return this.publicMarketing.promotion();}
 
@@ -47,4 +48,16 @@ export class MarketingController {
   @Roles(UserRole.OWNER,UserRole.ADMIN,UserRole.OPERATOR)
   @Get('report.pdf')
   async pdf(@CurrentUser() user:AuthenticatedUser,@Query('days') days='30',@Res() response:Response){const file=await this.marketing.reportPdf(user.organizationId,Number(days));response.setHeader('Content-Type','application/pdf');response.setHeader('Content-Disposition',`attachment; filename="khe-marketing-${new Date().toISOString().slice(0,10)}.pdf"`);response.send(file);}
+
+  @UseGuards(AuthGuard('jwt'),RolesGuard,PermissionsGuard)
+  @Permissions('reports.export')
+  @Roles(UserRole.OWNER,UserRole.ADMIN,UserRole.OPERATOR)
+  @Get('report/:format')
+  async exportReport(@CurrentUser() user:AuthenticatedUser,@Param('format') format:string,@Query('days') days='30',@Res() response:Response){
+    const file=await this.reports.generate(user.organizationId,format,Number(days));
+    response.setHeader('Content-Type',file.contentType);
+    response.setHeader('Content-Disposition',`attachment; filename="${file.filename}"`);
+    response.setHeader('Cache-Control','private, no-store');
+    response.send(file.buffer);
+  }
 }
