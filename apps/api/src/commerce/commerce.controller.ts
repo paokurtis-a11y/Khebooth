@@ -15,16 +15,20 @@ import { LocalizedSiteService } from './localized-site.service';
 import { PaymentAnalyticsService } from './payment-analytics.service';
 import { PromotionCheckoutService } from './promotion-checkout.service';
 import { SiteContentService } from './site-content.service';
+import { SubscriptionLifecycleService } from './subscription-lifecycle.service';
 
 @Controller('commerce')
 export class CommerceController {
-  constructor(private readonly commerce:CommerceService,private readonly checkoutService:PromotionCheckoutService,private readonly customerAccess:CustomerAccessService,private readonly localizedSite:LocalizedSiteService,private readonly paymentAnalytics:PaymentAnalyticsService,private readonly siteContent:SiteContentService,private readonly enterpriseOnboarding:EnterprisePaymentOnboardingService) {}
+  constructor(private readonly commerce:CommerceService,private readonly checkoutService:PromotionCheckoutService,private readonly customerAccess:CustomerAccessService,private readonly localizedSite:LocalizedSiteService,private readonly paymentAnalytics:PaymentAnalyticsService,private readonly siteContent:SiteContentService,private readonly enterpriseOnboarding:EnterprisePaymentOnboardingService,private readonly lifecycle:SubscriptionLifecycleService) {}
   @Get('public/site') publicSite(@Headers('x-vercel-ip-country') detectedCountry?:string,@Query('country') requestedCountry?:string,@Query('currency') currency?:string){return this.localizedSite.publicSite(requestedCountry||detectedCountry,currency);}
   @Get('public/reviews') publicReviews(){return this.customerAccess.publicReviews();}
   @Post('public/checkout') checkout(@Body() body:Record<string,unknown>,@Headers('x-vercel-ip-country') country?:string){return this.checkoutService.checkout(body,country);}
   @Post('public/account') account(@Body() body:Record<string,unknown>){return this.customerAccess.account(body);}
   @Post('public/billing-portal') billingPortal(@Body() body:Record<string,unknown>){return this.customerAccess.portal(body);}
   @Post('public/reviews') submitReview(@Body() body:Record<string,unknown>){return this.customerAccess.submitReview(body);}
+
+  @Get('system/subscriptions/lifecycle')
+  subscriptionLifecycle(@Headers('authorization') authorization?:string){const secret=authorization?.startsWith('Bearer ')?authorization.slice(7):undefined;return this.lifecycle.process(secret);}
 
   @Post('webhooks/stripe')
   async stripeWebhook(@Req() request:RawBodyRequest<Request>,@Headers('stripe-signature') signature?:string){
