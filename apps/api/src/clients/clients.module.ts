@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { CommerceModule } from '../commerce/commerce.module';
+import { MarketingModule } from '../marketing/marketing.module';
+import { ClientCrmController } from './client-crm.controller';
+import { ClientCrmService } from './client-crm.service';
 import { ClientEnterpriseAccessService } from './client-enterprise-access.service';
 import { ClientsController } from './clients.controller';
 import { ClientsService } from './clients.service';
@@ -16,9 +19,9 @@ import { EnterpriseReverificationService } from './enterprise-reverification.ser
 import { EnterpriseVerificationService } from './enterprise-verification.service';
 
 @Module({
-  imports:[AuthModule,CommerceModule],
-  controllers:[ClientsController,EnterpriseOnboardingController,EnterpriseAdminController],
-  providers:[ClientsService,ClientEnterpriseAccessService,EnterpriseOnboardingService,EnterpriseFormExportService,EnterpriseQuoteCheckoutService,EnterpriseContractService,EnterpriseContractExportService,EnterpriseCommercialService,EnterpriseVerificationService,EnterpriseReverificationService],
+  imports:[AuthModule,CommerceModule,MarketingModule],
+  controllers:[ClientsController,ClientCrmController,EnterpriseOnboardingController,EnterpriseAdminController],
+  providers:[ClientsService,ClientCrmService,ClientEnterpriseAccessService,EnterpriseOnboardingService,EnterpriseFormExportService,EnterpriseQuoteCheckoutService,EnterpriseContractService,EnterpriseContractExportService,EnterpriseCommercialService,EnterpriseVerificationService,EnterpriseReverificationService],
   exports:[EnterpriseOnboardingService,EnterpriseContractService,EnterpriseCommercialService,EnterpriseVerificationService,EnterpriseReverificationService],
 })
 export class ClientsModule {}
