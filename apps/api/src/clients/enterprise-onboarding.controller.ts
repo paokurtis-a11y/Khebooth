@@ -4,6 +4,7 @@ import { EnterpriseContractExportService } from './enterprise-contract-export.se
 import { EnterpriseContractService } from './enterprise-contract.service';
 import { EnterpriseFormExportService } from './enterprise-form-export.service';
 import { EnterpriseOnboardingService } from './enterprise-onboarding.service';
+import { EnterpriseVerificationService } from './enterprise-verification.service';
 
 @Controller('enterprise/onboarding')
 export class EnterpriseOnboardingController{
@@ -12,10 +13,14 @@ export class EnterpriseOnboardingController{
     private readonly exports:EnterpriseFormExportService,
     private readonly contracts:EnterpriseContractService,
     private readonly contractExports:EnterpriseContractExportService,
+    private readonly verification:EnterpriseVerificationService,
   ){}
 
   @Get('system/purge-expired-documents')
   purge(@Headers('authorization') authorization?:string){const secret=authorization?.startsWith('Bearer ')?authorization.slice(7):undefined;return this.enterprise.purgeExpiredDocuments(secret);}
+
+  @Get('system/review-sla')
+  reviewSla(@Headers('authorization') authorization?:string){const secret=authorization?.startsWith('Bearer ')?authorization.slice(7):undefined;return this.verification.processSla(secret);}
 
   @Get(':token/export/:format')
   async exportForm(@Param('token') token:string,@Param('format') format:string,@Res() response:Response){const file=await this.exports.generate(token,format);response.setHeader('Content-Type',file.contentType);response.setHeader('Content-Disposition',`attachment; filename="${file.filename.replace(/[^a-zA-Z0-9._-]/g,'-')}"`);response.setHeader('Cache-Control','private, no-store');response.send(file.buffer);}
@@ -23,6 +28,7 @@ export class EnterpriseOnboardingController{
   @Get(':token/contract/export/:format')
   async exportContract(@Param('token') token:string,@Param('format') format:string,@Res() response:Response){const file=await this.contractExports.publicExport(token,format);response.setHeader('Content-Type',file.contentType);response.setHeader('Content-Disposition',`attachment; filename="${file.filename.replace(/[^a-zA-Z0-9._-]/g,'-')}"`);response.setHeader('Cache-Control','private, no-store');response.send(file.buffer);}
 
+  @Get(':token/status') status(@Param('token') token:string){return this.verification.publicStatus(token);}
   @Get(':token/contract') contract(@Param('token') token:string){return this.contracts.publicContract(token);}
   @Patch(':token/language') language(@Param('token') token:string,@Body() body:Record<string,unknown>){return this.contracts.setPreferredLanguage(token,String(body.language??''));}
   @Post(':token/contract/sign') sign(@Param('token') token:string,@Body() body:Record<string,unknown>,@Req() request:Request){return this.contracts.signNative(token,body,{ipAddress:request.ip,userAgent:request.headers['user-agent']??null});}
