@@ -58,7 +58,7 @@ export function OperationsPresenceControl({role}:{role?:string}){
         <option value="AVAILABLE">Disponible — recevoir les tâches</option><option value="BUSY">Occupé</option><option value="AWAY">Pause</option><option value="UNAVAILABLE">Indisponible</option>
       </select>
       <div className="muted" style={{fontSize:10,marginTop:6}}>{LABELS[presence.availability]??presence.availability}{presence.acceptingAssignments?' · Routing intelligent actif':' · Aucune auto-assignation'}</div>
-      {isManager?<div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:7}}><Link href="/operations/routing" style={{fontSize:11,fontWeight:900,color:'#d2ad4f'}}>Routing & SLA →</Link><Link href="/operations/workforce" style={{fontSize:11,fontWeight:900,color:'#d2ad4f'}}>Workforce →</Link></div>:null}
+      {isManager?<div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:7}}><Link href="/operations/routing" style={{fontSize:11,fontWeight:900,color:'#d2ad4f'}}>Routing & SLA →</Link><Link href="/operations/workforce" style={{fontSize:11,fontWeight:900,color:'#d2ad4f'}}>Workforce →</Link><Link href="/operations/workforce/optimizer" style={{fontSize:11,fontWeight:900,color:'#d2ad4f'}}>Planning optimal →</Link></div>:null}
     </div>:null}
   </>;
 }
