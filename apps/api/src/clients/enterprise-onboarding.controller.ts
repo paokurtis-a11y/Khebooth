@@ -4,6 +4,7 @@ import { EnterpriseContractExportService } from './enterprise-contract-export.se
 import { EnterpriseContractService } from './enterprise-contract.service';
 import { EnterpriseFormExportService } from './enterprise-form-export.service';
 import { EnterpriseOnboardingService } from './enterprise-onboarding.service';
+import { EnterpriseReverificationService } from './enterprise-reverification.service';
 import { EnterpriseVerificationService } from './enterprise-verification.service';
 
 @Controller('enterprise/onboarding')
@@ -14,6 +15,7 @@ export class EnterpriseOnboardingController{
     private readonly contracts:EnterpriseContractService,
     private readonly contractExports:EnterpriseContractExportService,
     private readonly verification:EnterpriseVerificationService,
+    private readonly reverification:EnterpriseReverificationService,
   ){}
 
   @Get('system/purge-expired-documents')
@@ -21,6 +23,9 @@ export class EnterpriseOnboardingController{
 
   @Get('system/review-sla')
   reviewSla(@Headers('authorization') authorization?:string){const secret=authorization?.startsWith('Bearer ')?authorization.slice(7):undefined;return this.verification.processSla(secret);}
+
+  @Get('system/reverification')
+  annualReverification(@Headers('authorization') authorization?:string){const secret=authorization?.startsWith('Bearer ')?authorization.slice(7):undefined;return this.reverification.process(secret);}
 
   @Get(':token/export/:format')
   async exportForm(@Param('token') token:string,@Param('format') format:string,@Res() response:Response){const file=await this.exports.generate(token,format);response.setHeader('Content-Type',file.contentType);response.setHeader('Content-Disposition',`attachment; filename="${file.filename.replace(/[^a-zA-Z0-9._-]/g,'-')}"`);response.setHeader('Cache-Control','private, no-store');response.send(file.buffer);}
