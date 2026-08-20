@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import type { Request } from 'express';
 import { AuthService } from './auth.service';
@@ -13,7 +13,17 @@ interface AuthRequest extends Request { user: AuthenticatedUser; }
 export class AuthController {
   constructor(private readonly authService: AuthService, private readonly photos: ProfilePhotoService) {}
 
-  @Post('login') login(@Body() dto: LoginDto) { return this.authService.login(dto); }
+  @Post('login') login(@Body() dto: LoginDto,@Req() request:Request,@Headers('user-agent') userAgent?:string) {
+    return this.authService.login(dto,{ipAddress:request.ip,userAgent:userAgent??null});
+  }
+
+  @Post('password-reset/request') requestReset(@Body() body:Record<string,unknown>,@Req() request:Request,@Headers('user-agent') userAgent?:string){
+    return this.authService.requestPasswordReset(String(body.email??''),{ipAddress:request.ip,userAgent:userAgent??null});
+  }
+
+  @Post('password-reset/complete') completeReset(@Body() body:Record<string,unknown>,@Req() request:Request,@Headers('user-agent') userAgent?:string){
+    return this.authService.completePasswordReset(String(body.token??''),String(body.password??''),{ipAddress:request.ip,userAgent:userAgent??null});
+  }
 
   @UseGuards(AuthGuard('jwt'))
   @Get('me') me(@Req() request: AuthRequest) { return this.authService.profile(request.user.id); }
