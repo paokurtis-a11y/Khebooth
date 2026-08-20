@@ -1,3 +1,5 @@
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 CREATE OR REPLACE FUNCTION khe_sync_enterprise_contract_term()
 RETURNS trigger AS $$
 DECLARE
@@ -9,6 +11,7 @@ BEGIN
       NEW."termMonths" := q_term;
       NEW."contractSnapshot" := jsonb_set(COALESCE(NEW."contractSnapshot",'{}'::jsonb),'{termMonths}',to_jsonb(q_term),true);
       NEW."contractSnapshot" := jsonb_set(COALESCE(NEW."contractSnapshot",'{}'::jsonb),'{quote,contractTermMonths}',to_jsonb(q_term),true);
+      NEW."contentHash" := encode(digest(convert_to(NEW."contractSnapshot"::text,'UTF8'),'sha256'),'hex');
     END IF;
   END IF;
   RETURN NEW;
