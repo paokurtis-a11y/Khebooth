@@ -8,7 +8,7 @@
   "crons": [
     {
       "path": "/api/marketing/email/system/process",
-      "schedule": "10 * * * *"
+      "schedule": "10 8 * * *"
     },
     {
       "path": "/api/system/events/complete-ended",
@@ -20,11 +20,11 @@
     },
     {
       "path": "/api/enterprise/onboarding/system/review-sla",
-      "schedule": "5 */6 * * *"
+      "schedule": "5 4 * * *"
     },
     {
       "path": "/api/commerce/system/subscriptions/lifecycle",
-      "schedule": "25 * * * *"
+      "schedule": "25 4 * * *"
     },
     {
       "path": "/api/enterprise/onboarding/system/reverification",
