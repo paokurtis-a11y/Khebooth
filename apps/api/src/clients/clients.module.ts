@@ -3,6 +3,7 @@ import { AuthModule } from '../auth/auth.module';
 import { ClientEnterpriseAccessService } from './client-enterprise-access.service';
 import { ClientsController } from './clients.controller';
 import { ClientsService } from './clients.service';
+import { EnterpriseAdminController } from './enterprise-admin.controller';
 import { EnterpriseCommercialService } from './enterprise-commercial.service';
 import { EnterpriseContractExportService } from './enterprise-contract-export.service';
 import { EnterpriseContractService } from './enterprise-contract.service';
@@ -15,7 +16,7 @@ import { EnterpriseVerificationService } from './enterprise-verification.service
 
 @Module({
   imports:[AuthModule],
-  controllers:[ClientsController,EnterpriseOnboardingController],
+  controllers:[ClientsController,EnterpriseOnboardingController,EnterpriseAdminController],
   providers:[ClientsService,ClientEnterpriseAccessService,EnterpriseOnboardingService,EnterpriseFormExportService,EnterpriseQuoteCheckoutService,EnterpriseContractService,EnterpriseContractExportService,EnterpriseCommercialService,EnterpriseVerificationService,EnterpriseReverificationService],
   exports:[EnterpriseOnboardingService,EnterpriseContractService,EnterpriseCommercialService,EnterpriseVerificationService,EnterpriseReverificationService],
 })
