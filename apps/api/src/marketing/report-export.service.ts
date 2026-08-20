@@ -64,8 +64,7 @@ export class ReportExportService{
   }
 
   private async xlsx(report:Dashboard):Promise<Buffer>{
-    const module=await nativeImport('@excel.js/exceljs');
-    const ExcelJS=module.default;
+    const ExcelJS=await nativeImport('@excel.js/exceljs');
     const workbook=new ExcelJS.Workbook();
     workbook.creator='KHE Booth';workbook.company='Kurtis Hypnotic Events';workbook.created=new Date();
     const summary=workbook.addWorksheet('Synthèse',{views:[{state:'frozen',ySplit:1}]});
