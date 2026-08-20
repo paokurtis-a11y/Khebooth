@@ -2,14 +2,15 @@ import type { AspectRatio, StationMode } from '@khe/contracts';
 import { registerRootComponent } from 'expo';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import * as SecureStore from 'expo-secure-store';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Alert, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { ActivityIndicator, Alert, Animated, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { HttpStationApi } from './api/station-api';
 import { CameraCapture } from './capture/camera-capture';
 import { API_BASE_URL } from './config';
 import { LanguageAndRegion, UserGuide, getDeviceLocaleInfo, languageLabel, loadLanguagePreference, type AppLanguage } from './experience/user-guide-and-language';
 import { MediaGallery } from './gallery/media-gallery';
 import { APP_VERSION, AboutAndTerms, TermsGate, fetchReleaseInfo, type ReleaseInfo } from './legal/legal-and-info';
+import { StationNotificationCenter } from './notifications/station-notification-center';
 import { SQLiteLocalStore } from './offline/sqlite-store';
 import type { LocalMediaRecord, PersistedStationContext } from './offline/types';
 import { UserProfile } from './profile/user-profile';
@@ -24,6 +25,8 @@ import { useCaptureSync } from './sync/capture-sync-runner';
 
 const EVENT_KEEP_AWAKE_TAG = 'khe-booth-event';
 const CREATIVE_PLAN_KEY='khe.creative.plan.v1';
+
+type MenuSection='home'|'profile'|'gallery'|'settings'|'studio'|'guide'|'language'|'terms'|'version';
 
 function makeInstallationId(): string {
   return `khe-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
@@ -56,6 +59,7 @@ function App() {
   const vault = useMemo(() => new SecureStoreCredentialVault(), []);
   const api = useMemo(() => new HttpStationApi(API_BASE_URL), []);
   const bootstrap = useMemo(() => new StationBootstrapService(api, store, vault), [api, store, vault]);
+  const menuAnim=useRef(new Animated.Value(0)).current;
 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -68,6 +72,7 @@ function App() {
   const [cameraOpen, setCameraOpen] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [activeMenu,setActiveMenu]=useState<MenuSection>('home');
   const [aboutOpen, setAboutOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [languageOpen, setLanguageOpen] = useState(false);
@@ -128,6 +133,12 @@ function App() {
   }, [keepAwakeEnabled, station]);
 
   useEffect(()=>{
+    if(!menuOpen){menuAnim.setValue(0);return;}
+    menuAnim.setValue(0);
+    Animated.spring(menuAnim,{toValue:1,useNativeDriver:true,tension:72,friction:9}).start();
+  },[menuAnim,menuOpen]);
+
+  useEffect(()=>{
     if(!station||!stationToken||cameraOpen)return;
     let cancelled=false;let running=false;
     const synchronize=async()=>{
@@ -160,7 +171,7 @@ function App() {
       const response = await bootstrap.redeem({ code: code.trim().toUpperCase(), installationId, mode, platform: 'react-native', deviceName: mode === 'CAPTURE' ? 'KHE Booth Capture' : 'KHE Booth Sharing' });
       const cached = await bootstrap.getCachedContext();
       setStation(cached); setStationToken(response.stationToken); setEventName(response.manifest.event.name);
-      setKeepAwakeEnabled(true); setStandbyLocked(false); setCode(''); setSecurityOptionsHidden(false);
+      setKeepAwakeEnabled(true); setStandbyLocked(false); setCode(''); setSecurityOptionsHidden(false);setActiveMenu('home');
       await vault.saveStandbyLocked(false);
       setMessage(`Station activée pour « ${response.manifest.event.name} ». L’événement a été identifié automatiquement.`);
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Activation impossible.'); }
@@ -183,7 +194,7 @@ function App() {
   async function deactivateStation(): Promise<void> {
     setBusy(true);
     try {
-      setCameraOpen(false); setGalleryOpen(false); setMenuOpen(false); setAboutOpen(false); setGuideOpen(false); setLanguageOpen(false); setSettingsOpen(false); setStudioOpen(false); setProfileOpen(false);
+      setCameraOpen(false); setGalleryOpen(false); setMenuOpen(false); setAboutOpen(false); setGuideOpen(false); setLanguageOpen(false); setSettingsOpen(false); setStudioOpen(false); setProfileOpen(false);setActiveMenu('home');
       await vault.clearStationToken();
       await vault.saveStandbyLocked(false);
       await store.clearStation();
@@ -230,6 +241,7 @@ function App() {
     setMessage(`Capture ${format} conservée localement (${Math.max(1, Math.round(media.byteSize / 1024 / 1024))} Mo) et placée en attente de synchronisation.`);
   }
 
+  function openMenuSection(section:MenuSection,action:()=>void){setActiveMenu(section);setMenuOpen(false);action();}
   const returnToMenu=()=>setMenuOpen(true);
   if (loading) return <SafeAreaView style={styles.center}><ActivityIndicator /><Text style={styles.muted}>Initialisation du stockage offline…</Text></SafeAreaView>;
   if (station && standbyLocked) return <StandbyScreen verifyPassword={verifyLockPassword} onUnlocked={unlockStandby} />;
@@ -242,33 +254,40 @@ function App() {
   if (cameraOpen && station?.mode === 'CAPTURE' && stationToken) return <BackPage onBack={() => setCameraOpen(false)}><CameraCapture eventId={station.session.eventId} store={store} api={api} stationToken={stationToken} onClose={() => setCameraOpen(false)} onCaptured={handleCaptured} /></BackPage>;
   if (galleryOpen && station?.mode === 'CAPTURE') return <BackPage onBack={() => setGalleryOpen(false)}><MediaGallery eventId={station.session.eventId} eventName={eventName ?? station.session.eventId} store={store} onClose={() => setGalleryOpen(false)} /></BackPage>;
 
+  const menuItemStyle=(section:MenuSection)=>[styles.menuItem,activeMenu===section&&styles.menuItemActive];
+  const menuTextStyle=(section:MenuSection)=>[styles.menuItemText,activeMenu===section&&styles.menuItemTextActive];
+
   return (
     <SafeAreaView style={styles.page}>
       <ScrollView style={styles.pageScroll} contentContainerStyle={[styles.pageContent, landscape && styles.pageContentLandscape]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator>
         <View style={[styles.card, landscape && styles.cardLandscape]}>
           {station ? (
-            <View style={styles.menuAnchor}>
-              <Pressable style={styles.menuButton} onPress={() => setMenuOpen((current) => !current)}><Text style={styles.menuButtonText}>☰</Text><Text style={styles.menuButtonLabel}>Menu</Text>{release.updateAvailable ? <View style={styles.updateDot} /> : null}</Pressable>
-              {menuOpen ? (
-                <View style={styles.menuPanel}>
-                  <Text style={styles.menuBrand}>KHE BOOTH</Text><Text style={styles.menuSession}>{station.mode} • {eventName ?? 'Événement'}</Text>
-                  <Pressable style={styles.menuItem} onPress={() => { setMenuOpen(false); setProfileOpen(true); }}><Text style={styles.menuItemText}>👤 Profil</Text></Pressable>
-                  {station.mode === 'CAPTURE' ? <Pressable style={styles.menuItem} onPress={() => { setMenuOpen(false); setGalleryOpen(true); }}><Text style={styles.menuItemText}>🖨 Imprimer • Photos</Text></Pressable> : null}
-                  <Pressable style={styles.menuItem} onPress={() => { setMenuOpen(false); setSettingsOpen(true); }}><Text style={styles.menuItemText}>⚙ Paramètres</Text></Pressable>
-                  <Pressable style={styles.menuItem} onPress={() => { setMenuOpen(false); setStudioOpen(true); }}><Text style={styles.menuItemText}>✦ Design • Studio créatif</Text></Pressable>
-                  <Pressable style={styles.menuItem} onPress={() => { setMenuOpen(false); setGuideOpen(true); }}><Text style={styles.menuItemText}>Mode d’emploi</Text></Pressable>
-                  <Pressable style={styles.menuItem} onPress={() => { setMenuOpen(false); setLanguageOpen(true); }}><Text style={styles.menuItemText}>Langues • {languageLabel(appLanguage)}</Text></Pressable>
-                  <Pressable style={styles.menuItem} onPress={() => { setMenuOpen(false); setAboutOpen(true); }}><Text style={styles.menuItemText}>Conditions d’utilisation</Text></Pressable>
-                  <Pressable style={styles.menuItem} onPress={() => { setMenuOpen(false); setAboutOpen(true); }}><Text style={styles.menuItemText}>Version {APP_VERSION}{release.updateAvailable ? ` • Mise à jour ${release.latestVersion}` : ' • À jour'}</Text></Pressable>
-                  {station.mode === 'SHARING' && securityOptionsHidden ? <Pressable style={styles.menuItem} onPress={() => { setSecurityOptionsHidden(false); setMenuOpen(false); }}><Text style={styles.menuItemText}>Afficher veille & sécurité</Text></Pressable> : null}
-                  <Pressable style={styles.menuItemDanger} onPress={confirmDeactivate}><Text style={styles.menuItemDangerText}>Désactiver / fermer la session</Text></Pressable>
-                </View>
-              ) : null}
+            <View style={styles.headerTools}>
+              <View style={styles.menuAnchor}>
+                <Pressable style={[styles.menuButton,menuOpen&&styles.menuButtonOpen]} onPress={() => setMenuOpen((current) => !current)}><Text style={styles.menuButtonText}>☰</Text><Text style={styles.menuButtonLabel}>Menu</Text>{release.updateAvailable ? <View style={styles.updateDot} /> : null}</Pressable>
+                {menuOpen ? (
+                  <Animated.View style={[styles.menuPanel,{opacity:menuAnim,transform:[{translateY:menuAnim.interpolate({inputRange:[0,1],outputRange:[-10,0]})},{scale:menuAnim.interpolate({inputRange:[0,1],outputRange:[.96,1]})}]}]}>
+                    <Text style={styles.menuBrand}>KHE BOOTH</Text><Text style={styles.menuSession}>{station.mode} • {eventName ?? 'Événement'}</Text>
+                    <Pressable style={menuItemStyle('home')} onPress={()=>{setActiveMenu('home');setMenuOpen(false);}}><Text style={menuTextStyle('home')}>⌂ Accueil</Text></Pressable>
+                    <Pressable style={menuItemStyle('profile')} onPress={() => openMenuSection('profile',()=>setProfileOpen(true))}><Text style={menuTextStyle('profile')}>👤 Profil</Text></Pressable>
+                    {station.mode === 'CAPTURE' ? <Pressable style={menuItemStyle('gallery')} onPress={() => openMenuSection('gallery',()=>setGalleryOpen(true))}><Text style={menuTextStyle('gallery')}>🖨 Imprimer • Photos</Text></Pressable> : null}
+                    <Pressable style={menuItemStyle('settings')} onPress={() => openMenuSection('settings',()=>setSettingsOpen(true))}><Text style={menuTextStyle('settings')}>⚙ Paramètres</Text></Pressable>
+                    <Pressable style={menuItemStyle('studio')} onPress={() => openMenuSection('studio',()=>setStudioOpen(true))}><Text style={menuTextStyle('studio')}>✦ Design • Studio créatif</Text></Pressable>
+                    <Pressable style={menuItemStyle('guide')} onPress={() => openMenuSection('guide',()=>setGuideOpen(true))}><Text style={menuTextStyle('guide')}>Mode d’emploi</Text></Pressable>
+                    <Pressable style={menuItemStyle('language')} onPress={() => openMenuSection('language',()=>setLanguageOpen(true))}><Text style={menuTextStyle('language')}>Langues • {languageLabel(appLanguage)}</Text></Pressable>
+                    <Pressable style={menuItemStyle('terms')} onPress={() => openMenuSection('terms',()=>setAboutOpen(true))}><Text style={menuTextStyle('terms')}>Conditions d’utilisation</Text></Pressable>
+                    <Pressable style={menuItemStyle('version')} onPress={() => openMenuSection('version',()=>setAboutOpen(true))}><Text style={menuTextStyle('version')}>Version {APP_VERSION}{release.updateAvailable ? ` • Mise à jour ${release.latestVersion}` : ' • À jour'}</Text></Pressable>
+                    {station.mode === 'SHARING' && securityOptionsHidden ? <Pressable style={styles.menuItem} onPress={() => { setSecurityOptionsHidden(false); setMenuOpen(false); }}><Text style={styles.menuItemText}>Afficher veille & sécurité</Text></Pressable> : null}
+                    <Pressable style={styles.menuItemDanger} onPress={confirmDeactivate}><Text style={styles.menuItemDangerText}>Désactiver / fermer la session</Text></Pressable>
+                  </Animated.View>
+                ) : null}
+              </View>
+              {stationToken?<StationNotificationCenter api={api} stationToken={stationToken} release={release}/>:null}
             </View>
           ) : null}
 
           <Text style={styles.brand}>KHE BOOTH</Text><Text style={styles.title}>Station événement</Text><Text style={styles.muted}>Offline-first • Capture et Sharing séparés</Text>
-          {release.updateAvailable ? <View style={styles.updateBanner}><Text style={styles.updateBannerText}>Mise à jour KHE Booth {release.latestVersion} disponible. Ouvrez Menu → Version.</Text></View> : null}
+          {release.updateAvailable ? <View style={styles.updateBanner}><Text style={styles.updateBannerText}>Mise à jour KHE Booth {release.latestVersion} disponible. Ouvrez la cloche ou Menu → Version.</Text></View> : null}
 
           {station ? (
             <View style={styles.section}>
@@ -296,7 +315,7 @@ const styles = StyleSheet.create({
   awakeCard: { borderWidth: 1, borderColor: '#d5d5d5', borderRadius: 16, padding: 14, gap: 10 }, awakeCopy: { gap: 3 }, awakeTitle: { fontSize: 10, fontWeight: '900', letterSpacing: 1.5, opacity: 0.55 }, awakeStatus: { fontSize: 17, fontWeight: '900' }, awakeHelp: { fontSize: 11, lineHeight: 16, opacity: 0.62 }, awakeButton: { borderWidth: 1, borderColor: '#111', borderRadius: 11, paddingVertical: 11, alignItems: 'center' }, awakeButtonActive: { backgroundColor: '#111' }, awakeButtonTextActive: { color: '#fff', fontWeight: '900', fontSize: 11 },
   securityCard: { borderWidth: 1, borderColor: '#d5d5d5', borderRadius: 16, padding: 14, gap: 9 }, securityTitle: { fontSize: 16, fontWeight: '900' }, securityButton: { backgroundColor: '#ededed', borderRadius: 11, paddingVertical: 12, alignItems: 'center' }, securityButtonText: { fontWeight: '900', fontSize: 11 }, skipButton: { paddingVertical: 9, alignItems: 'center' }, skipButtonText: { fontSize: 11, fontWeight: '800', textDecorationLine: 'underline', opacity: 0.65 },
   captureActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, captureButton: { flexGrow: 1, minWidth: 160, borderWidth: 1, borderColor: '#111', borderRadius: 12, padding: 14, alignItems: 'center' }, captureButtonText: { color: '#111', fontWeight: '800' }, galleryButton: { flexGrow: 1, minWidth: 140, backgroundColor: '#111', borderRadius: 12, padding: 14, alignItems: 'center' }, galleryButtonText: { color: '#fff', fontWeight: '800' }, notice: { marginTop: 8, fontSize: 12, lineHeight: 18, opacity: 0.65 }, message: { marginTop: 14, fontSize: 13, lineHeight: 18 },
-  menuAnchor: { alignSelf: 'flex-start', zIndex: 20, marginBottom: 8 }, menuButton: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: '#111', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9 }, menuButtonText: { color: '#fff', fontSize: 18, fontWeight: '900' }, menuButtonLabel: { color: '#fff', fontSize: 12, fontWeight: '900' }, updateDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#ffd35c' }, menuPanel: { position: 'absolute', top: 48, left: 0, width: 300, backgroundColor: '#111', borderRadius: 16, padding: 12, gap: 5, elevation: 10 }, menuBrand: { color: '#fff', fontWeight: '900', letterSpacing: 2 }, menuSession: { color: '#aaa', fontSize: 11, marginBottom: 6 }, menuItem: { backgroundColor: '#222225', borderRadius: 10, padding: 12 }, menuItemText: { color: '#fff', fontSize: 12, fontWeight: '800', lineHeight: 17 }, menuItemDanger: { borderWidth: 1, borderColor: '#7d3d3d', borderRadius: 10, padding: 12, marginTop: 3 }, menuItemDangerText: { color: '#ffb6b6', fontSize: 12, fontWeight: '900' },
+  headerTools:{flexDirection:'row',alignItems:'flex-start',justifyContent:'space-between',gap:12,zIndex:40,marginBottom:8},menuAnchor: { alignSelf: 'flex-start', zIndex: 40 }, menuButton: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: '#111', borderRadius: 12, borderWidth:1,borderColor:'#111',paddingHorizontal: 12, paddingVertical: 9 },menuButtonOpen:{borderColor:'#d2ad4f',backgroundColor:'#211d14'}, menuButtonText: { color: '#fff', fontSize: 18, fontWeight: '900' }, menuButtonLabel: { color: '#fff', fontSize: 12, fontWeight: '900' }, updateDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#ffd35c' }, menuPanel: { position: 'absolute', top: 48, left: 0, width: 300, backgroundColor: '#111', borderRadius: 16, borderWidth:1,borderColor:'#4f4328',padding: 12, gap: 5, elevation: 12,shadowColor:'#000',shadowOpacity:.35,shadowRadius:14 }, menuBrand: { color: '#fff', fontWeight: '900', letterSpacing: 2 }, menuSession: { color: '#aaa', fontSize: 11, marginBottom: 6 }, menuItem: { backgroundColor: '#222225', borderRadius: 10,borderWidth:1,borderColor:'transparent', padding: 12 }, menuItemActive:{backgroundColor:'#2a2417',borderColor:'#d2ad4f'},menuItemText: { color: '#fff', fontSize: 12, fontWeight: '800', lineHeight: 17 },menuItemTextActive:{color:'#e1bd63'}, menuItemDanger: { borderWidth: 1, borderColor: '#7d3d3d', borderRadius: 10, padding: 12, marginTop: 3 }, menuItemDangerText: { color: '#ffb6b6', fontSize: 12, fontWeight: '900' },
   updateBanner: { backgroundColor: '#fff1bd', borderRadius: 12, padding: 10, marginTop: 7 }, updateBannerText: { color: '#4a3900', fontSize: 11, lineHeight: 16, fontWeight: '800' }, termsLink: { alignItems: 'center', padding: 10 }, termsLinkText: { fontSize: 11, fontWeight: '700', textDecorationLine: 'underline', opacity: 0.65 },
 });
 

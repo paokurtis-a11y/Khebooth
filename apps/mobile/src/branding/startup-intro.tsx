@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 
 interface StartupIntroProps { onDone: () => void; }
 
@@ -16,8 +16,10 @@ export function StartupIntro({onDone}:StartupIntroProps){
   const kiosk=useRef(new Animated.Value(0)).current;
   const logo=useRef(new Animated.Value(0)).current;
   const copy=useRef(new Animated.Value(0)).current;
+  const enter=useRef(new Animated.Value(0)).current;
+  const swipe=useRef(new Animated.Value(0)).current;
   const exit=useRef(new Animated.Value(1)).current;
-  const [skipVisible,setSkipVisible]=useState(false);
+  const [ready,setReady]=useState(false);
   const finished=useRef(false);
 
   const letters=useMemo(()=>[
@@ -27,13 +29,25 @@ export function StartupIntro({onDone}:StartupIntroProps){
   ],[e,h,k]);
 
   function finish(){
-    if(finished.current)return;
+    if(finished.current||!ready)return;
     finished.current=true;
-    Animated.timing(exit,{toValue:0,duration:360,easing:Easing.inOut(Easing.cubic),useNativeDriver:true}).start(onDone);
+    Animated.parallel([
+      Animated.timing(exit,{toValue:0,duration:420,easing:Easing.inOut(Easing.cubic),useNativeDriver:true}),
+      Animated.timing(swipe,{toValue:80,duration:420,easing:Easing.in(Easing.cubic),useNativeDriver:true}),
+    ]).start(onDone);
   }
 
+  const panResponder=useMemo(()=>PanResponder.create({
+    onMoveShouldSetPanResponder:(_,gesture)=>ready&&Math.abs(gesture.dx)>18&&Math.abs(gesture.dx)>Math.abs(gesture.dy),
+    onPanResponderMove:(_,gesture)=>{if(gesture.dx>0)swipe.setValue(Math.min(70,gesture.dx*.32));},
+    onPanResponderRelease:(_,gesture)=>{
+      if(gesture.dx>75&&Math.abs(gesture.dy)<90){finish();return;}
+      Animated.spring(swipe,{toValue:0,useNativeDriver:true,speed:18,bounciness:5}).start();
+    },
+    onPanResponderTerminate:()=>Animated.spring(swipe,{toValue:0,useNativeDriver:true}).start(),
+  }),[ready]);
+
   useEffect(()=>{
-    const skipTimer=setTimeout(()=>setSkipVisible(true),1050);
     const sequence=Animated.sequence([
       Animated.timing(k,{toValue:1,duration:280,easing:Easing.out(Easing.back(1.35)),useNativeDriver:true}),
       Animated.timing(h,{toValue:1,duration:280,easing:Easing.out(Easing.back(1.35)),useNativeDriver:true}),
@@ -47,13 +61,16 @@ export function StartupIntro({onDone}:StartupIntroProps){
         Animated.timing(kiosk,{toValue:1,duration:500,easing:Easing.out(Easing.back(1.15)),useNativeDriver:true}),
       ]),
       Animated.timing(copy,{toValue:1,duration:410,easing:Easing.out(Easing.cubic),useNativeDriver:true}),
-      Animated.delay(800),
     ]);
-    sequence.start(({finished:completed})=>{if(completed)finish();});
-    return()=>{clearTimeout(skipTimer);sequence.stop();};
+    sequence.start(({finished:completed})=>{
+      if(!completed)return;
+      setReady(true);
+      Animated.spring(enter,{toValue:1,useNativeDriver:true,speed:12,bounciness:8}).start();
+    });
+    return()=>sequence.stop();
   },[]);
 
-  return <Animated.View style={[styles.page,{opacity:exit}]}>
+  return <Animated.View {...panResponder.panHandlers} style={[styles.page,{opacity:exit,transform:[{translateX:swipe}]}]}>
     <View style={styles.skyGlow}/><View style={styles.goldGlow}/>
     <View style={styles.stage}>
       <View style={styles.letterRow}>
@@ -77,8 +94,14 @@ export function StartupIntro({onDone}:StartupIntroProps){
         <Text style={styles.slogan}>Votre événement, notre expertise</Text>
         <Text style={styles.description}>Capturez, créez et partagez vos souvenirs avec une régie photobooth pensée pour vos événements.</Text>
       </Animated.View>
+
+      {ready?<Animated.View style={[styles.enterArea,{opacity:enter,transform:[{translateY:enter.interpolate({inputRange:[0,1],outputRange:[20,0]})},{scale:enter.interpolate({inputRange:[0,1],outputRange:[.92,1]})}]}]}>
+        <Pressable accessibilityRole="button" style={styles.homeButton} onPress={finish}>
+          <Text style={styles.homeText}>ACCUEIL</Text><Text style={styles.homeArrow}>→</Text>
+        </Pressable>
+        <Text style={styles.swipeHint}>Touchez Accueil ou glissez vers la droite</Text>
+      </Animated.View>:null}
     </View>
-    {skipVisible?<Pressable accessibilityRole="button" style={styles.skip} onPress={finish}><Text style={styles.skipText}>PASSER</Text></Pressable>:null}
   </Animated.View>;
 }
 
@@ -90,5 +113,5 @@ const styles=StyleSheet.create({
   boothRow:{flexDirection:'row',gap:28,alignItems:'flex-end',justifyContent:'center',marginTop:7,flexWrap:'wrap'},booth360:{width:150,alignItems:'center',gap:6},ring:{width:118,height:68,borderRadius:59,borderWidth:5,borderColor:KHE_GOLD,alignItems:'center',justifyContent:'center',transform:[{rotateX:'58deg'}]},phone:{width:34,height:62,borderRadius:9,backgroundColor:'#15161a',borderWidth:2,borderColor:KHE_SKY,alignItems:'center',justifyContent:'center',transform:[{rotateX:'-58deg'}]},phoneText:{color:'#fff',fontSize:9,fontWeight:'900'},
   kiosk:{width:140,alignItems:'center'},kioskHead:{width:82,height:32,borderTopLeftRadius:23,borderTopRightRadius:23,backgroundColor:KHE_GOLD,alignItems:'center',justifyContent:'center'},lens:{width:12,height:12,borderRadius:6,backgroundColor:'#141519',borderWidth:2,borderColor:KHE_SKY},kioskBody:{width:90,height:72,borderRadius:14,backgroundColor:'#25272c',borderWidth:3,borderColor:KHE_GOLD,alignItems:'center',justifyContent:'center'},kioskScreen:{color:KHE_SKY,fontWeight:'900',letterSpacing:2},kioskStand:{width:21,height:31,backgroundColor:KHE_GOLD,borderBottomLeftRadius:5,borderBottomRightRadius:5},boothLabel:{color:'#d6d8dd',fontSize:8,fontWeight:'900',letterSpacing:1.1,textAlign:'center',marginTop:4},
   copy:{alignItems:'center',gap:6,marginTop:8,maxWidth:590},slogan:{color:KHE_GOLD,fontSize:17,fontWeight:'900',textAlign:'center'},description:{color:'#d8dce3',fontSize:11,lineHeight:17,textAlign:'center',maxWidth:520},
-  skip:{position:'absolute',right:22,bottom:24,borderWidth:1,borderColor:'rgba(255,255,255,.35)',borderRadius:18,paddingHorizontal:15,paddingVertical:9,zIndex:4},skipText:{color:'#fff',fontSize:9,fontWeight:'900',letterSpacing:1.2},
+  enterArea:{alignItems:'center',gap:7,marginTop:12},homeButton:{minWidth:190,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:12,backgroundColor:KHE_GOLD,borderRadius:999,paddingHorizontal:26,paddingVertical:14,shadowColor:KHE_GOLD,shadowOpacity:.38,shadowRadius:12,elevation:8},homeText:{color:'#111214',fontSize:12,fontWeight:'900',letterSpacing:2},homeArrow:{color:'#111214',fontSize:19,fontWeight:'900'},swipeHint:{color:'#aeb5bd',fontSize:9,fontWeight:'700',letterSpacing:.3},
 });

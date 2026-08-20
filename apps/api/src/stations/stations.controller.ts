@@ -20,6 +20,7 @@ import { ProfileStorageService } from './profile-storage.service';
 import { SharingBusinessService } from './sharing-business.service';
 import { StationAuthGuard } from './station-auth.guard';
 import { StationConnectionService } from './station-connection.service';
+import { StationNotificationsService } from './station-notifications.service';
 import { StationProfileService } from './station-profile.service';
 import { StationRenewalService } from './station-renewal.service';
 import { StationsService } from './stations.service';
@@ -37,6 +38,7 @@ export class StationsController {
     private readonly profileStorage: ProfileStorageService,
     private readonly stationRenewal: StationRenewalService,
     private readonly stationProfile: StationProfileService,
+    private readonly stationNotifications: StationNotificationsService,
     private readonly stationConnection: StationConnectionService,
     private readonly commerce: CommerceService,
     private readonly entitlements: EntitlementsService,
@@ -73,6 +75,9 @@ export class StationsController {
 
   @UseGuards(StationAuthGuard)
   @Patch('notification-preferences') updateNotificationPreferences(@CurrentStation() station:AuthenticatedStation,@Body() body:Record<string,unknown>){ return this.stationProfile.updateNotificationPreferences(station,body); }
+
+  @UseGuards(StationAuthGuard)
+  @Get('notifications') notifications(@CurrentStation() station:AuthenticatedStation){ return this.stationNotifications.list(station); }
 
   @UseGuards(StationAuthGuard)
   @Get('client-workspace') clientWorkspace(@CurrentStation() station:AuthenticatedStation){ return this.clientEvents.workspace(station); }

@@ -24,12 +24,14 @@ export interface ProfileRow {
 
 type NotificationPreferences={enabled:boolean;soundEnabled:boolean;sound:string;soundVolume:number;vibrationEnabled:boolean;vibrationMode:string;vibrationIntensity:string};
 const DEFAULT_NOTIFICATION_PREFERENCES:NotificationPreferences={enabled:true,soundEnabled:true,sound:'khe_chime',soundVolume:70,vibrationEnabled:true,vibrationMode:'double',vibrationIntensity:'medium'};
+const SUPPORTED_SOUNDS=['default','khe_chime','khe_gold','khe_pulse','khe_flash','khe_velvet','khe_victory','khe_night','silent'];
+const SUPPORTED_VIBRATIONS=['off','short','double','triple','heartbeat','long'];
 const EMPTY = { firstName:'',lastName:'',displayName:'',company:'',role:'',email:'',phone:'',address:'',birthDate:null,avatarPath:null,city:'',country:'',bio:'' };
 
 function normalizeNotificationPreferences(value:unknown):NotificationPreferences{
   const input=value&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:{};
-  const sound=['default','khe_chime','khe_gold','khe_pulse','silent'].includes(String(input.sound))?String(input.sound):DEFAULT_NOTIFICATION_PREFERENCES.sound;
-  const vibrationMode=['off','short','double','triple','long'].includes(String(input.vibrationMode))?String(input.vibrationMode):DEFAULT_NOTIFICATION_PREFERENCES.vibrationMode;
+  const sound=SUPPORTED_SOUNDS.includes(String(input.sound))?String(input.sound):DEFAULT_NOTIFICATION_PREFERENCES.sound;
+  const vibrationMode=SUPPORTED_VIBRATIONS.includes(String(input.vibrationMode))?String(input.vibrationMode):DEFAULT_NOTIFICATION_PREFERENCES.vibrationMode;
   const vibrationIntensity=['light','medium','strong'].includes(String(input.vibrationIntensity))?String(input.vibrationIntensity):DEFAULT_NOTIFICATION_PREFERENCES.vibrationIntensity;
   const rawVolume=Number(input.soundVolume??DEFAULT_NOTIFICATION_PREFERENCES.soundVolume);const soundVolume=Number.isFinite(rawVolume)?Math.max(0,Math.min(100,Math.round(rawVolume))):DEFAULT_NOTIFICATION_PREFERENCES.soundVolume;
   return{enabled:input.enabled!==false,soundEnabled:input.soundEnabled!==false&&sound!=='silent',sound,soundVolume,vibrationEnabled:input.vibrationEnabled!==false&&vibrationMode!=='off',vibrationMode,vibrationIntensity};
