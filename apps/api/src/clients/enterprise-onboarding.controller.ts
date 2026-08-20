@@ -1,17 +1,33 @@
-import { Body, Controller, Get, Headers, Param, Patch, Post, Res } from '@nestjs/common';
-import type { Response } from 'express';
+import { Body, Controller, Get, Headers, Param, Patch, Post, Req, Res } from '@nestjs/common';
+import type { Request, Response } from 'express';
+import { EnterpriseContractExportService } from './enterprise-contract-export.service';
+import { EnterpriseContractService } from './enterprise-contract.service';
 import { EnterpriseFormExportService } from './enterprise-form-export.service';
 import { EnterpriseOnboardingService } from './enterprise-onboarding.service';
 
 @Controller('enterprise/onboarding')
 export class EnterpriseOnboardingController{
-  constructor(private readonly enterprise:EnterpriseOnboardingService,private readonly exports:EnterpriseFormExportService){}
+  constructor(
+    private readonly enterprise:EnterpriseOnboardingService,
+    private readonly exports:EnterpriseFormExportService,
+    private readonly contracts:EnterpriseContractService,
+    private readonly contractExports:EnterpriseContractExportService,
+  ){}
 
   @Get('system/purge-expired-documents')
   purge(@Headers('authorization') authorization?:string){const secret=authorization?.startsWith('Bearer ')?authorization.slice(7):undefined;return this.enterprise.purgeExpiredDocuments(secret);}
 
   @Get(':token/export/:format')
   async exportForm(@Param('token') token:string,@Param('format') format:string,@Res() response:Response){const file=await this.exports.generate(token,format);response.setHeader('Content-Type',file.contentType);response.setHeader('Content-Disposition',`attachment; filename="${file.filename.replace(/[^a-zA-Z0-9._-]/g,'-')}"`);response.setHeader('Cache-Control','private, no-store');response.send(file.buffer);}
+
+  @Get(':token/contract/export/:format')
+  async exportContract(@Param('token') token:string,@Param('format') format:string,@Res() response:Response){const file=await this.contractExports.publicExport(token,format);response.setHeader('Content-Type',file.contentType);response.setHeader('Content-Disposition',`attachment; filename="${file.filename.replace(/[^a-zA-Z0-9._-]/g,'-')}"`);response.setHeader('Cache-Control','private, no-store');response.send(file.buffer);}
+
+  @Get(':token/contract') contract(@Param('token') token:string){return this.contracts.publicContract(token);}
+  @Patch(':token/language') language(@Param('token') token:string,@Body() body:Record<string,unknown>){return this.contracts.setPreferredLanguage(token,String(body.language??''));}
+  @Post(':token/contract/sign') sign(@Param('token') token:string,@Body() body:Record<string,unknown>,@Req() request:Request){return this.contracts.signNative(token,body,{ipAddress:request.ip,userAgent:request.headers['user-agent']??null});}
+  @Post(':token/contract/manual-upload') manualUpload(@Param('token') token:string,@Body() body:Record<string,unknown>){return this.contracts.prepareManualSignedUpload(token,body);}
+  @Post(':token/contract/manual-confirm') manualConfirm(@Param('token') token:string,@Body() body:Record<string,unknown>,@Req() request:Request){return this.contracts.confirmManualSignedUpload(token,body,{ipAddress:request.ip,userAgent:request.headers['user-agent']??null});}
 
   @Get(':token') form(@Param('token') token:string){return this.enterprise.publicForm(token);}
   @Patch(':token') save(@Param('token') token:string,@Body() body:Record<string,unknown>){return this.enterprise.savePublicForm(token,body);}
