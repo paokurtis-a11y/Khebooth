@@ -1,12 +1,13 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { EmailMarketingService } from '../marketing/email-marketing.service';
 import { EnterprisePaymentOnboardingService } from './enterprise-payment-onboarding.service';
 
 type ExpiringClient={id:string;organizationId:string;name:string;email:string|null;subscriptionPlan:string;subscriptionEndsAt:Date|null};
 
 @Injectable()
 export class SubscriptionLifecycleService{
-  constructor(private readonly prisma:PrismaService,private readonly enterpriseOnboarding:EnterprisePaymentOnboardingService){}
+  constructor(private readonly prisma:PrismaService,private readonly enterpriseOnboarding:EnterprisePaymentOnboardingService,private readonly emailMarketing:EmailMarketingService){}
 
   async process(secret:string|undefined){
     const expected=process.env.CRON_SECRET?.trim();if(!expected||secret!==expected)throw new UnauthorizedException('Invalid cron authorization');
@@ -47,6 +48,7 @@ export class SubscriptionLifecycleService{
         await tx.auditLog.create({data:{organizationId:client.organizationId,userId:null,action:'SUBSCRIPTION_EXPIRED_AUTO_DOWNGRADED_TO_DISCOVERY',entityType:'Client',entityId:client.id,metadata:{previousPlan,subscriptionEndsAt:client.subscriptionEndsAt,managedUsersDisabled:true,stationSessionsRevoked:true,freePlan:'DISCOVERY'}}});
       });
       if(client.email)await this.sendExpiryEmail(client.email,client.name,previousPlan).catch(()=>undefined);
+      await this.emailMarketing.startExpiredWinback(client.organizationId,client.id,previousPlan).catch(()=>undefined);
       downgraded++;
     }
     return{checked:clients.length,downgraded};
