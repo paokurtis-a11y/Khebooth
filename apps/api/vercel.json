@@ -7,6 +7,10 @@
   "ignoreCommand": "git diff --quiet \"${VERCEL_GIT_PREVIOUS_SHA:-HEAD^}\" \"${VERCEL_GIT_COMMIT_SHA:-HEAD}\" -- ':(top)apps/api' ':(top)packages/contracts' ':(top)pnpm-lock.yaml' ':(top)package.json' ':(top)pnpm-workspace.yaml'",
   "crons": [
     {
+      "path": "/api/marketing/email/system/process",
+      "schedule": "10 * * * *"
+    },
+    {
       "path": "/api/system/events/complete-ended",
       "schedule": "15 3 * * *"
     },
