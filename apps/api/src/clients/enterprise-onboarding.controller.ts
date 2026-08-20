@@ -36,7 +36,7 @@ export class EnterpriseOnboardingController{
   @Post(':token/contract/manual-confirm') manualConfirm(@Param('token') token:string,@Body() body:Record<string,unknown>,@Req() request:Request){return this.contracts.confirmManualSignedUpload(token,body,{ipAddress:request.ip,userAgent:request.headers['user-agent']??null});}
 
   @Get(':token') form(@Param('token') token:string){return this.enterprise.publicForm(token);}
-  @Patch(':token') save(@Param('token') token:string,@Body() body:Record<string,unknown>){return this.enterprise.savePublicForm(token,body);}
+  @Patch(':token') async save(@Param('token') token:string,@Body() body:Record<string,unknown>){const saved=await this.enterprise.savePublicForm(token,body);if(body.submit===true){const contract=await this.contracts.publicContract(token);return{...saved,contractReady:true,contract:{id:contract.contract.id,contractNumber:contract.contract.contractNumber,status:contract.contract.status,language:contract.contract.language,termMonths:contract.contract.termMonths}};}return{...saved,contractReady:false};}
   @Post(':token/documents/upload') upload(@Param('token') token:string,@Body() body:Record<string,unknown>){return this.enterprise.prepareDocumentUpload(token,body);}
   @Post(':token/documents/confirm') confirm(@Param('token') token:string,@Body() body:Record<string,unknown>){return this.enterprise.confirmDocument(token,body);}
 }
