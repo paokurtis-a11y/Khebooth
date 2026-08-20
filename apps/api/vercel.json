@@ -9,6 +9,10 @@
     {
       "path": "/api/system/events/complete-ended",
       "schedule": "15 3 * * *"
+    },
+    {
+      "path": "/api/stations/system/trash/purge",
+      "schedule": "35 3 * * *"
     }
   ],
   "git": {

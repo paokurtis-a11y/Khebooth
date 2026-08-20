@@ -8,12 +8,20 @@ import { Permissions } from '../auth/permissions.decorator';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
+import { GrowthIntelligenceService } from './growth-intelligence.service';
 import { MarketingService } from './marketing.service';
 import { PublicMarketingService } from './public-marketing.service';
+import { ReportExportService } from './report-export.service';
 
 @Controller('marketing')
 export class MarketingController {
-  constructor(private readonly marketing:MarketingService,private readonly publicMarketing:PublicMarketingService) {}
+  constructor(
+    private readonly marketing:MarketingService,
+    private readonly publicMarketing:PublicMarketingService,
+    private readonly reports:ReportExportService,
+    private readonly growth:GrowthIntelligenceService,
+  ) {}
+
   @Post('public/track') track(@Body() body:Record<string,unknown>){return this.marketing.trackPublic(body);}
   @Get('public/promotion') promotion(){return this.publicMarketing.promotion();}
 
@@ -21,6 +29,31 @@ export class MarketingController {
   @Permissions('marketing.view')
   @Roles(UserRole.OWNER,UserRole.ADMIN,UserRole.OPERATOR)
   @Get('dashboard') dashboard(@CurrentUser() user:AuthenticatedUser,@Query('days') days='30'){return this.marketing.dashboard(user.organizationId,Number(days));}
+
+  @UseGuards(AuthGuard('jwt'),RolesGuard,PermissionsGuard)
+  @Permissions('marketing.view')
+  @Roles(UserRole.OWNER,UserRole.ADMIN,UserRole.OPERATOR)
+  @Get('growth/overview') growthOverview(@CurrentUser() user:AuthenticatedUser,@Query('days') days='30'){return this.growth.overview(user.organizationId,Number(days));}
+
+  @UseGuards(AuthGuard('jwt'),RolesGuard,PermissionsGuard)
+  @Permissions('marketing.manage')
+  @Roles(UserRole.OWNER,UserRole.ADMIN)
+  @Post('growth/strategy/:period') generateStrategy(@CurrentUser() user:AuthenticatedUser,@Param('period') period:string){return this.growth.generateStrategy(user.organizationId,period);}
+
+  @UseGuards(AuthGuard('jwt'),RolesGuard,PermissionsGuard)
+  @Permissions('marketing.manage')
+  @Roles(UserRole.OWNER,UserRole.ADMIN)
+  @Post('growth/paid-campaigns/drafts') generatePaidDrafts(@CurrentUser() user:AuthenticatedUser,@Body() body:Record<string,unknown>){return this.growth.generatePaidDrafts(user.organizationId,body);}
+
+  @UseGuards(AuthGuard('jwt'),RolesGuard,PermissionsGuard)
+  @Permissions('marketing.manage')
+  @Roles(UserRole.OWNER,UserRole.ADMIN)
+  @Patch('growth/paid-campaigns/:id') updatePaidDraft(@CurrentUser() user:AuthenticatedUser,@Param('id') id:string,@Body() body:Record<string,unknown>){return this.growth.updatePaidCampaign(user.organizationId,id,body);}
+
+  @UseGuards(AuthGuard('jwt'),RolesGuard,PermissionsGuard)
+  @Permissions('marketing.manage')
+  @Roles(UserRole.OWNER)
+  @Post('growth/paid-campaigns/:id/approval') approvePaidDraft(@CurrentUser() user:AuthenticatedUser,@Param('id') id:string,@Body() body:Record<string,unknown>){return this.growth.approvePaidCampaign(user.organizationId,user.id,user.role,id,body.approved===true);}
 
   @UseGuards(AuthGuard('jwt'),RolesGuard,PermissionsGuard)
   @Permissions('marketing.manage')
@@ -47,4 +80,16 @@ export class MarketingController {
   @Roles(UserRole.OWNER,UserRole.ADMIN,UserRole.OPERATOR)
   @Get('report.pdf')
   async pdf(@CurrentUser() user:AuthenticatedUser,@Query('days') days='30',@Res() response:Response){const file=await this.marketing.reportPdf(user.organizationId,Number(days));response.setHeader('Content-Type','application/pdf');response.setHeader('Content-Disposition',`attachment; filename="khe-marketing-${new Date().toISOString().slice(0,10)}.pdf"`);response.send(file);}
+
+  @UseGuards(AuthGuard('jwt'),RolesGuard,PermissionsGuard)
+  @Permissions('reports.export')
+  @Roles(UserRole.OWNER,UserRole.ADMIN,UserRole.OPERATOR)
+  @Get('report/:format')
+  async exportReport(@CurrentUser() user:AuthenticatedUser,@Param('format') format:string,@Query('days') days='30',@Res() response:Response){
+    const file=await this.reports.generate(user.organizationId,format,Number(days));
+    response.setHeader('Content-Type',file.contentType);
+    response.setHeader('Content-Disposition',`attachment; filename="${file.filename}"`);
+    response.setHeader('Cache-Control','private, no-store');
+    response.send(file.buffer);
+  }
 }

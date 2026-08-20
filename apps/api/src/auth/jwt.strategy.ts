@@ -8,26 +8,17 @@ import { AuthenticatedUser, JwtPayload } from './auth.types';
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(private readonly prisma: PrismaService) {
     const secret = process.env.JWT_SECRET;
-    if (!secret) {
-      throw new Error('JWT_SECRET is required');
-    }
-    super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-      ignoreExpiration: false,
-      secretOrKey: secret,
-    });
+    if (!secret) throw new Error('JWT_SECRET is required');
+    super({ jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(), ignoreExpiration: false, secretOrKey: secret });
   }
 
   async validate(payload: JwtPayload): Promise<AuthenticatedUser> {
-    const user = await this.prisma.user.findFirst({
-      where: {
-        id: payload.sub,
-        organizationId: payload.organizationId,
-        isActive: true,
-      },
-      select: { id: true, organizationId: true, email: true, role: true },
-    });
-    if (!user) throw new UnauthorizedException();
-    return user;
+    const rows=await this.prisma.$queryRaw<Array<{id:string;organizationId:string;email:string;role:any;authVersion:number;isActive:boolean;passwordResetRequired:boolean}>>`
+      SELECT id,"organizationId",email,role,"authVersion","isActive","passwordResetRequired"
+      FROM "User" WHERE id=${payload.sub}::uuid AND "organizationId"=${payload.organizationId}::uuid LIMIT 1
+    `;
+    const user=rows[0];
+    if(!user||!user.isActive||user.passwordResetRequired||user.authVersion!==payload.authVersion)throw new UnauthorizedException();
+    return {id:user.id,organizationId:user.organizationId,email:user.email,role:user.role};
   }
 }

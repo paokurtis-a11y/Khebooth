@@ -8,11 +8,12 @@ import { MarketingModule } from './marketing/marketing.module';
 import { MobileModule } from './mobile/mobile.module';
 import { PresetsModule } from './presets/presets.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { SecurityCenterModule } from './security/security-center.module';
 import { StationsModule } from './stations/stations.module';
 import { SupportModule } from './support/support.module';
 import { TeamModule } from './team/team.module';
 
 @Module({
-  imports:[PrismaModule,HealthModule,AuthModule,ClientsModule,EventsModule,PresetsModule,MarketingModule,CommerceModule,StationsModule,MobileModule,SupportModule,TeamModule],
+  imports:[PrismaModule,HealthModule,AuthModule,ClientsModule,EventsModule,PresetsModule,MarketingModule,CommerceModule,StationsModule,MobileModule,SupportModule,TeamModule,SecurityCenterModule],
 })
 export class AppModule {}

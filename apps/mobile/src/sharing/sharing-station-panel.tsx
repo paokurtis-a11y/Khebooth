@@ -6,6 +6,7 @@ import { CreativeStudio, type CreativePlan } from '../studio/creative-studio';
 import { RemoteControlPanel } from './remote-control-panel';
 import { SharingEventManager } from './sharing-event-manager';
 import { SharingMediaGallery } from './sharing-media-gallery';
+import { SharingTrashPanel } from './sharing-trash-panel';
 
 const CREATIVE_PLAN_KEY='khe.creative.plan.v1';
 
@@ -88,6 +89,7 @@ export function SharingStationPanel({ eventName, api, stationToken }: SharingSta
       {flowMessage?<View style={styles.flowBanner}><Text style={styles.flowText}>{flowMessage}</Text></View>:null}
       <SharingEventManager api={api} stationToken={stationToken} onCreated={(eventId,eventTitle)=>void startDesign(eventId,eventTitle)} onReady={(eventTitle)=>setFlowMessage(`✓ « ${eventTitle} » est prêt et sera sélectionné automatiquement sur CAPTURE et SHARING dans quelques secondes.`)} />
       <RemoteControlPanel eventName={eventName} api={api} stationToken={stationToken} />
+      <SharingTrashPanel api={api} stationToken={stationToken} />
       <SharingMediaGallery eventName={eventName} api={api} stationToken={stationToken} />
     </View>
   );

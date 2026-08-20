@@ -23,6 +23,11 @@ export class CreateMediaDto {
   mimeType!: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(180)
+  displayName?: string;
+
+  @IsOptional()
   @IsDateString()
   capturedAt?: string;
 }

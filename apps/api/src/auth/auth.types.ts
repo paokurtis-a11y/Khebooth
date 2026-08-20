@@ -12,4 +12,5 @@ export interface JwtPayload {
   organizationId: string;
   email: string;
   role: UserRole;
+  authVersion: number;
 }

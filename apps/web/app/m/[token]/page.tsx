@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react';
 interface PublicMediaPayload {
   shareId: string;
   mediaId: string;
+  displayName?: string | null;
   eventName: string;
   mimeType: string;
   byteSize: number;
@@ -17,6 +18,10 @@ function apiBaseUrl(): string {
 
 function sizeLabel(bytes: number): string {
   return `${Math.max(1, Math.round(bytes / 1024 / 1024))} Mo`;
+}
+
+function extensionFor(mimeType:string):string{
+  if(mimeType==='image/jpeg')return'jpg';if(mimeType==='image/png')return'png';if(mimeType==='image/webp')return'webp';if(mimeType==='video/quicktime')return'mov';return'mp4';
 }
 
 export default async function GuestMediaPage({ params }: { params: Promise<{ token: string }> }) {
@@ -46,24 +51,26 @@ export default async function GuestMediaPage({ params }: { params: Promise<{ tok
   }
 
   const isImage = media.mimeType.startsWith('image/');
+  const displayName=media.displayName?.trim()||`KHE ${media.eventName} ${isImage?'Photo':'Vidéo'}`;
+  const fileName=`${displayName}.${extensionFor(media.mimeType)}`;
   return (
     <main style={styles.page}>
       <section style={styles.card}>
         <div style={styles.brand}>KHE BOOTH</div>
         <p style={styles.eyebrow}>VOTRE MOMENT</p>
-        <h1 style={styles.title}>{media.eventName}</h1>
-        <p style={styles.copy}>{media.capturedAt ? new Date(media.capturedAt).toLocaleString('fr-CH') : 'Moment KHE Booth'} • {sizeLabel(media.byteSize)}</p>
+        <h1 style={styles.title}>{displayName}</h1>
+        <p style={styles.copy}>{media.eventName} • {media.capturedAt ? new Date(media.capturedAt).toLocaleString('fr-CH') : 'Moment KHE Booth'} • {sizeLabel(media.byteSize)}</p>
 
         <div style={styles.mediaShell}>
           {isImage ? (
-            <img src={media.downloadUrl} alt="Moment KHE Booth" style={styles.image} />
+            <img src={media.downloadUrl} alt={displayName} style={styles.image} />
           ) : (
             <video src={media.downloadUrl} controls playsInline preload="metadata" style={styles.video} />
           )}
         </div>
 
-        <a href={media.downloadUrl} download style={styles.download}>Télécharger le média</a>
-        <p style={styles.security}>Lien KHE Booth sécurisé. L’accès au fichier cloud est temporaire et renouvelé uniquement lorsque ce QR est ouvert.</p>
+        <a href={media.downloadUrl} download={fileName} style={styles.download}>Télécharger « {displayName} »</a>
+        <p style={styles.security}>Lien KHE Booth sécurisé. Le nom du Moment reste identique entre CAPTURE, SHARING et votre téléchargement.</p>
       </section>
     </main>
   );

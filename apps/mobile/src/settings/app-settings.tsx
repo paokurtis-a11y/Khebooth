@@ -12,6 +12,7 @@ import {
   saveNotificationPreferences,
   type NotificationPreferences,
 } from './notification-feedback';
+import { SharingBusinessSettingsPanel } from './sharing-business-settings';
 
 export type TextScalePreference='SMALL'|'NORMAL'|'LARGE'|'XLARGE';
 export type TextStylePreference='CLASSIC'|'MODERN'|'ELEGANT'|'COMFORT';
@@ -263,6 +264,8 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
           <Pressable style={styles.testButton} onPress={() => void playNotificationFeedback(notificationPreferences)}><Text style={styles.testText}>Tester la notification</Text></Pressable>
           {notificationMessage ? <Text style={styles.inlineMessage}>{notificationMessage}</Text> : null}
         </View>
+
+        <SharingBusinessSettingsPanel api={api} />
 
         <View style={styles.note}>
           <Text style={styles.noteTitle}>Données mobiles</Text>
