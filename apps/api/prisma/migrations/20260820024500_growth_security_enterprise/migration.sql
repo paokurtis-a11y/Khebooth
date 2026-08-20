@@ -6,17 +6,13 @@ ALTER TABLE "Organization"
   ADD COLUMN IF NOT EXISTS "managedByOrganizationId" UUID,
   ADD COLUMN IF NOT EXISTS "isPlatformManaged" BOOLEAN NOT NULL DEFAULT FALSE;
 
-DO $$ BEGIN
-  ALTER TABLE "Organization"
-    ADD CONSTRAINT "Organization_tenantKind_check"
-    CHECK ("tenantKind" IN ('KHE_ROOT','ENTERPRISE_CLIENT'));
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+ALTER TABLE "Organization"
+  ADD CONSTRAINT "Organization_tenantKind_check"
+  CHECK ("tenantKind" IN ('KHE_ROOT','ENTERPRISE_CLIENT'));
 
-DO $$ BEGIN
-  ALTER TABLE "Organization"
-    ADD CONSTRAINT "Organization_managedByOrganizationId_fkey"
-    FOREIGN KEY ("managedByOrganizationId") REFERENCES "Organization"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+ALTER TABLE "Organization"
+  ADD CONSTRAINT "Organization_managedByOrganizationId_fkey"
+  FOREIGN KEY ("managedByOrganizationId") REFERENCES "Organization"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 CREATE INDEX IF NOT EXISTS "Organization_managedByOrganizationId_idx" ON "Organization"("managedByOrganizationId");
 
@@ -29,11 +25,9 @@ ALTER TABLE "User"
   ADD COLUMN IF NOT EXISTS "passwordChangeCount" INTEGER NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS "managedClientId" UUID;
 
-DO $$ BEGIN
-  ALTER TABLE "User"
-    ADD CONSTRAINT "User_managedClientId_fkey"
-    FOREIGN KEY ("managedClientId") REFERENCES "Client"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+ALTER TABLE "User"
+  ADD CONSTRAINT "User_managedClientId_fkey"
+  FOREIGN KEY ("managedClientId") REFERENCES "Client"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 CREATE INDEX IF NOT EXISTS "User_managedClientId_idx" ON "User"("managedClientId");
 CREATE INDEX IF NOT EXISTS "User_passwordResetRequired_idx" ON "User"("passwordResetRequired") WHERE "passwordResetRequired"=TRUE;
