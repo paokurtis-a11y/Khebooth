@@ -50,7 +50,7 @@ export class ClientsController {
   remove(@CurrentUser() user: AuthenticatedUser, @Param('id', new ParseUUIDPipe()) id: string) { return this.clients.remove(user.organizationId, user.id, id); }
 
   @Permissions('clients.manage') @Roles(UserRole.OWNER) @Post(':id/enterprise-access')
-  enterpriseAccess(@CurrentUser() user:AuthenticatedUser,@Param('id',new ParseUUIDPipe()) id:string,@Body() body:Record<string,unknown>){return this.enterprise.setAccess(user.organizationId,user.id,user.role,id,body.enabled===true);}
+  enterpriseAccess(@CurrentUser() user:AuthenticatedUser,@Param('id',new ParseUUIDPipe()) id:string,@Body() body:Record<string,unknown>){return this.enterprise.setAccess(user.organizationId,user.id,user.role,id,body.enabled===true,String(body.password??''));}
 
   @Permissions('clients.view') @Roles(UserRole.OWNER) @Get(':id/enterprise-access-report')
   enterpriseAccessReport(@CurrentUser() user:AuthenticatedUser,@Param('id',new ParseUUIDPipe()) id:string){return this.enterprise.report(user.organizationId,user.role,id);}
