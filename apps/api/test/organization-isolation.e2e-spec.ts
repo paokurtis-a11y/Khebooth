@@ -16,7 +16,7 @@ suite('Organization isolation (PostgreSQL integration)', () => {
     process.env.DATABASE_URL = process.env.TEST_DATABASE_URL!;
     prisma = new PrismaService();
     await prisma.$connect();
-    clients = new ClientsService(prisma);
+    clients = new ClientsService(prisma, { ensureInvitationForClient: async () => undefined } as any);
 
     const organizationA = await prisma.organization.create({ data: { name: 'Organization A' } });
     const organizationB = await prisma.organization.create({ data: { name: 'Organization B' } });

@@ -17,8 +17,11 @@ describe('ClientsService organization isolation', () => {
     },
     auditLog: { create: jest.fn() },
   } as unknown as PrismaService;
+  const enterpriseAutoInvite = {
+    ensureInvitationForClient: jest.fn(),
+  };
 
-  const service = new ClientsService(prisma);
+  const service = new ClientsService(prisma, enterpriseAutoInvite as any);
 
   beforeEach(() => jest.clearAllMocks());
 
@@ -43,5 +46,6 @@ describe('ClientsService organization isolation', () => {
     ).rejects.toBeInstanceOf(NotFoundException);
 
     expect(prisma.client.update).not.toHaveBeenCalled();
+    expect(enterpriseAutoInvite.ensureInvitationForClient).not.toHaveBeenCalled();
   });
 });

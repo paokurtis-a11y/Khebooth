@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { EmailMarketingService } from '../marketing/email-marketing.service';
 import { MarketingService } from '../marketing/marketing.service';
 import { MarketPricingService } from './market-pricing.service';
 
@@ -10,15 +11,15 @@ type CampaignRow={id:string;planCode:string|null;discountPercent:number;segment:
 
 @Injectable()
 export class PromotionCheckoutService{
-  constructor(private readonly prisma:PrismaService,private readonly marketing:MarketingService,private readonly marketPricing:MarketPricingService){}
+  constructor(private readonly prisma:PrismaService,private readonly marketing:MarketingService,private readonly emailMarketing:EmailMarketingService,private readonly marketPricing:MarketPricingService){}
 
   private code(){return `KHE-${randomBytes(5).toString('hex').toUpperCase()}`;}
-  private async org(){const rows=await this.prisma.$queryRaw<Array<{id:string}>>`SELECT id FROM "Organization" ORDER BY "createdAt" ASC LIMIT 1`;if(!rows[0])throw new ServiceUnavailableException('KHE Booth organization is not initialized');return rows[0].id;}
+  private async org(){const rows=await this.prisma.$queryRaw<Array<{id:string}>>`SELECT id FROM "Organization" WHERE COALESCE("tenantKind",'KHE_ROOT')='KHE_ROOT' ORDER BY "createdAt" ASC LIMIT 1`;if(!rows[0])throw new ServiceUnavailableException('KHE Booth organization is not initialized');return rows[0].id;}
   private async client(organizationId:string,email:string,name?:string):Promise<ClientRow>{
     const rows=await this.prisma.$queryRaw<ClientRow[]>`SELECT id,"organizationId",email,"kheCode","billingCustomerId" FROM "Client" WHERE "organizationId"=${organizationId}::uuid AND lower(email)=${email} LIMIT 1`;
     if(rows[0])return rows[0];
     const display=(name?.trim()||email.split('@')[0]||'Client KHE').slice(0,160);const code=this.code();
-    const created=await this.prisma.$queryRaw<ClientRow[]>`INSERT INTO "Client"(id,"organizationId",name,email,"kheCode","marketingEmailsEnabled","createdAt","updatedAt") VALUES(gen_random_uuid(),${organizationId}::uuid,${display},${email},${code},FALSE,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) RETURNING id,"organizationId",email,"kheCode","billingCustomerId"`;
+    const created=await this.prisma.$queryRaw<ClientRow[]>`INSERT INTO "Client"(id,"organizationId",name,email,"kheCode","marketingEmailsEnabled","emailSource","emailLastCapturedAt","createdAt","updatedAt") VALUES(gen_random_uuid(),${organizationId}::uuid,${display},${email},${code},FALSE,'PROMOTIONAL_CHECKOUT',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) RETURNING id,"organizationId",email,"kheCode","billingCustomerId"`;
     return created[0];
   }
   private async plan(organizationId:string,code:string):Promise<PlanRow>{const rows=await this.prisma.$queryRaw<PlanRow[]>`SELECT "organizationId",code,name,"priceMonthlyChf","localizedPrices","stripePriceId",active FROM "SubscriptionPlanConfig" WHERE "organizationId"=${organizationId}::uuid AND code=${code} AND active=TRUE LIMIT 1`;if(!rows[0])throw new BadRequestException('Unknown subscription plan');return rows[0];}
@@ -31,10 +32,9 @@ export class PromotionCheckoutService{
   async checkout(payload:Record<string,unknown>,detectedCountry?:string){
     const organizationId=await this.org();const email=String(payload.email??'').trim().toLowerCase();const name=payload.name?String(payload.name):undefined;const planCode=String(payload.planCode??'').trim().toUpperCase();const paymentMethod=String(payload.paymentMethod??'card').trim().toLowerCase();const marketingOptIn=payload.marketingOptIn===true;const autoRenewAcknowledged=payload.autoRenewAcknowledged===true;
     if(!email.includes('@'))throw new BadRequestException('A valid email is required');
-    const plan=await this.plan(organizationId,planCode);const client=await this.client(organizationId,email,name);
-    await this.prisma.$executeRaw`UPDATE "Client" SET "marketingEmailsEnabled"=${marketingOptIn},"updatedAt"=CURRENT_TIMESTAMP WHERE id=${client.id}::uuid`;
-    if(plan.priceMonthlyChf===null)return{requiresContact:true,message:'Cette offre nécessite une configuration sur mesure.'};
-    if(plan.priceMonthlyChf===0){await this.prisma.$executeRaw`UPDATE "Client" SET "subscriptionPlan"=${plan.code},"subscriptionStatus"='ACTIVE',"paymentStatus"='PAID',"subscriptionStartedAt"=COALESCE("subscriptionStartedAt",CURRENT_TIMESTAMP),"updatedAt"=CURRENT_TIMESTAMP WHERE id=${client.id}::uuid`;await this.marketing.trackServer(organizationId,'CHECKOUT_COMPLETED',client.id,plan.code,0,{free:true});return{free:true,clientId:client.id,kheCode:client.kheCode};}
+    const plan=await this.plan(organizationId,planCode);const client=await this.client(organizationId,email,name);await this.emailMarketing.captureCheckoutLead(organizationId,client.id,email,marketingOptIn,plan.code);
+    if(plan.priceMonthlyChf===null){await this.emailMarketing.startDiscoveryNurture(organizationId,client.id,plan.code);return{requiresContact:true,message:'Cette offre nécessite une configuration sur mesure.'};}
+    if(plan.priceMonthlyChf===0){await this.prisma.$executeRaw`UPDATE "Client" SET "subscriptionPlan"=${plan.code},"subscriptionStatus"='ACTIVE',"paymentStatus"='PAID',"subscriptionStartedAt"=COALESCE("subscriptionStartedAt",CURRENT_TIMESTAMP),"updatedAt"=CURRENT_TIMESTAMP WHERE id=${client.id}::uuid`;await this.marketing.trackServer(organizationId,'CHECKOUT_COMPLETED',client.id,plan.code,0,{free:true});await this.emailMarketing.completePurchase(client.id);await this.emailMarketing.startDiscoveryNurture(organizationId,client.id,'PRO');return{free:true,clientId:client.id,kheCode:client.kheCode};}
     const isTwint=paymentMethod==='twint';if(!isTwint&&!autoRenewAcknowledged)throw new BadRequestException('Vous devez confirmer le renouvellement automatique avant de poursuivre.');
     const market=this.marketPricing.market(detectedCountry,payload.currency?String(payload.currency):undefined);const checkoutMarket=isTwint?this.marketPricing.market(detectedCountry,'CHF'):market;
     const localizedBase=this.marketPricing.localizedAmount(plan.priceMonthlyChf,plan.localizedPrices,checkoutMarket.currency);if(localizedBase===null)throw new BadRequestException('Localized plan price is unavailable');
@@ -49,6 +49,7 @@ export class PromotionCheckoutService{
     const response=await fetch('https://api.stripe.com/v1/checkout/sessions',{method:'POST',headers:{Authorization:`Bearer ${secret}`,'Content-Type':'application/x-www-form-urlencoded'},body:params.toString()});const data=await response.json() as{id?:string;url?:string;error?:{message?:string}};if(!response.ok||!data.url)throw new ServiceUnavailableException(data.error?.message||'Unable to start secure checkout');
     await this.prisma.$executeRaw`UPDATE "Client" SET "subscriptionPlan"=${plan.code},"subscriptionStatus"='PAYMENT_PENDING',"paymentStatus"='PENDING',"updatedAt"=CURRENT_TIMESTAMP WHERE id=${client.id}::uuid`;
     await this.marketing.trackServer(organizationId,'CHECKOUT_STARTED',client.id,plan.code,amount,{paymentMethod,campaignId:campaign?.id??null,discountPercent:discount,autoRenew:!isTwint,country:checkoutMarket.country,currency:checkoutMarket.currency});
+    await this.emailMarketing.startCartRecovery(organizationId,client.id,plan.code,data.id||`checkout-${Date.now()}`);
     return{checkoutUrl:data.url,sessionId:data.id,discountPercent:discount,automaticRenewal:!isTwint,twintManualRenewal:isTwint,market:checkoutMarket};
   }
 }

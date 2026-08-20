@@ -3,6 +3,7 @@ export const KHE_PERMISSIONS = [
   'clients.view',
   'clients.manage',
   'clients.delete',
+  'enterprise.verify',
   'events.view',
   'events.manage',
   'events.delete',
@@ -29,6 +30,7 @@ export const ROLE_PERMISSION_DEFAULTS: Record<string, Record<KhePermission, bool
     ...OWNER_DEFAULTS,
     'billing.manage': false,
     'team.manage': true,
+    'enterprise.verify': false,
   },
   OPERATOR: {
     ...Object.fromEntries(KHE_PERMISSIONS.map((permission) => [permission, false])) as Record<KhePermission, boolean>,
@@ -42,6 +44,7 @@ export const ROLE_PERMISSION_DEFAULTS: Record<string, Record<KhePermission, bool
     'marketing.view': true,
     'communications.manage': true,
     'reports.export': true,
+    'enterprise.verify': false,
   },
   SHARE_HOST: {
     ...Object.fromEntries(KHE_PERMISSIONS.map((permission) => [permission, false])) as Record<KhePermission, boolean>,
@@ -49,6 +52,7 @@ export const ROLE_PERMISSION_DEFAULTS: Record<string, Record<KhePermission, bool
     'clients.view': true,
     'events.view': true,
     'studio.view': true,
+    'enterprise.verify': false,
   },
 };
 

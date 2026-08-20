@@ -4,16 +4,18 @@ import { MarketingModule } from '../marketing/marketing.module';
 import { CommerceController } from './commerce.controller';
 import { CommerceService } from './commerce.service';
 import { CustomerAccessService } from './customer-access.service';
+import { EnterprisePaymentOnboardingService } from './enterprise-payment-onboarding.service';
 import { LocalizedSiteService } from './localized-site.service';
 import { MarketPricingService } from './market-pricing.service';
 import { PaymentAnalyticsService } from './payment-analytics.service';
 import { PromotionCheckoutService } from './promotion-checkout.service';
 import { SiteContentService } from './site-content.service';
+import { SubscriptionLifecycleService } from './subscription-lifecycle.service';
 
 @Module({
   imports:[AuthModule,MarketingModule],
   controllers:[CommerceController],
-  providers:[CommerceService,CustomerAccessService,LocalizedSiteService,MarketPricingService,PaymentAnalyticsService,PromotionCheckoutService,SiteContentService],
-  exports:[CommerceService,MarketPricingService],
+  providers:[CommerceService,CustomerAccessService,EnterprisePaymentOnboardingService,LocalizedSiteService,MarketPricingService,PaymentAnalyticsService,PromotionCheckoutService,SiteContentService,SubscriptionLifecycleService],
+  exports:[CommerceService,MarketPricingService,EnterprisePaymentOnboardingService],
 })
 export class CommerceModule {}

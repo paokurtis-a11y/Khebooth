@@ -43,6 +43,26 @@ export class StationProfileService {
 
   private async ensure(organizationId:string){await this.prisma.$executeRaw(Prisma.sql`INSERT INTO "OrganizationProfile" ("organizationId") VALUES (${organizationId}::uuid) ON CONFLICT ("organizationId") DO NOTHING`);}
 
+  private async targetClient(station:AuthenticatedStation):Promise<{clientId:string;rootOrganizationId:string}|null>{
+    const eventRows=await this.prisma.$queryRaw<Array<{clientId:string|null;rootOrganizationId:string|null}>>(Prisma.sql`
+      SELECT e."clientId",c."organizationId" AS "rootOrganizationId" FROM "Event" e LEFT JOIN "Client" c ON c.id=e."clientId"
+      WHERE e.id=${station.eventId}::uuid AND e."organizationId"=${station.organizationId}::uuid LIMIT 1`);
+    if(eventRows[0]?.clientId&&eventRows[0]?.rootOrganizationId)return{clientId:eventRows[0].clientId,rootOrganizationId:eventRows[0].rootOrganizationId};
+    const managed=await this.prisma.$queryRaw<Array<{clientId:string;rootOrganizationId:string}>>(Prisma.sql`
+      SELECT u."managedClientId" AS "clientId",c."organizationId" AS "rootOrganizationId"
+      FROM "User" u JOIN "Client" c ON c.id=u."managedClientId" JOIN "Organization" o ON o.id=u."organizationId"
+      WHERE u."organizationId"=${station.organizationId}::uuid AND u."managedClientId" IS NOT NULL AND o."tenantKind"='ENTERPRISE_CLIENT' LIMIT 1`);
+    return managed[0]??null;
+  }
+
+  private async syncClient(station:AuthenticatedStation,profile:ProfileRow){
+    const target=await this.targetClient(station);if(!target)return;
+    await this.prisma.$executeRaw(Prisma.sql`
+      INSERT INTO "ClientProfileSnapshot" ("clientId","organizationId","sourceOrganizationId",source,"firstName","lastName","displayName",company,role,email,phone,address,"birthDate","avatarPath",city,country,bio,"syncedAt","updatedAt")
+      VALUES (${target.clientId}::uuid,${target.rootOrganizationId}::uuid,${station.organizationId}::uuid,${station.mode},${profile.firstName},${profile.lastName},${profile.displayName},${profile.company},${profile.role},${profile.email},${profile.phone},${profile.address},${profile.birthDate},${profile.avatarPath},${profile.city},${profile.country},${profile.bio},CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+      ON CONFLICT ("clientId") DO UPDATE SET "sourceOrganizationId"=EXCLUDED."sourceOrganizationId",source=EXCLUDED.source,"firstName"=EXCLUDED."firstName","lastName"=EXCLUDED."lastName","displayName"=EXCLUDED."displayName",company=EXCLUDED.company,role=EXCLUDED.role,email=EXCLUDED.email,phone=EXCLUDED.phone,address=EXCLUDED.address,"birthDate"=EXCLUDED."birthDate","avatarPath"=COALESCE(EXCLUDED."avatarPath","ClientProfileSnapshot"."avatarPath"),city=EXCLUDED.city,country=EXCLUDED.country,bio=EXCLUDED.bio,"syncedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP`);
+  }
+
   async get(station: AuthenticatedStation): Promise<ProfileRow> {
     await this.ensure(station.organizationId);
     const rows = await this.prisma.$queryRaw<ProfileRow[]>(Prisma.sql`
@@ -56,45 +76,17 @@ export class StationProfileService {
     const current = await this.get(station);
     const birthDate = dto.birthDate === undefined ? current.birthDate : dto.birthDate ? new Date(dto.birthDate) : null;
     const next={
-      firstName:(dto.firstName??current.firstName).trim(),
-      lastName:(dto.lastName??current.lastName).trim(),
-      displayName:(dto.displayName??current.displayName).trim(),
-      company:(dto.company??current.company).trim(),
-      role:(dto.role??current.role).trim(),
-      email:(dto.email??current.email).trim().toLowerCase(),
-      phone:(dto.phone??current.phone).trim(),
-      address:(dto.address??current.address).trim(),
-      birthDate,
-      avatarPath:current.avatarPath,
-      city:(dto.city??current.city).trim(),
-      country:(dto.country??current.country).trim(),
-      bio:(dto.bio??current.bio).trim(),
+      firstName:(dto.firstName??current.firstName).trim(),lastName:(dto.lastName??current.lastName).trim(),displayName:(dto.displayName??current.displayName).trim(),company:(dto.company??current.company).trim(),role:(dto.role??current.role).trim(),email:(dto.email??current.email).trim().toLowerCase(),phone:(dto.phone??current.phone).trim(),address:(dto.address??current.address).trim(),birthDate,avatarPath:current.avatarPath,city:(dto.city??current.city).trim(),country:(dto.country??current.country).trim(),bio:(dto.bio??current.bio).trim(),
     };
-    if(!next.firstName)throw new BadRequestException('Le prénom est obligatoire.');
-    if(!next.lastName)throw new BadRequestException('Le nom est obligatoire.');
-    if(!next.email)throw new BadRequestException('L’adresse e-mail est obligatoire.');
-    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(next.email))throw new BadRequestException('L’adresse e-mail est invalide.');
-    if(next.birthDate&&Number.isNaN(next.birthDate.getTime()))throw new BadRequestException('La date de naissance est invalide.');
-    if(next.birthDate&&next.birthDate>new Date())throw new BadRequestException('La date de naissance ne peut pas être dans le futur.');
-    if(!next.displayName)next.displayName=`${next.firstName} ${next.lastName}`.trim();
+    if(!next.firstName)throw new BadRequestException('Le prénom est obligatoire.');if(!next.lastName)throw new BadRequestException('Le nom est obligatoire.');if(!next.email)throw new BadRequestException('L’adresse e-mail est obligatoire.');if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(next.email))throw new BadRequestException('L’adresse e-mail est invalide.');if(next.birthDate&&Number.isNaN(next.birthDate.getTime()))throw new BadRequestException('La date de naissance est invalide.');if(next.birthDate&&next.birthDate>new Date())throw new BadRequestException('La date de naissance ne peut pas être dans le futur.');if(!next.displayName)next.displayName=`${next.firstName} ${next.lastName}`.trim();
     const rows=await this.prisma.$queryRaw<ProfileRow[]>(Prisma.sql`
       INSERT INTO "OrganizationProfile" ("organizationId","firstName","lastName","displayName","company","role","email","phone","address","birthDate","city","country","bio","updatedAt")
       VALUES (${station.organizationId}::uuid,${next.firstName},${next.lastName},${next.displayName},${next.company},${next.role},${next.email},${next.phone},${next.address},${next.birthDate},${next.city},${next.country},${next.bio},CURRENT_TIMESTAMP)
-      ON CONFLICT ("organizationId") DO UPDATE SET "firstName"=EXCLUDED."firstName","lastName"=EXCLUDED."lastName","displayName"=EXCLUDED."displayName","company"=EXCLUDED."company","role"=EXCLUDED."role","email"=EXCLUDED."email","phone"=EXCLUDED."phone","address"=EXCLUDED."address","birthDate"=EXCLUDED."birthDate","city"=EXCLUDED."city","country"=EXCLUDED."country","bio"=EXCLUDED."bio","updatedAt"=CURRENT_TIMESTAMP
-      RETURNING "organizationId","firstName","lastName","displayName","company","role","email","phone","address","birthDate","avatarPath","city","country","bio","updatedAt"
-    `);
-    return rows[0]??{organizationId:station.organizationId,...next,updatedAt:new Date()};
+      ON CONFLICT ("organizationId") DO UPDATE SET "firstName"=EXCLUDED."firstName","lastName"=EXCLUDED."lastName","displayName"=EXCLUDED."displayName","company"=EXCLUDED."company","role"=EXCLUDED."role","email"=EXCLUDED."email","phone"=EXCLUDED."phone","address"=EXCLUDED."address","birthDate"=EXCLUDED."birthDate","city"=EXCLUDED.city,"country"=EXCLUDED.country,"bio"=EXCLUDED.bio,"updatedAt"=CURRENT_TIMESTAMP
+      RETURNING "organizationId","firstName","lastName","displayName","company","role","email","phone","address","birthDate","avatarPath","city","country","bio","updatedAt"`);
+    const profile=rows[0]??{organizationId:station.organizationId,...next,updatedAt:new Date()};await this.syncClient(station,profile);return profile;
   }
 
-  async notificationPreferences(station:AuthenticatedStation):Promise<NotificationPreferences>{
-    await this.ensure(station.organizationId);
-    const rows=await this.prisma.$queryRaw<Array<{notificationPreferences:unknown}>>(Prisma.sql`SELECT "notificationPreferences" FROM "OrganizationProfile" WHERE "organizationId"=${station.organizationId}::uuid LIMIT 1`);
-    return normalizeNotificationPreferences(rows[0]?.notificationPreferences);
-  }
-
-  async updateNotificationPreferences(station:AuthenticatedStation,payload:unknown):Promise<NotificationPreferences>{
-    await this.ensure(station.organizationId);const preferences=normalizeNotificationPreferences(payload);
-    await this.prisma.$executeRaw(Prisma.sql`UPDATE "OrganizationProfile" SET "notificationPreferences"=${JSON.stringify(preferences)}::jsonb,"updatedAt"=CURRENT_TIMESTAMP WHERE "organizationId"=${station.organizationId}::uuid`);
-    return preferences;
-  }
+  async notificationPreferences(station:AuthenticatedStation):Promise<NotificationPreferences>{await this.ensure(station.organizationId);const rows=await this.prisma.$queryRaw<Array<{notificationPreferences:unknown}>>(Prisma.sql`SELECT "notificationPreferences" FROM "OrganizationProfile" WHERE "organizationId"=${station.organizationId}::uuid LIMIT 1`);return normalizeNotificationPreferences(rows[0]?.notificationPreferences);}
+  async updateNotificationPreferences(station:AuthenticatedStation,payload:unknown):Promise<NotificationPreferences>{await this.ensure(station.organizationId);const preferences=normalizeNotificationPreferences(payload);await this.prisma.$executeRaw(Prisma.sql`UPDATE "OrganizationProfile" SET "notificationPreferences"=${JSON.stringify(preferences)}::jsonb,"updatedAt"=CURRENT_TIMESTAMP WHERE "organizationId"=${station.organizationId}::uuid`);return preferences;}
 }

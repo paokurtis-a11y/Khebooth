@@ -1,12 +1,27 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { CommerceModule } from '../commerce/commerce.module';
+import { MarketingModule } from '../marketing/marketing.module';
+import { ClientCrmController } from './client-crm.controller';
+import { ClientCrmService } from './client-crm.service';
 import { ClientEnterpriseAccessService } from './client-enterprise-access.service';
 import { ClientsController } from './clients.controller';
 import { ClientsService } from './clients.service';
+import { EnterpriseAdminController } from './enterprise-admin.controller';
+import { EnterpriseCommercialService } from './enterprise-commercial.service';
+import { EnterpriseContractExportService } from './enterprise-contract-export.service';
+import { EnterpriseContractService } from './enterprise-contract.service';
+import { EnterpriseFormExportService } from './enterprise-form-export.service';
+import { EnterpriseOnboardingController } from './enterprise-onboarding.controller';
+import { EnterpriseOnboardingService } from './enterprise-onboarding.service';
+import { EnterpriseQuoteCheckoutService } from './enterprise-quote-checkout.service';
+import { EnterpriseReverificationService } from './enterprise-reverification.service';
+import { EnterpriseVerificationService } from './enterprise-verification.service';
 
 @Module({
-  imports:[AuthModule],
-  controllers:[ClientsController],
-  providers:[ClientsService,ClientEnterpriseAccessService],
+  imports:[AuthModule,CommerceModule,MarketingModule],
+  controllers:[ClientsController,ClientCrmController,EnterpriseOnboardingController,EnterpriseAdminController],
+  providers:[ClientsService,ClientCrmService,ClientEnterpriseAccessService,EnterpriseOnboardingService,EnterpriseFormExportService,EnterpriseQuoteCheckoutService,EnterpriseContractService,EnterpriseContractExportService,EnterpriseCommercialService,EnterpriseVerificationService,EnterpriseReverificationService],
+  exports:[EnterpriseOnboardingService,EnterpriseContractService,EnterpriseCommercialService,EnterpriseVerificationService,EnterpriseReverificationService],
 })
 export class ClientsModule {}

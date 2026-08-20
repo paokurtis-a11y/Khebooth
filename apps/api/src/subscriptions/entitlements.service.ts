@@ -28,6 +28,7 @@ type ClientSubscriptionRow = {
   subscriptionPlan: string | null;
   subscriptionStatus: string | null;
   paymentStatus: string | null;
+  subscriptionEndsAt: Date | null;
 };
 
 const PLAN_RANK: Record<KhePlan, number> = { DISCOVERY: 0, STARTER: 1, PRO: 2, BUSINESS: 3, ENTERPRISE: 4 };
@@ -63,13 +64,14 @@ export class EntitlementsService {
   private effectivePlan(row: ClientSubscriptionRow | undefined): KhePlan {
     const requested = this.normalizePlan(row?.subscriptionPlan);
     if (requested === 'DISCOVERY') return 'DISCOVERY';
-    if (row?.subscriptionStatus === 'ACTIVE' && row?.paymentStatus === 'PAID') return requested;
+    const expired = Boolean(row?.subscriptionEndsAt && new Date(row.subscriptionEndsAt).getTime() <= Date.now());
+    if (!expired && row?.subscriptionStatus === 'ACTIVE' && row?.paymentStatus === 'PAID') return requested;
     return 'DISCOVERY';
   }
 
   async forEvent(organizationId: string, eventId: string) {
     const rows = await this.prisma.$queryRaw<ClientSubscriptionRow[]>`
-      SELECT e."clientId" AS "clientId", c."subscriptionPlan", c."subscriptionStatus", c."paymentStatus"
+      SELECT e."clientId" AS "clientId", c."subscriptionPlan", c."subscriptionStatus", c."paymentStatus", c."subscriptionEndsAt"
       FROM "Event" e
       LEFT JOIN "Client" c ON c.id = e."clientId"
       WHERE e.id = ${eventId}::uuid AND e."organizationId" = ${organizationId}::uuid
