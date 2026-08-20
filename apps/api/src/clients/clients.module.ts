@@ -6,11 +6,12 @@ import { ClientsService } from './clients.service';
 import { EnterpriseFormExportService } from './enterprise-form-export.service';
 import { EnterpriseOnboardingController } from './enterprise-onboarding.controller';
 import { EnterpriseOnboardingService } from './enterprise-onboarding.service';
+import { EnterpriseQuoteCheckoutService } from './enterprise-quote-checkout.service';
 
 @Module({
   imports:[AuthModule],
   controllers:[ClientsController,EnterpriseOnboardingController],
-  providers:[ClientsService,ClientEnterpriseAccessService,EnterpriseOnboardingService,EnterpriseFormExportService],
+  providers:[ClientsService,ClientEnterpriseAccessService,EnterpriseOnboardingService,EnterpriseFormExportService,EnterpriseQuoteCheckoutService],
   exports:[EnterpriseOnboardingService],
 })
 export class ClientsModule {}
