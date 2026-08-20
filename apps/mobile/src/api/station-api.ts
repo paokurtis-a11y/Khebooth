@@ -60,6 +60,32 @@ export interface StationNotificationContract {
   publishedAt: string | Date;
 }
 
+export interface BillingDocumentContract {
+  id:string;
+  documentType:string;
+  documentNumber:string|null;
+  status:string;
+  currency:string;
+  subtotalCents:number;
+  taxCents:number;
+  totalCents:number;
+  taxCountry:string|null;
+  hostedUrl:string|null;
+  pdfUrl:string|null;
+  receiptUrl:string|null;
+  periodStart:string|Date|null;
+  periodEnd:string|Date|null;
+  dueAt:string|Date|null;
+  issuedAt:string|Date|null;
+  paidAt:string|Date|null;
+  createdAt:string|Date;
+}
+
+export interface StationBillingContract {
+  client:{id:string;name:string;email:string|null;subscriptionPlan:string;subscriptionStatus:string;paymentStatus:string}|null;
+  documents:BillingDocumentContract[];
+}
+
 export interface StationProfileContract {
   organizationId: string;
   firstName: string;
@@ -196,6 +222,7 @@ export interface StationExperienceApi extends StationApi {
   notificationPreferences(stationToken: string): Promise<NotificationPreferencesContract>;
   updateNotificationPreferences(stationToken: string, preferences: NotificationPreferencesContract): Promise<NotificationPreferencesContract>;
   stationNotifications(stationToken: string): Promise<StationNotificationContract[]>;
+  stationBilling(stationToken:string):Promise<StationBillingContract>;
   clientWorkspace(stationToken: string): Promise<ClientWorkspaceContract>;
   createClientEvent(stationToken: string, event: CreateClientEventRequest): Promise<CreateClientEventResponse>;
   markClientEventDesignReady(stationToken: string, eventId: string, designConfig: Record<string, unknown>): Promise<void>;
@@ -306,6 +333,7 @@ export class HttpStationApi implements StationExperienceApi {
   notificationPreferences(token: string) { return this.stationRequest<NotificationPreferencesContract>('/stations/notification-preferences', token); }
   updateNotificationPreferences(token: string, preferences: NotificationPreferencesContract) { return this.stationRequest<NotificationPreferencesContract>('/stations/notification-preferences', token, { method: 'PATCH', body: JSON.stringify(preferences) }); }
   stationNotifications(token: string) { return this.stationRequest<StationNotificationContract[]>('/stations/notifications', token); }
+  stationBilling(token:string){return this.stationRequest<StationBillingContract>('/stations/billing',token);}
   clientWorkspace(token: string) { return this.stationRequest<ClientWorkspaceContract>('/stations/client-workspace', token); }
   createClientEvent(token: string, event: CreateClientEventRequest) { return this.stationRequest<CreateClientEventResponse>('/stations/client-events', token, { method: 'POST', body: JSON.stringify(event) }); }
   async markClientEventDesignReady(token: string, eventId: string, designConfig: Record<string, unknown>): Promise<void> { await this.stationRequest<ClientWorkspaceContract>(`/stations/client-events/${encodeURIComponent(eventId)}/design-ready`, token, { method: 'POST', body: JSON.stringify({ designConfig }) }); }
