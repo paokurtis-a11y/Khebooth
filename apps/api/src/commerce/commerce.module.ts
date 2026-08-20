@@ -10,11 +10,12 @@ import { MarketPricingService } from './market-pricing.service';
 import { PaymentAnalyticsService } from './payment-analytics.service';
 import { PromotionCheckoutService } from './promotion-checkout.service';
 import { SiteContentService } from './site-content.service';
+import { SubscriptionLifecycleService } from './subscription-lifecycle.service';
 
 @Module({
   imports:[AuthModule,MarketingModule],
   controllers:[CommerceController],
-  providers:[CommerceService,CustomerAccessService,EnterprisePaymentOnboardingService,LocalizedSiteService,MarketPricingService,PaymentAnalyticsService,PromotionCheckoutService,SiteContentService],
+  providers:[CommerceService,CustomerAccessService,EnterprisePaymentOnboardingService,LocalizedSiteService,MarketPricingService,PaymentAnalyticsService,PromotionCheckoutService,SiteContentService,SubscriptionLifecycleService],
   exports:[CommerceService,MarketPricingService],
 })
 export class CommerceModule {}
