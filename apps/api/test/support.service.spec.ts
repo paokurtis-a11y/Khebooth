@@ -12,6 +12,13 @@ describe('SupportService', () => {
     role: UserRole.SHARE_HOST,
   };
 
+  const agent: AuthenticatedUser = {
+    id: '99999999-9999-9999-9999-999999999999',
+    organizationId: user.organizationId,
+    email: 'agent@khe.test',
+    role: UserRole.OPERATOR,
+  };
+
   const prisma = {
     user: { findFirst: jest.fn(), update: jest.fn(), findMany: jest.fn() },
     appNotification: { findMany: jest.fn(), findFirst: jest.fn(), create: jest.fn() },
@@ -50,6 +57,57 @@ describe('SupportService', () => {
         }),
       }),
     );
+    expect(prisma.appNotification.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          kind: NotificationKind.SUPPORT,
+          actionUrl: `/help?agentConversation=${created.id}`,
+        }),
+      }),
+    );
+  });
+
+  it('does not duplicate a handoff request that is already waiting for an agent', async () => {
+    const conversation = {
+      id: '22222222-2222-2222-2222-222222222222',
+      requesterUserId: user.id,
+      status: SupportConversationStatus.HANDOFF_REQUESTED,
+      subject: 'Besoin support',
+      messages: [],
+      tasks: [],
+    };
+    jest.spyOn(prisma.supportConversation, 'findFirst').mockResolvedValue(conversation as never);
+
+    const result = await service.requestAgent(user, conversation.id);
+
+    expect(result).toBe(conversation);
+    expect(prisma.supportMessage.create).not.toHaveBeenCalled();
+    expect(prisma.supportConversation.update).not.toHaveBeenCalled();
+    expect(prisma.appNotification.create).not.toHaveBeenCalled();
+  });
+
+  it('shows agent-targeted handoff notifications only to support agents with inbox access', async () => {
+    jest.spyOn(prisma.user, 'findFirst').mockResolvedValue({
+      notificationsEnabled: true,
+      productUpdatesEnabled: true,
+      supportNotificationsEnabled: true,
+    } as never);
+    jest.spyOn(prisma.supportConversation, 'findMany')
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce([{ id: '44444444-4444-4444-4444-444444444444' }] as never);
+    jest.spyOn(prisma.appNotification, 'findMany').mockResolvedValue([
+      {
+        id: '33333333-3333-3333-3333-333333333333',
+        kind: NotificationKind.SUPPORT,
+        actionUrl: '/help?agentConversation=44444444-4444-4444-4444-444444444444',
+        reads: [],
+      },
+    ] as never);
+
+    const result = await service.getNotifications(agent);
+
+    expect(result.unreadCount).toBe(1);
+    expect(result.items).toHaveLength(1);
   });
 
   it('does not allow a user to mark another user private support notification as read', async () => {
