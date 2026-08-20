@@ -137,3 +137,128 @@ ALTER TABLE "MarketingAnalyticsEvent"
   ADD COLUMN IF NOT EXISTS timezone TEXT;
 CREATE INDEX IF NOT EXISTS "MarketingAnalyticsEvent_anonymous_created_idx" ON "MarketingAnalyticsEvent"("anonymousId","createdAt" DESC);
 CREATE INDEX IF NOT EXISTS "MarketingAnalyticsEvent_geo_created_idx" ON "MarketingAnalyticsEvent"("organizationId","countryCode","regionCode","createdAt" DESC);
+
+-- Choose only agents who explicitly opted in to receive assignments during the active session.
+CREATE OR REPLACE FUNCTION khe_pick_available_agent(org_id UUID)
+RETURNS TABLE("userId" UUID, score INTEGER)
+LANGUAGE SQL
+AS $$
+  SELECT u.id,
+    (
+      (SELECT count(*)::int * 10 FROM "SupportConversation" c WHERE c."assignedToUserId"=u.id AND c.status <> 'RESOLVED') +
+      (SELECT count(*)::int FROM "SupportTask" t WHERE t."assignedToUserId"=u.id AND t.status <> 'DONE')
+    ) AS score
+  FROM "User" u
+  JOIN "AgentPresence" p ON p."userId"=u.id
+  WHERE u."organizationId"=org_id
+    AND u."isActive"=TRUE
+    AND u.role IN ('OWNER','ADMIN','OPERATOR')
+    AND p.availability='AVAILABLE'
+    AND p."acceptingAssignments"=TRUE
+    AND p."lastHeartbeatAt">CURRENT_TIMESTAMP-INTERVAL '90 seconds'
+  ORDER BY score ASC,p."availableSince" ASC NULLS LAST,u.id ASC
+  LIMIT 1;
+$$;
+
+CREATE OR REPLACE FUNCTION khe_auto_assign_conversation()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE picked UUID; load_score INTEGER;
+BEGIN
+  IF NEW.status <> 'HANDOFF_REQUESTED' OR NEW."assignedToUserId" IS NOT NULL THEN RETURN NEW; END IF;
+  SELECT "userId",score INTO picked,load_score FROM khe_pick_available_agent(NEW."organizationId");
+  IF picked IS NULL THEN
+    INSERT INTO "SupportAssignmentAttempt" ("organizationId","conversationId","assignmentType",status,reason)
+    VALUES (NEW."organizationId",NEW.id,'CONVERSATION','NO_AGENT','Aucun agent disponible et connecté au moment du transfert');
+    RETURN NEW;
+  END IF;
+  UPDATE "SupportConversation" SET "assignedToUserId"=picked,status='ASSIGNED',"updatedAt"=CURRENT_TIMESTAMP WHERE id=NEW.id AND "assignedToUserId" IS NULL;
+  IF FOUND THEN
+    INSERT INTO "SupportAssignmentAttempt" ("organizationId","conversationId","agentUserId","assignmentType",status,reason,score)
+    VALUES (NEW."organizationId",NEW.id,picked,'CONVERSATION','ASSIGNED','KHE_AUTO_AVAILABILITY',load_score);
+    INSERT INTO "SupportMessage" (id,"conversationId",author,body,"createdAt")
+    VALUES (gen_random_uuid(),NEW.id,'SYSTEM','KHE a automatiquement assigné cette demande à un agent actuellement disponible.',CURRENT_TIMESTAMP);
+    INSERT INTO "AppNotification" (id,"organizationId",kind,title,body,"actionUrl","publishedAt","createdAt")
+    VALUES (gen_random_uuid(),NEW."organizationId",'SUPPORT','Nouvelle assignation KHE','KHE vous a assigné une nouvelle demande support.','/help?agentConversation='||NEW.id::text,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);
+    INSERT INTO "AppNotification" (id,"organizationId",kind,title,body,"actionUrl","publishedAt","createdAt")
+    VALUES (gen_random_uuid(),NEW."organizationId",'SUPPORT','Votre demande est prise en charge','KHE a trouvé automatiquement un agent disponible pour votre demande.','/help?conversation='||NEW.id::text,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);
+  END IF;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS "SupportConversation_khe_auto_assign" ON "SupportConversation";
+CREATE TRIGGER "SupportConversation_khe_auto_assign"
+AFTER INSERT OR UPDATE OF status,"assignedToUserId" ON "SupportConversation"
+FOR EACH ROW EXECUTE FUNCTION khe_auto_assign_conversation();
+
+CREATE OR REPLACE FUNCTION khe_auto_assign_task()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE picked UUID; load_score INTEGER;
+BEGIN
+  IF NEW."assignedToUserId" IS NOT NULL THEN
+    UPDATE "SupportTask" SET "assignedAt"=COALESCE("assignedAt",CURRENT_TIMESTAMP) WHERE id=NEW.id;
+    INSERT INTO "SupportAssignmentAttempt" ("organizationId","conversationId","taskId","agentUserId","assignmentType",status,reason)
+    VALUES (NEW."organizationId",NEW."conversationId",NEW.id,NEW."assignedToUserId",'TASK','ASSIGNED','MANUAL_ASSIGNMENT');
+    RETURN NEW;
+  END IF;
+  SELECT "userId",score INTO picked,load_score FROM khe_pick_available_agent(NEW."organizationId");
+  IF picked IS NULL THEN
+    INSERT INTO "SupportAssignmentAttempt" ("organizationId","conversationId","taskId","assignmentType",status,reason)
+    VALUES (NEW."organizationId",NEW."conversationId",NEW.id,'TASK','NO_AGENT','Aucun agent disponible et connecté lors de la création de la tâche');
+    RETURN NEW;
+  END IF;
+  UPDATE "SupportTask" SET "assignedToUserId"=picked,"assignedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE id=NEW.id AND "assignedToUserId" IS NULL;
+  INSERT INTO "SupportAssignmentAttempt" ("organizationId","conversationId","taskId","agentUserId","assignmentType",status,reason,score)
+  VALUES (NEW."organizationId",NEW."conversationId",NEW.id,picked,'TASK','ASSIGNED','KHE_AUTO_AVAILABILITY',load_score);
+  INSERT INTO "AppNotification" (id,"organizationId",kind,title,body,"actionUrl","publishedAt","createdAt")
+  VALUES (gen_random_uuid(),NEW."organizationId",'SUPPORT','Nouvelle tâche assignée par KHE',NEW.title,'/help?agentConversation='||NEW."conversationId"::text,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS "SupportTask_khe_auto_assign" ON "SupportTask";
+CREATE TRIGGER "SupportTask_khe_auto_assign"
+AFTER INSERT ON "SupportTask"
+FOR EACH ROW EXECUTE FUNCTION khe_auto_assign_task();
+
+CREATE OR REPLACE FUNCTION khe_track_task_completion()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF NEW.status='DONE' AND OLD.status IS DISTINCT FROM NEW.status THEN
+    UPDATE "SupportTask" SET "completedAt"=COALESCE("completedAt",CURRENT_TIMESTAMP) WHERE id=NEW.id;
+    UPDATE "SupportAssignmentAttempt" SET status='COMPLETED',"completedAt"=CURRENT_TIMESTAMP
+    WHERE id=(SELECT id FROM "SupportAssignmentAttempt" WHERE "taskId"=NEW.id AND "agentUserId"=NEW."assignedToUserId" AND status='ASSIGNED' ORDER BY "createdAt" DESC LIMIT 1);
+  END IF;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS "SupportTask_khe_completion" ON "SupportTask";
+CREATE TRIGGER "SupportTask_khe_completion"
+AFTER UPDATE OF status ON "SupportTask"
+FOR EACH ROW EXECUTE FUNCTION khe_track_task_completion();
+
+CREATE OR REPLACE FUNCTION khe_prompt_support_feedback()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF NEW.status='RESOLVED' AND OLD.status IS DISTINCT FROM NEW.status THEN
+    UPDATE "SupportConversation" SET "resolvedAt"=CURRENT_TIMESTAMP,"resolvedByUserId"=COALESCE(NEW."assignedToUserId","resolvedByUserId") WHERE id=NEW.id;
+    UPDATE "SupportAssignmentAttempt" SET status='COMPLETED',"completedAt"=CURRENT_TIMESTAMP
+    WHERE id=(SELECT id FROM "SupportAssignmentAttempt" WHERE "conversationId"=NEW.id AND "assignmentType"='CONVERSATION' AND "agentUserId"=NEW."assignedToUserId" AND status='ASSIGNED' ORDER BY "createdAt" DESC LIMIT 1);
+    INSERT INTO "SupportMessage" (id,"conversationId",author,body,"createdAt")
+    VALUES (gen_random_uuid(),NEW.id,'KHE','Votre demande est résolue. Votre avis nous aide à améliorer KHE BOOTH : notez l’agent de 1 à 5 étoiles et ajoutez un commentaire si vous le souhaitez.',CURRENT_TIMESTAMP);
+    INSERT INTO "AppNotification" (id,"organizationId",kind,title,body,"actionUrl","publishedAt","createdAt")
+    VALUES (gen_random_uuid(),NEW."organizationId",'SUPPORT','Comment s’est passée votre assistance ?','Votre demande est résolue. Notez l’agent KHE et partagez votre avis.','/help?conversation='||NEW.id::text||'&feedback=1',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);
+  END IF;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS "SupportConversation_khe_feedback" ON "SupportConversation";
+CREATE TRIGGER "SupportConversation_khe_feedback"
+AFTER UPDATE OF status ON "SupportConversation"
+FOR EACH ROW EXECUTE FUNCTION khe_prompt_support_feedback();
