@@ -100,7 +100,7 @@ describe('AuthService', () => {
     verifyMock.mockResolvedValue(false);
 
     await expect(service.login({ email: user.email, password: 'wrong-password' })).rejects.toBeInstanceOf(UnauthorizedException);
-    expect(prisma.$executeRaw).toHaveBeenCalledTimes(2);
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(3);
     expect(jwt.signAsync).not.toHaveBeenCalled();
   });
 
