@@ -7,7 +7,7 @@ WITH ranked AS (
   SELECT
     m.id,
     e.name AS event_name,
-    CASE WHEN m."mimeType" LIKE 'image/%' THEN 'PHOTO' ELSE 'VIDEO' END AS media_kind,
+    CASE WHEN m."mimeType" LIKE 'image/%' THEN 'Photo' ELSE 'Vidéo' END AS media_kind,
     ROW_NUMBER() OVER (PARTITION BY m."eventId" ORDER BY m."createdAt", m.id) AS seq
   FROM "MediaAsset" m
   INNER JOIN "Event" e ON e.id = m."eventId"
