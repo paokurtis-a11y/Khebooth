@@ -31,6 +31,15 @@ const TASK_LABELS: Record<Task['status'], string> = {
   DONE: 'Terminée',
 };
 
+const QUICK_TOPICS = [
+  { label: '📱 Connecter 2 tablettes', prompt: 'Comment connecter ma tablette Capture avec ma tablette Sharing ?' },
+  { label: '🔄 Média non synchronisé', prompt: 'Une photo ou une vidéo ne se synchronise pas vers la tablette Sharing.' },
+  { label: '📷 Caméra / Capture', prompt: 'Ma caméra ou le mode Capture ne fonctionne pas correctement.' },
+  { label: '💳 Abonnement / facture', prompt: 'J’ai besoin d’aide avec mon abonnement, mon paiement ou ma facture.' },
+  { label: '🏢 Enterprise / KYC', prompt: 'J’ai besoin d’aide avec mon onboarding Enterprise ou ma vérification KYC.' },
+  { label: '🔐 Connexion au compte', prompt: 'J’ai un problème avec mon e-mail, mon nom d’utilisateur ou mon mot de passe.' },
+];
+
 export default function HelpPage() {
   const user = getSessionUser();
   const isAgent = ['OWNER', 'ADMIN', 'OPERATOR'].includes(user?.role ?? '');
@@ -42,6 +51,7 @@ export default function HelpPage() {
   const [taskTitle, setTaskTitle] = useState('');
   const [taskAssignee, setTaskAssignee] = useState('');
   const [error, setError] = useState('');
+  const [sending, setSending] = useState(false);
 
   const loadConversation = async (id: string) => {
     const conversation = await apiRequest<Conv>(`/support/conversations/${id}`);
@@ -49,7 +59,7 @@ export default function HelpPage() {
     return conversation;
   };
 
-  const refresh = async (activeId?: string) => {
+  const refresh = async (activeId?: string, quiet = false) => {
     try {
       const myItems = await apiRequest<Conv[]>('/support/conversations/me');
       setMine(myItems);
@@ -61,21 +71,27 @@ export default function HelpPage() {
         setInbox(items);
         setAgents(team);
       }
-      const id = activeId ?? active?.id;
-      if (id) await loadConversation(id);
-      setError('');
+      if (activeId) await loadConversation(activeId);
+      if (!quiet) setError('');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Chargement impossible');
+      if (!quiet) setError(e instanceof Error ? e.message : 'Chargement impossible');
     }
   };
 
   useEffect(() => {
-    const requestedConversation = new URLSearchParams(window.location.search).get('conversation');
-    refresh(requestedConversation ?? undefined);
+    const params = new URLSearchParams(window.location.search);
+    const requestedConversation = params.get('conversation') ?? params.get('agentConversation');
+    void refresh(requestedConversation ?? undefined);
   }, []);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => void refresh(active?.id, true), 15000);
+    return () => window.clearInterval(timer);
+  }, [active?.id, isAgent]);
+
   const start = async () => {
-    if (!message.trim()) return;
+    if (!message.trim() || sending) return;
+    setSending(true);
     try {
       const created = await apiRequest<Conv>('/support/conversations', {
         method: 'POST',
@@ -86,11 +102,14 @@ export default function HelpPage() {
       await refresh(created.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Envoi impossible');
+    } finally {
+      setSending(false);
     }
   };
 
   const send = async () => {
-    if (!active || !message.trim()) return;
+    if (!active || !message.trim() || sending) return;
+    setSending(true);
     try {
       await apiRequest(`/support/conversations/${active.id}/messages`, {
         method: 'POST',
@@ -100,13 +119,22 @@ export default function HelpPage() {
       await refresh(active.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Envoi impossible');
+    } finally {
+      setSending(false);
     }
   };
 
   const requestAgent = async () => {
-    if (!active) return;
-    await apiRequest(`/support/conversations/${active.id}/request-agent`, { method: 'POST' });
-    await refresh(active.id);
+    if (!active || active.status !== 'BOT') return;
+    setSending(true);
+    try {
+      await apiRequest(`/support/conversations/${active.id}/request-agent`, { method: 'POST' });
+      await refresh(active.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Transfert impossible');
+    } finally {
+      setSending(false);
+    }
   };
 
   const assign = async (conversationId: string, userId: string) => {
@@ -149,6 +177,7 @@ export default function HelpPage() {
 
   const activeIsHumanTicket =
     isAgent && active?.requester?.email && active.requester.email !== user?.email && active.status !== 'BOT';
+  const awaitingHuman = active?.status === 'HANDOFF_REQUESTED';
 
   return (
     <PortalShell>
@@ -156,16 +185,17 @@ export default function HelpPage() {
         <div>
           <h1>Help & Messagerie</h1>
           <p>KHE répond immédiatement. Si nécessaire, la conversation passe à l’équipe support sans perdre l’historique.</p>
+          <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>● Actualisation automatique de la messagerie toutes les 15 secondes</div>
         </div>
       </div>
       {error ? <p className="error">{error}</p> : null}
 
       <section className="grid" style={{ alignItems: 'start' }}>
         <article className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
             <div>
               <h2 style={{ margin: 0 }}>Assistant KHE</h2>
-              <p className="muted">Activation, Capture, Sharing, impression, hors ligne, compte et utilisation de KHE Booth.</p>
+              <p className="muted">Capture, Sharing, synchronisation, compte, facturation, Enterprise, sécurité et utilisation de KHE Booth.</p>
             </div>
             {active ? (
               <button className="button secondary" onClick={() => { setActive(null); setMessage(''); }}>
@@ -173,6 +203,17 @@ export default function HelpPage() {
               </button>
             ) : null}
           </div>
+
+          {!active ? (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '14px 0' }}>
+              {QUICK_TOPICS.map((topic) => (
+                <button key={topic.label} type="button" className="button secondary" style={{ padding: '8px 11px' }} onClick={() => setMessage(topic.prompt)}>
+                  {topic.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
           <textarea
             className="input"
             rows={4}
@@ -180,13 +221,16 @@ export default function HelpPage() {
             onChange={(e) => setMessage(e.target.value)}
             placeholder={activeIsHumanTicket ? 'Répondre à l’utilisateur…' : 'Ex. Ma tablette Sharing ne voit pas les vidéos…'}
           />
-          <button className="button" onClick={active ? send : start} style={{ marginTop: 10 }}>
-            {active ? 'Envoyer' : 'Démarrer avec KHE'}
+          <button className="button" disabled={sending || !message.trim()} onClick={active ? send : start} style={{ marginTop: 10 }}>
+            {sending ? 'Envoi…' : active ? 'Envoyer' : 'Démarrer avec KHE'}
           </button>
-          {active && !activeIsHumanTicket && active.status !== 'RESOLVED' ? (
-            <button className="button secondary" style={{ marginTop: 10, marginLeft: 8 }} onClick={requestAgent}>
+          {active && !activeIsHumanTicket && active.status === 'BOT' ? (
+            <button className="button secondary" disabled={sending} style={{ marginTop: 10, marginLeft: 8 }} onClick={requestAgent}>
               Parler à un agent
             </button>
+          ) : null}
+          {awaitingHuman && !activeIsHumanTicket ? (
+            <div className="muted" style={{ marginTop: 12 }}>✓ La demande est dans la file du support KHE. Un agent peut reprendre l’historique directement.</div>
           ) : null}
         </article>
 
@@ -276,8 +320,13 @@ export default function HelpPage() {
 
       {isAgent ? (
         <section className="card" style={{ marginTop: 20 }}>
-          <h2>Back-office — Messagerie équipe</h2>
-          <p className="muted">Les demandes transférées arrivent ici. L’équipe peut les ouvrir, les assigner et suivre les tâches jusqu’à résolution.</p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div>
+              <h2 style={{ marginBottom: 4 }}>Back-office — Messagerie équipe</h2>
+              <p className="muted" style={{ marginTop: 0 }}>Les demandes transférées arrivent ici automatiquement. L’équipe peut les ouvrir, les assigner et suivre les tâches jusqu’à résolution.</p>
+            </div>
+            <strong>{inbox.filter((item) => item.status !== 'RESOLVED').length} à traiter</strong>
+          </div>
           {inbox.length === 0 ? <div className="empty">Aucun message à traiter.</div> : inbox.map((c) => (
             <div key={c.id} style={{ padding: 12, borderBottom: '1px solid rgba(127,127,127,.2)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>

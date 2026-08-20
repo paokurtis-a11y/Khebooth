@@ -12,6 +12,7 @@ import { PrismaService } from '../prisma/prisma.service';
 const AGENT_ROLES: UserRole[] = [UserRole.OWNER, UserRole.ADMIN, UserRole.OPERATOR];
 const ADMIN_ROLES: UserRole[] = [UserRole.OWNER, UserRole.ADMIN];
 const SUPPORT_CONVERSATION_URL_PREFIX = '/help?conversation=';
+const SUPPORT_AGENT_URL_PREFIX = '/help?agentConversation=';
 
 @Injectable()
 export class SupportService {
@@ -21,50 +22,93 @@ export class SupportService {
     return AGENT_ROLES.includes(user.role);
   }
 
+  private wantsAgent(question: string) {
+    return /\b(agent|humain|humaine|conseiller|conseillere|support|technicien|technicienne|personne)\b/i.test(question);
+  }
+
   private conversationActionUrl(conversationId: string) {
     return `${SUPPORT_CONVERSATION_URL_PREFIX}${conversationId}`;
+  }
+
+  private agentConversationActionUrl(conversationId: string) {
+    return `${SUPPORT_AGENT_URL_PREFIX}${conversationId}`;
   }
 
   private kheAnswer(question: string): { answer: string; confident: boolean } {
     const q = question.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     const rules: Array<{ words: string[]; answer: string }> = [
       {
-        words: ['activation', 'code', 'station'],
+        words: ['activation', 'code', 'station', 'activer'],
         answer:
-          "Pour activer une station KHE Booth, ouvre l’événement dans le portail, génère un code d’activation, puis saisis ce code sur la tablette Capture ou Sharing. Le code est temporaire et sécurisé. Si le code est refusé, vérifie qu’il n’est ni expiré ni déjà utilisé pour ce mode.",
+          "Pour activer une station KHE Booth, ouvre l’événement dans le portail, génère un code d’activation, puis saisis ce code sur la tablette Capture ou Sharing. Le code est temporaire et sécurisé. S’il est refusé, vérifie qu’il n’est ni expiré ni déjà utilisé pour ce mode.",
       },
       {
-        words: ['camera', 'photo', 'video', 'capture'],
+        words: ['camera', 'photo', 'video', 'capture', 'microphone'],
         answer:
-          "Pour la capture, vérifie d’abord les autorisations Caméra et Microphone de KHE Booth sur la tablette. Dans le mode Capture, choisis Photo ou Vidéo, cadre le sujet puis lance la prise. Les médias restent conservés localement tant qu’ils ne sont pas synchronisés.",
+          "Pour la capture, vérifie d’abord les autorisations Caméra et Microphone de KHE Booth sur la tablette. Dans Capture, choisis Photo ou Vidéo, cadre le sujet puis lance la prise. Si l’image reste noire, ferme puis rouvre le mode Capture après avoir confirmé les autorisations Android.",
       },
       {
-        words: ['sharing', 'partage', 'deuxieme tablette', '2 tablette'],
+        words: ['sharing', 'partage', 'deuxieme tablette', '2 tablette', 'tablette partage'],
         answer:
-          "La tablette Sharing doit rejoindre le même événement que la tablette Capture avec le mode SHARING. Une fois les médias confirmés par la synchronisation, ils apparaissent dans la galerie de partage sans donner à la tablette Sharing l’accès aux données d’une autre organisation.",
+          "La tablette Sharing doit rejoindre le même événement que la tablette Capture avec le mode SHARING. Vérifie que la connexion Sharing a été approuvée dans l’événement. Une fois les médias synchronisés, ils apparaissent dans la galerie de partage sans exposer les données d’une autre organisation.",
       },
       {
-        words: ['hors ligne', 'offline', 'internet', 'connexion'],
+        words: ['synchronisation', 'synchroniser', 'sync', 'upload', 'transfert', 'media manquant', 'video manquante', 'photo manquante'],
         answer:
-          "KHE Booth est conçu pour continuer à fonctionner hors ligne. Le manifeste de l’événement et la file de synchronisation sont conservés localement. Ne supprime pas l’application ni ses données avant que les médias indiquent qu’ils sont synchronisés.",
+          "Si un média n’apparaît pas encore, garde la tablette Capture ouverte et connectée, puis vérifie la file de synchronisation. Un média non confirmé reste localement en attente : ne supprime pas l’application ni ses données. Dès que l’envoi est confirmé, la tablette Sharing peut rafraîchir la galerie.",
       },
       {
-        words: ['imprimer', 'impression', 'print', 'photo imprim'],
+        words: ['hors ligne', 'offline', 'internet', 'reseau', 'connexion internet'],
         answer:
-          "Pour imprimer une photo, ouvre-la depuis la galerie puis utilise l’action Imprimer. Android affichera le service d’impression disponible sur la tablette. Vérifie que l’imprimante est déjà configurée sur Android et accessible sur le même réseau si elle est réseau.",
+          "KHE Booth est conçu pour continuer à capturer hors ligne. Le manifeste de l’événement et la file de synchronisation restent localement sur la tablette. Quand Internet revient, laisse l’application ouverte pour terminer les transferts et ne supprime pas ses données avant confirmation de synchronisation.",
       },
       {
-        words: ['mot de passe', 'connexion', 'login', 'compte'],
+        words: ['connexion sharing', 'autoriser tablette', 'approuver', 'approval', 'remote', 'commande distance', 'controle distance'],
         answer:
-          "Pour un problème de connexion au portail, vérifie l’adresse e-mail du compte et le mot de passe. Si l’accès reste impossible ou si le compte est désactivé, demande le transfert à un agent KHE afin qu’un administrateur puisse contrôler le compte sans exposer ton mot de passe.",
+          "Pour connecter ou piloter une seconde station, ouvre l’événement dans le portail et vérifie la demande de connexion de la tablette. Approuve uniquement la station attendue. Les commandes à distance restent limitées à l’événement et à l’organisation auxquels la station est rattachée.",
       },
       {
-        words: ['mise a jour', 'mise à jour', 'version', 'nouveaute', 'nouveauté'],
+        words: ['imprimer', 'impression', 'print', 'photo imprim', 'imprimante'],
         answer:
-          "Les nouveautés KHE Booth apparaissent dans la cloche de notifications. Tu peux activer ou désactiver les notifications générales et les annonces produit dans tes préférences. Les informations importantes de sécurité peuvent rester visibles dans l’application.",
+          "Pour imprimer une photo, ouvre-la depuis la galerie puis utilise l’action Imprimer. Android affichera le service d’impression disponible. Vérifie que l’imprimante est déjà configurée sur Android et, si elle est réseau, qu’elle est accessible depuis la tablette.",
       },
       {
-        words: ['agent', 'humain', 'conseiller', 'support', 'personne'],
+        words: ['mot de passe', 'connexion', 'login', 'compte', 'identifiant', 'username', 'nom utilisateur'],
+        answer:
+          "Pour te connecter au portail, utilise ton adresse e-mail d’accès ou ton nom d’utilisateur KHE, puis ton mot de passe. Le nom d’utilisateur est unique et une adresse e-mail d’accès ne peut appartenir qu’à un seul compte. Si nécessaire, utilise “Mot de passe oublié” ou demande le transfert à un agent KHE.",
+      },
+      {
+        words: ['abonnement', 'subscription', 'facture', 'billing', 'paiement', 'stripe', 'renouvellement'],
+        answer:
+          "Pour l’abonnement ou la facturation, ouvre la rubrique Abonnement/Facturation du portail afin de vérifier le plan actif, les documents disponibles et les actions de renouvellement. Si un paiement est débité mais que l’accès n’est pas actualisé, transmets la conversation à un agent KHE avec la date du paiement, sans partager de numéro de carte.",
+      },
+      {
+        words: ['enterprise', 'kyc', 'identite', 'justificatif', 'onboarding', 'verification', 'reverification'],
+        answer:
+          "Pour un dossier Enterprise, suis le lien sécurisé d’onboarding ou de revérification et complète uniquement les champs demandés. Les pièces d’identité et justificatifs doivent être envoyés via l’espace prévu à cet effet. Si le dossier reste bloqué après envoi, un agent KHE peut vérifier son statut sans te demander ton mot de passe.",
+      },
+      {
+        words: ['crm', 'client', 'email marketing', 'marketing', 'newsletter', 'desabonner', 'consentement'],
+        answer:
+          "Le CRM KHE conserve les informations client nécessaires au suivi. Les e-mails marketing ne sont envoyés qu’aux contacts ayant un consentement enregistré et peuvent être désactivés via le lien de désabonnement. Modifier l’adresse e-mail du client réinitialise le consentement marketing pour éviter un envoi à une nouvelle adresse sans accord.",
+      },
+      {
+        words: ['notification', 'cloche', 'son', 'vibration', 'nouveaute', 'mise a jour', 'version'],
+        answer:
+          "Les nouveautés et réponses support apparaissent dans la cloche de notifications. Tu peux activer ou désactiver les notifications générales, les nouveautés produit et le support, puis régler le son et la vibration dans les paramètres. Les informations de sécurité importantes peuvent rester visibles dans l’application.",
+      },
+      {
+        words: ['securite', 'confidentialite', 'privacy', 'donnees', 'mot de passe partage', 'carte bancaire'],
+        answer:
+          "Pour ta sécurité, ne communique jamais ton mot de passe, un code d’activation sensible ou les données complètes d’une carte bancaire dans la messagerie. KHE Booth isole les données par organisation et l’équipe support peut diagnostiquer un compte sans demander ton mot de passe.",
+      },
+      {
+        words: ['urgent', 'evenement en cours', 'prestation en cours', 'bloque maintenant', 'panne evenement'],
+        answer:
+          "Si l’événement est en cours, conserve d’abord les médias déjà capturés : ne désinstalle pas l’application et ne vide pas ses données. Vérifie l’alimentation, les autorisations, le réseau et la file de synchronisation. Si la prestation reste bloquée, demande immédiatement le transfert à un agent KHE en précisant Capture ou Sharing et ce qui est affiché à l’écran.",
+      },
+      {
+        words: ['agent', 'humain', 'conseiller', 'support', 'personne', 'technicien'],
         answer:
           "Je peux transférer cette conversation à un agent KHE. Ton historique restera attaché au ticket afin que tu n’aies pas à répéter le problème.",
       },
@@ -86,11 +130,31 @@ export class SupportService {
   }
 
   private async visibleSupportActionUrls(user: AuthenticatedUser) {
-    const conversations = await this.prisma.supportConversation.findMany({
+    const own = await this.prisma.supportConversation.findMany({
       where: { organizationId: user.organizationId, requesterUserId: user.id },
       select: { id: true },
     });
-    return new Set(conversations.map((conversation) => this.conversationActionUrl(conversation.id)));
+    const urls = new Set(own.map((conversation) => this.conversationActionUrl(conversation.id)));
+    if (this.isAgent(user)) {
+      const inbox = await this.prisma.supportConversation.findMany({
+        where: { organizationId: user.organizationId, status: { not: SupportConversationStatus.BOT } },
+        select: { id: true },
+      });
+      inbox.forEach((conversation) => urls.add(this.agentConversationActionUrl(conversation.id)));
+    }
+    return urls;
+  }
+
+  private async notifyAgents(user: AuthenticatedUser, conversationId: string, title: string, body: string) {
+    return this.prisma.appNotification.create({
+      data: {
+        organizationId: user.organizationId,
+        kind: NotificationKind.SUPPORT,
+        title,
+        body,
+        actionUrl: this.agentConversationActionUrl(conversationId),
+      },
+    });
   }
 
   async getNotifications(user: AuthenticatedUser) {
@@ -123,7 +187,8 @@ export class SupportService {
 
     const visibleItems = items.filter((item) => {
       const isPrivateSupport =
-        item.kind === NotificationKind.SUPPORT && item.actionUrl?.startsWith(SUPPORT_CONVERSATION_URL_PREFIX);
+        item.kind === NotificationKind.SUPPORT &&
+        (item.actionUrl?.startsWith(SUPPORT_CONVERSATION_URL_PREFIX) || item.actionUrl?.startsWith(SUPPORT_AGENT_URL_PREFIX));
       return !isPrivateSupport || privateSupportUrls.has(item.actionUrl ?? '');
     });
     const normalized = visibleItems
@@ -156,7 +221,7 @@ export class SupportService {
 
     if (
       notification.kind === NotificationKind.SUPPORT &&
-      notification.actionUrl?.startsWith(SUPPORT_CONVERSATION_URL_PREFIX)
+      (notification.actionUrl?.startsWith(SUPPORT_CONVERSATION_URL_PREFIX) || notification.actionUrl?.startsWith(SUPPORT_AGENT_URL_PREFIX))
     ) {
       const visibleUrls = await this.visibleSupportActionUrls(user);
       if (!visibleUrls.has(notification.actionUrl)) throw new NotFoundException('Notification introuvable');
@@ -186,14 +251,14 @@ export class SupportService {
   }
 
   async createConversation(user: AuthenticatedUser, message: string) {
-    const subject = message.trim().slice(0, 80) || 'Demande KHE Booth';
-    const bot = this.kheAnswer(message);
-    const wantsAgent = /\b(agent|humain|conseiller|support)\b/i.test(message);
-    const status = !bot.confident || wantsAgent
+    const cleanedMessage = message.trim();
+    const subject = cleanedMessage.slice(0, 80) || 'Demande KHE Booth';
+    const bot = this.kheAnswer(cleanedMessage);
+    const status = !bot.confident || this.wantsAgent(cleanedMessage)
       ? SupportConversationStatus.HANDOFF_REQUESTED
       : SupportConversationStatus.BOT;
 
-    return this.prisma.supportConversation.create({
+    const created = await this.prisma.supportConversation.create({
       data: {
         organizationId: user.organizationId,
         requesterUserId: user.id,
@@ -201,13 +266,23 @@ export class SupportService {
         status,
         messages: {
           create: [
-            { author: SupportMessageAuthor.USER, body: message },
+            { author: SupportMessageAuthor.USER, body: cleanedMessage },
             { author: SupportMessageAuthor.KHE, body: bot.answer },
           ],
         },
       },
       include: { messages: { orderBy: { createdAt: 'asc' } }, assignedTo: { select: { id: true, email: true } } },
     });
+
+    if (status === SupportConversationStatus.HANDOFF_REQUESTED) {
+      await this.notifyAgents(
+        user,
+        created.id,
+        'Nouvelle demande pour le support KHE',
+        `Une conversation nécessite l’intervention de l’équipe : ${subject}`,
+      );
+    }
+    return created;
   }
 
   async listMine(user: AuthenticatedUser) {
@@ -255,12 +330,13 @@ export class SupportService {
 
   async sendMessage(user: AuthenticatedUser, conversationId: string, body: string) {
     const conversation = await this.getConversation(user, conversationId);
+    const cleanedBody = body.trim();
     const fromAgent = conversation.requesterUserId !== user.id && this.isAgent(user);
 
     if (fromAgent) {
       await this.prisma.$transaction([
         this.prisma.supportMessage.create({
-          data: { conversationId, author: SupportMessageAuthor.AGENT, userId: user.id, body },
+          data: { conversationId, author: SupportMessageAuthor.AGENT, userId: user.id, body: cleanedBody },
         }),
         this.prisma.supportConversation.update({
           where: { id: conversationId },
@@ -275,7 +351,7 @@ export class SupportService {
             organizationId: user.organizationId,
             kind: NotificationKind.SUPPORT,
             title: 'Nouvelle réponse du support KHE',
-            body: body.length > 180 ? `${body.slice(0, 177)}…` : body,
+            body: cleanedBody.length > 180 ? `${cleanedBody.slice(0, 177)}…` : cleanedBody,
             actionUrl: this.conversationActionUrl(conversationId),
           },
         }),
@@ -284,32 +360,43 @@ export class SupportService {
     }
 
     await this.prisma.supportMessage.create({
-      data: { conversationId, author: SupportMessageAuthor.USER, body },
+      data: { conversationId, author: SupportMessageAuthor.USER, body: cleanedBody },
     });
 
+    let shouldNotifyAgents = false;
     if (conversation.status === SupportConversationStatus.BOT) {
-      const bot = this.kheAnswer(body);
+      const bot = this.kheAnswer(cleanedBody);
+      const handoff = !bot.confident || this.wantsAgent(cleanedBody);
       await this.prisma.supportMessage.create({
         data: { conversationId, author: SupportMessageAuthor.KHE, body: bot.answer },
       });
       await this.prisma.supportConversation.update({
         where: { id: conversationId },
         data: {
-          status: bot.confident ? SupportConversationStatus.BOT : SupportConversationStatus.HANDOFF_REQUESTED,
+          status: handoff ? SupportConversationStatus.HANDOFF_REQUESTED : SupportConversationStatus.BOT,
           lastMessageAt: new Date(),
         },
       });
+      shouldNotifyAgents = handoff;
     } else {
+      const reopening = conversation.status === SupportConversationStatus.RESOLVED;
       await this.prisma.supportConversation.update({
         where: { id: conversationId },
         data: {
-          status:
-            conversation.status === SupportConversationStatus.RESOLVED
-              ? SupportConversationStatus.HANDOFF_REQUESTED
-              : conversation.status,
+          status: reopening ? SupportConversationStatus.HANDOFF_REQUESTED : conversation.status,
           lastMessageAt: new Date(),
         },
       });
+      shouldNotifyAgents = true;
+    }
+
+    if (shouldNotifyAgents) {
+      await this.notifyAgents(
+        user,
+        conversationId,
+        'Nouveau message pour le support KHE',
+        cleanedBody.length > 180 ? `${cleanedBody.slice(0, 177)}…` : cleanedBody,
+      );
     }
     return this.getConversation(user, conversationId);
   }
@@ -317,13 +404,26 @@ export class SupportService {
   async requestAgent(user: AuthenticatedUser, conversationId: string) {
     const conversation = await this.getConversation(user, conversationId);
     if (conversation.requesterUserId !== user.id) throw new ForbiddenException();
+    if (
+      conversation.status === SupportConversationStatus.HANDOFF_REQUESTED ||
+      conversation.status === SupportConversationStatus.ASSIGNED
+    ) {
+      return conversation;
+    }
     await this.prisma.supportMessage.create({
       data: { conversationId, author: SupportMessageAuthor.SYSTEM, body: 'Transfert demandé à un agent KHE.' },
     });
-    return this.prisma.supportConversation.update({
+    const updated = await this.prisma.supportConversation.update({
       where: { id: conversationId },
       data: { status: SupportConversationStatus.HANDOFF_REQUESTED, lastMessageAt: new Date() },
     });
+    await this.notifyAgents(
+      user,
+      conversationId,
+      'Transfert demandé à un agent KHE',
+      `Une conversation attend une prise en charge : ${conversation.subject}`,
+    );
+    return updated;
   }
 
   async listAgents(user: AuthenticatedUser) {
@@ -352,10 +452,20 @@ export class SupportService {
       select: { id: true },
     });
     if (!conversation) throw new NotFoundException('Conversation introuvable');
-    return this.prisma.supportConversation.update({
+    const updated = await this.prisma.supportConversation.update({
       where: { id: conversationId },
       data: { assignedToUserId, status: SupportConversationStatus.ASSIGNED },
     });
+    await this.prisma.appNotification.create({
+      data: {
+        organizationId: user.organizationId,
+        kind: NotificationKind.SUPPORT,
+        title: 'Votre demande KHE est prise en charge',
+        body: 'Un agent KHE a pris en charge votre conversation.',
+        actionUrl: this.conversationActionUrl(conversationId),
+      },
+    });
+    return updated;
   }
 
   async resolveConversation(user: AuthenticatedUser, conversationId: string) {
