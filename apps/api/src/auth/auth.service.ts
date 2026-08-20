@@ -25,6 +25,8 @@ interface UserProfileRow {
   id: string;
   organizationId: string;
   email: string;
+  username: string | null;
+  managedClientId: string | null;
   role: string;
   firstName: string | null;
   lastName: string | null;
@@ -41,7 +43,7 @@ interface UserProfileRow {
 }
 
 type AuthSecurityRow={
-  id:string;organizationId:string;email:string;passwordHash:string;authVersion:number;failedLoginAttempts:number;
+  id:string;organizationId:string;email:string;username:string|null;managedClientId:string|null;passwordHash:string;authVersion:number;failedLoginAttempts:number;
   passwordResetRequired:boolean;loginLockedAt:Date|null;isActive:boolean;role:any;
 };
 
@@ -62,13 +64,23 @@ export class AuthService {
   constructor(private readonly prisma: PrismaService,private readonly jwt: JwtService,private readonly photos: ProfilePhotoService) {}
 
   private hashResetToken(value:string){return createHash('sha256').update(value).digest('hex');}
+  private normalizeUsername(value:string){return value.trim().toLowerCase();}
+  private validUsername(value:string){return /^[a-z0-9][a-z0-9._-]{2,31}$/.test(value);}
 
-  private async authRow(email:string):Promise<AuthSecurityRow|null>{
+  private async authRow(identifier:string):Promise<AuthSecurityRow|null>{
+    const normalized=identifier.trim().toLowerCase();
     const rows=await this.prisma.$queryRaw<AuthSecurityRow[]>`
-      SELECT id,"organizationId",email,"passwordHash","authVersion","failedLoginAttempts","passwordResetRequired","loginLockedAt","isActive",role
-      FROM "User" WHERE lower(email)=${email} LIMIT 1
+      SELECT id,"organizationId",email,username,"managedClientId","passwordHash","authVersion","failedLoginAttempts","passwordResetRequired","loginLockedAt","isActive",role
+      FROM "User" WHERE lower(email)=${normalized} OR lower(username)=${normalized} LIMIT 1
     `;
     return rows[0]??null;
+  }
+
+  async usernameAvailability(usernameValue:string){
+    const username=this.normalizeUsername(usernameValue);
+    if(!this.validUsername(username))return{username,available:false,valid:false,message:'Le nom d’utilisateur doit contenir 3 à 32 caractères : lettres, chiffres, point, tiret ou underscore.'};
+    const rows=await this.prisma.$queryRaw<Array<{id:string}>>`SELECT id FROM "User" WHERE lower(username)=${username} LIMIT 1`;
+    return{username,available:rows.length===0,valid:true,message:rows.length===0?'Nom d’utilisateur disponible.':'Ce nom d’utilisateur est déjà utilisé.'};
   }
 
   private async securityThreshold(organizationId:string):Promise<number>{
@@ -94,12 +106,13 @@ export class AuthService {
     await this.logPasswordEvent(user,'PASSWORD_RESET_REQUESTED',context,{reason,expiresAt:expiresAt.toISOString()});
     const key=process.env.RESEND_API_KEY?.trim();const from=process.env.KHE_EMAIL_FROM?.trim();if(!key||!from)return;
     const origin=(process.env.KHE_PORTAL_ORIGIN||'https://khebooth.vercel.app').replace(/\/$/,'');const resetUrl=`${origin}/reset-password?token=${encodeURIComponent(raw)}`;
-    await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({from,to:[user.email],subject:'Réinitialisation sécurisée de votre mot de passe KHE Booth',html:`<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto"><div style="background:#0d0d0f;padding:22px;border-radius:18px;color:#fff"><div style="color:#d2ad4f;font-weight:900;letter-spacing:3px">KHE BOOTH</div><h2>Réinitialiser votre mot de passe</h2><p>Une demande de réinitialisation a été enregistrée pour votre compte.</p><p><a href="${resetUrl}" style="display:inline-block;background:#b31520;color:#fff;text-decoration:none;padding:13px 18px;border-radius:10px;font-weight:800">Créer un nouveau mot de passe</a></p><p style="font-size:12px;color:#bbb">Ce lien expire dans 30 minutes et ne peut être utilisé qu’une seule fois. Si vous n’êtes pas à l’origine de cette demande, n’utilisez pas le lien et contactez KHE.</p></div></div>`})}).catch(()=>undefined);
+    await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({from,to:[user.email],subject:'Réinitialisation sécurisée de votre mot de passe KHE Booth',html:`<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto"><div style="background:#0d0d0f;padding:22px;border-radius:18px;color:#fff"><div style="color:#d2ad4f;font-weight:900;letter-spacing:3px">KHE BOOTH</div><h2>Réinitialiser votre mot de passe</h2><p>Une demande de réinitialisation a été enregistrée pour votre compte.</p><p><a href="${resetUrl}" style="display:inline-block;background:#b31520;color:#fff;text-decoration:none;padding:13px 18px;border-radius:10px;font-weight:800">Créer mes identifiants sécurisés</a></p><p style="font-size:12px;color:#bbb">Ce lien expire dans 30 minutes et ne peut être utilisé qu’une seule fois. Si vous n’êtes pas à l’origine de cette demande, n’utilisez pas le lien et contactez KHE.</p></div></div>`})}).catch(()=>undefined);
   }
 
   async login(dto: LoginDto,context:RequestContext={}) {
-    const normalizedEmail = dto.email.trim().toLowerCase();
-    const user=await this.authRow(normalizedEmail);
+    const identifier=String(dto.identifier??dto.email??'').trim().toLowerCase();
+    if(!identifier)throw new UnauthorizedException('Invalid credentials');
+    const user=await this.authRow(identifier);
     if(!user||!user.isActive)throw new UnauthorizedException('Invalid credentials');
     if(user.passwordResetRequired){await this.logPasswordEvent(user,'LOGIN_BLOCKED_RESET_REQUIRED',context);throw new UnauthorizedException('PASSWORD_RESET_REQUIRED');}
     const valid=await argon2.verify(user.passwordHash,dto.password).catch(()=>false);
@@ -115,7 +128,7 @@ export class AuthService {
     await this.prisma.$executeRaw`UPDATE "User" SET "failedLoginAttempts"=0,"lastFailedLoginAt"=NULL,"loginLockedAt"=NULL,"updatedAt"=CURRENT_TIMESTAMP WHERE id=${user.id}::uuid`;
     const payload: JwtPayload = { sub: user.id, organizationId: user.organizationId, email: user.email, role: user.role, authVersion:user.authVersion };
     await this.prisma.auditLog.create({ data: { organizationId: user.organizationId, userId: user.id, action: 'AUTH_LOGIN', entityType: 'User', entityId: user.id } });
-    await this.logPasswordEvent(user,'AUTH_LOGIN_SUCCESS',context);
+    await this.logPasswordEvent(user,'AUTH_LOGIN_SUCCESS',context,{identifierType:identifier.includes('@')?'email':'username'});
     return { accessToken: await this.jwt.signAsync(payload), user: await this.profile(user.id) };
   }
 
@@ -127,7 +140,17 @@ export class AuthService {
     return{requested:true,message:'Si cette adresse correspond à un compte KHE Booth actif, un e-mail sécurisé a été envoyé.'};
   }
 
-  async completePasswordReset(tokenValue:string,passwordValue:string,context:RequestContext={}){
+  async passwordResetContext(tokenValue:string){
+    const token=String(tokenValue||'').trim();if(token.length<20)return{valid:false,requiresUsername:false};
+    const tokenHash=this.hashResetToken(token);
+    const rows=await this.prisma.$queryRaw<Array<{expiresAt:Date;usedAt:Date|null;username:string|null;managedClientId:string|null}>>`
+      SELECT p."expiresAt",p."usedAt",u.username,u."managedClientId" FROM "PasswordResetToken" p JOIN "User" u ON u.id=p."userId" WHERE p."tokenHash"=${tokenHash} LIMIT 1
+    `;
+    const row=rows[0];if(!row||row.usedAt||new Date(row.expiresAt).getTime()<Date.now())return{valid:false,requiresUsername:false};
+    return{valid:true,requiresUsername:Boolean(row.managedClientId&&!row.username),username:row.username};
+  }
+
+  async completePasswordReset(tokenValue:string,passwordValue:string,usernameValue:string,context:RequestContext={}){
     const token=String(tokenValue||'').trim();const password=String(passwordValue||'');
     if(token.length<20)throw new BadRequestException('Invalid reset token');
     if(password.length<10||!/[A-Za-z]/.test(password)||!/[0-9]/.test(password))throw new BadRequestException('Le mot de passe doit contenir au moins 10 caractères, avec des lettres et des chiffres.');
@@ -137,22 +160,28 @@ export class AuthService {
     `;
     const reset=rows[0];if(!reset||reset.usedAt||new Date(reset.expiresAt).getTime()<Date.now())throw new BadRequestException('Ce lien de réinitialisation est invalide ou expiré.');
     const users=await this.prisma.$queryRaw<AuthSecurityRow[]>`
-      SELECT id,"organizationId",email,"passwordHash","authVersion","failedLoginAttempts","passwordResetRequired","loginLockedAt","isActive",role FROM "User" WHERE id=${reset.userId}::uuid LIMIT 1
+      SELECT id,"organizationId",email,username,"managedClientId","passwordHash","authVersion","failedLoginAttempts","passwordResetRequired","loginLockedAt","isActive",role FROM "User" WHERE id=${reset.userId}::uuid LIMIT 1
     `;
     const user=users[0];if(!user||!user.isActive)throw new BadRequestException('User unavailable');
+    const requestedUsername=this.normalizeUsername(usernameValue||'');const nextUsername=requestedUsername||user.username||null;
+    if(user.managedClientId&&!nextUsername)throw new BadRequestException('Choisissez un nom d’utilisateur unique pour activer votre accès KHE BOOTH.');
+    if(nextUsername&&!this.validUsername(nextUsername))throw new BadRequestException('Le nom d’utilisateur doit contenir 3 à 32 caractères : lettres, chiffres, point, tiret ou underscore.');
+    if(nextUsername){const existing=await this.prisma.$queryRaw<Array<{id:string}>>`SELECT id FROM "User" WHERE lower(username)=${nextUsername} AND id<>${user.id}::uuid LIMIT 1`;if(existing[0])throw new BadRequestException('Ce nom d’utilisateur est déjà utilisé. Choisissez-en un autre.');}
     const passwordHash=await argon2.hash(password);
-    await this.prisma.$transaction(async(tx)=>{
-      await tx.$executeRaw`UPDATE "PasswordResetToken" SET "usedAt"=CURRENT_TIMESTAMP WHERE id=${reset.id}::uuid AND "usedAt" IS NULL`;
-      await tx.$executeRaw`UPDATE "User" SET "passwordHash"=${passwordHash},"failedLoginAttempts"=0,"passwordResetRequired"=FALSE,"loginLockedAt"=NULL,"lastFailedLoginAt"=NULL,"passwordChangedAt"=CURRENT_TIMESTAMP,"passwordChangeCount"="passwordChangeCount"+1,"authVersion"="authVersion"+1,"updatedAt"=CURRENT_TIMESTAMP WHERE id=${user.id}::uuid`;
-      await tx.auditLog.create({data:{organizationId:user.organizationId,userId:user.id,action:'AUTH_PASSWORD_RESET',entityType:'User',entityId:user.id}});
-    });
-    await this.logPasswordEvent(user,'PASSWORD_RESET_COMPLETED',context,{sessionsRevoked:true});
-    return{reset:true,sessionsRevoked:true,message:'Mot de passe modifié. Reconnectez-vous avec votre nouveau mot de passe.'};
+    try{
+      await this.prisma.$transaction(async(tx)=>{
+        await tx.$executeRaw`UPDATE "PasswordResetToken" SET "usedAt"=CURRENT_TIMESTAMP WHERE id=${reset.id}::uuid AND "usedAt" IS NULL`;
+        await tx.$executeRaw`UPDATE "User" SET username=${nextUsername},"passwordHash"=${passwordHash},"failedLoginAttempts"=0,"passwordResetRequired"=FALSE,"loginLockedAt"=NULL,"lastFailedLoginAt"=NULL,"passwordChangedAt"=CURRENT_TIMESTAMP,"passwordChangeCount"="passwordChangeCount"+1,"authVersion"="authVersion"+1,"updatedAt"=CURRENT_TIMESTAMP WHERE id=${user.id}::uuid`;
+        await tx.auditLog.create({data:{organizationId:user.organizationId,userId:user.id,action:'AUTH_PASSWORD_RESET',entityType:'User',entityId:user.id,metadata:{usernameCreated:Boolean(!user.username&&nextUsername)}}});
+      });
+    }catch(error){if(String(error).toLowerCase().includes('username'))throw new BadRequestException('Ce nom d’utilisateur vient d’être pris. Choisissez-en un autre.');throw error;}
+    await this.logPasswordEvent({...user,username:nextUsername},'PASSWORD_RESET_COMPLETED',context,{sessionsRevoked:true,username:nextUsername});
+    return{reset:true,sessionsRevoked:true,username:nextUsername,message:'Identifiants enregistrés. Reconnectez-vous avec votre e-mail ou votre nom d’utilisateur.'};
   }
 
   private async row(userId: string): Promise<UserProfileRow> {
     const rows = await this.prisma.$queryRaw<UserProfileRow[]>`
-      SELECT u.id,u."organizationId",u.email,u.role::text AS role,u."firstName",u."lastName",u.phone,u."avatarPath",u.permissions,
+      SELECT u.id,u."organizationId",u.email,u.username,u."managedClientId",u.role::text AS role,u."firstName",u."lastName",u.phone,u."avatarPath",u.permissions,
              u."termsAcceptedRevision",u."termsAcceptedAt",u."notificationPreferences",u."isActive",
              o."tenantKind",o."managedByOrganizationId",o."isPlatformManaged"
       FROM "User" u JOIN "Organization" o ON o.id=u."organizationId" WHERE u.id = ${userId}::uuid LIMIT 1
@@ -164,15 +193,20 @@ export class AuthService {
 
   async profile(userId: string) {
     const user = await this.row(userId);const avatar = await this.photos.download(user.avatarPath);
-    return { id:user.id,organizationId:user.organizationId,email:user.email,role:user.role,firstName:user.firstName,lastName:user.lastName,phone:user.phone,avatarUrl:avatar.avatarUrl,avatarExpiresAt:avatar.expiresAt,permissions:resolvedPermissions(user.role,user.permissions),termsRevision:WEB_TERMS_REVISION,termsAccepted:user.termsAcceptedRevision===WEB_TERMS_REVISION,termsAcceptedRevision:user.termsAcceptedRevision,termsAcceptedAt:user.termsAcceptedAt,notificationPreferences:normalizeNotificationPreferences(user.notificationPreferences),tenantKind:user.tenantKind,managedByOrganizationId:user.managedByOrganizationId,isPlatformManaged:user.isPlatformManaged,securityDetailsAllowed:user.role==='OWNER'&&user.tenantKind==='KHE_ROOT' };
+    return { id:user.id,organizationId:user.organizationId,email:user.email,username:user.username,role:user.role,firstName:user.firstName,lastName:user.lastName,phone:user.phone,avatarUrl:avatar.avatarUrl,avatarExpiresAt:avatar.expiresAt,permissions:resolvedPermissions(user.role,user.permissions),termsRevision:WEB_TERMS_REVISION,termsAccepted:user.termsAcceptedRevision===WEB_TERMS_REVISION,termsAcceptedRevision:user.termsAcceptedRevision,termsAcceptedAt:user.termsAcceptedAt,notificationPreferences:normalizeNotificationPreferences(user.notificationPreferences),tenantKind:user.tenantKind,managedByOrganizationId:user.managedByOrganizationId,isPlatformManaged:user.isPlatformManaged,securityDetailsAllowed:user.role==='OWNER'&&user.tenantKind==='KHE_ROOT' };
   }
 
   async updateProfile(userId: string, dto: UpdateProfileDto) {
-    const firstName = dto.firstName.trim();const lastName = dto.lastName.trim();const email = dto.email.trim().toLowerCase();const phone = dto.phone?.trim() || null;
+    const firstName = dto.firstName.trim();const lastName = dto.lastName.trim();const email = dto.email.trim().toLowerCase();const phone = dto.phone?.trim() || null;const requestedUsername=dto.username===undefined?undefined:this.normalizeUsername(dto.username);
     if (!firstName || !lastName) throw new BadRequestException('First name and last name are required');
-    const existing = await this.prisma.user.findFirst({ where: { email, NOT: { id: userId } }, select: { id: true } });if (existing) throw new BadRequestException('Email already in use');
-    await this.prisma.user.update({ where: { id: userId }, data: { firstName, lastName, email } });await this.prisma.$executeRaw`UPDATE "User" SET phone = ${phone}, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ${userId}::uuid`;
-    const user = await this.row(userId);await this.prisma.auditLog.create({ data: { organizationId: user.organizationId, userId: user.id, action: 'USER_PROFILE_UPDATED', entityType: 'User', entityId: user.id } });return this.profile(userId);
+    const emailExisting=await this.prisma.$queryRaw<Array<{id:string}>>`SELECT id FROM "User" WHERE lower(email)=${email} AND id<>${userId}::uuid LIMIT 1`;if(emailExisting[0])throw new BadRequestException('Cette adresse e-mail est déjà utilisée pour un autre accès KHE BOOTH.');
+    if(requestedUsername!==undefined&&!this.validUsername(requestedUsername))throw new BadRequestException('Le nom d’utilisateur doit contenir 3 à 32 caractères : lettres, chiffres, point, tiret ou underscore.');
+    if(requestedUsername!==undefined){const usernameExisting=await this.prisma.$queryRaw<Array<{id:string}>>`SELECT id FROM "User" WHERE lower(username)=${requestedUsername} AND id<>${userId}::uuid LIMIT 1`;if(usernameExisting[0])throw new BadRequestException('Ce nom d’utilisateur est déjà utilisé. Choisissez-en un autre.');}
+    const before=await this.row(userId);
+    await this.prisma.user.update({ where: { id: userId }, data: { firstName, lastName, email } });
+    await this.prisma.$executeRaw`UPDATE "User" SET phone=${phone}, username=COALESCE(${requestedUsername??null},username),"updatedAt"=CURRENT_TIMESTAMP WHERE id=${userId}::uuid`;
+    if(before.managedClientId){await this.prisma.$executeRaw`UPDATE "Client" SET name=${`${firstName} ${lastName}`.trim()},email=${email},phone=${phone},"emailSource"='PLATFORM_PROFILE',"emailLastCapturedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE id=${before.managedClientId}::uuid`;}
+    const user = await this.row(userId);await this.prisma.auditLog.create({ data: { organizationId: user.organizationId, userId: user.id, action: 'USER_PROFILE_UPDATED', entityType: 'User', entityId: user.id, metadata:{clientProfileSynchronized:Boolean(before.managedClientId)} } });return this.profile(userId);
   }
 
   terms() {
