@@ -33,6 +33,7 @@ export class EnterpriseOnboardingController{
   @Get(':token/contract/export/:format')
   async exportContract(@Param('token') token:string,@Param('format') format:string,@Res() response:Response){const file=await this.contractExports.publicExport(token,format);response.setHeader('Content-Type',file.contentType);response.setHeader('Content-Disposition',`attachment; filename="${file.filename.replace(/[^a-zA-Z0-9._-]/g,'-')}"`);response.setHeader('Cache-Control','private, no-store');response.send(file.buffer);}
 
+  @Get(':token/reverification-status') reverificationStatus(@Param('token') token:string){return this.reverification.publicStatus(token);}
   @Get(':token/status') status(@Param('token') token:string){return this.verification.publicStatus(token);}
   @Get(':token/contract') contract(@Param('token') token:string){return this.contracts.publicContract(token);}
   @Patch(':token/language') language(@Param('token') token:string,@Body() body:Record<string,unknown>){return this.contracts.setPreferredLanguage(token,String(body.language??''));}
