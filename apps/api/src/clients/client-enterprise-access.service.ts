@@ -3,10 +3,11 @@ import * as argon2 from 'argon2';
 import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from '../auth/auth.service';
+import { EnterpriseContractService } from './enterprise-contract.service';
 
 @Injectable()
 export class ClientEnterpriseAccessService{
-  constructor(private readonly prisma:PrismaService,private readonly auth:AuthService){}
+  constructor(private readonly prisma:PrismaService,private readonly auth:AuthService,private readonly contracts:EnterpriseContractService){}
 
   private async ensureRootOwner(organizationId:string,role:string){
     const rows=await this.prisma.$queryRaw<Array<{tenantKind:string}>>`SELECT "tenantKind" FROM "Organization" WHERE id=${organizationId}::uuid LIMIT 1`;
@@ -35,10 +36,7 @@ export class ClientEnterpriseAccessService{
     const owner=rows[0];
     if(!owner||owner.role!=='OWNER'||!owner.isActive)throw new UnauthorizedException('OWNER_REAUTHENTICATION_FAILED');
     const valid=await argon2.verify(owner.passwordHash,password).catch(()=>false);
-    if(!valid){
-      await this.prisma.auditLog.create({data:{organizationId,userId:ownerUserId,action:'ENTERPRISE_OWNER_REAUTH_FAILED',entityType:'User',entityId:ownerUserId}});
-      throw new UnauthorizedException('Mot de passe OWNER incorrect');
-    }
+    if(!valid){await this.prisma.auditLog.create({data:{organizationId,userId:ownerUserId,action:'ENTERPRISE_OWNER_REAUTH_FAILED',entityType:'User',entityId:ownerUserId}});throw new UnauthorizedException('Mot de passe OWNER incorrect');}
     await this.prisma.auditLog.create({data:{organizationId,userId:ownerUserId,action:'ENTERPRISE_OWNER_REAUTH_SUCCESS',entityType:'User',entityId:ownerUserId}});
   }
 
@@ -47,82 +45,35 @@ export class ClientEnterpriseAccessService{
     if(enabled&&client.subscriptionPlan!=='ENTERPRISE')throw new BadRequestException('Enterprise KHE Booth access requires the ENTERPRISE plan');
     if(enabled&&client.paymentStatus!=='PAID')throw new BadRequestException('Enterprise payment must be validated before enabling KHE Booth access');
     if(enabled&&!client.email)throw new BadRequestException('A valid client email is required before enabling KHE Booth access');
+    const signedContract=await this.contracts.signedForAccess(rootOrganizationId,clientId);
+    if(enabled&&!signedContract)throw new BadRequestException('SIGNED_ANNUAL_CONTRACT_REQUIRED');
 
-    const onboardingStatus=await this.onboardingStatus(rootOrganizationId,clientId);
-    const kycOverride=enabled&&onboardingStatus!=='APPROVED';
-    if(enabled){
-      await this.reauthenticateOwner(rootOrganizationId,ownerUserId,ownerPassword);
-      if(kycOverride){
-        await this.prisma.auditLog.create({data:{organizationId:rootOrganizationId,userId:ownerUserId,action:'ENTERPRISE_OWNER_KYC_OVERRIDE',entityType:'Client',entityId:clientId,metadata:{onboardingStatus,passwordReauthenticated:true,paymentStatus:client.paymentStatus}}});
-      }
-    }
+    const onboardingStatus=await this.onboardingStatus(rootOrganizationId,clientId);const kycOverride=enabled&&onboardingStatus!=='APPROVED';
+    if(enabled){await this.reauthenticateOwner(rootOrganizationId,ownerUserId,ownerPassword);if(kycOverride)await this.prisma.auditLog.create({data:{organizationId:rootOrganizationId,userId:ownerUserId,action:'ENTERPRISE_OWNER_KYC_OVERRIDE',entityType:'Client',entityId:clientId,metadata:{onboardingStatus,passwordReauthenticated:true,paymentStatus:client.paymentStatus,contractId:signedContract?.id,contractNumber:signedContract?.contractNumber}}});}
 
     const existing=await this.prisma.$queryRaw<Array<{id:string;organizationId:string;email:string;isActive:boolean}>>`
-      SELECT u.id,u."organizationId",u.email,u."isActive" FROM "User" u
-      JOIN "Organization" o ON o.id=u."organizationId"
-      WHERE u."managedClientId"=${clientId}::uuid AND o."managedByOrganizationId"=${rootOrganizationId}::uuid
-      ORDER BY u."createdAt" ASC LIMIT 1
-    `;
-
+      SELECT u.id,u."organizationId",u.email,u."isActive" FROM "User" u JOIN "Organization" o ON o.id=u."organizationId"
+      WHERE u."managedClientId"=${clientId}::uuid AND o."managedByOrganizationId"=${rootOrganizationId}::uuid ORDER BY u."createdAt" ASC LIMIT 1`;
     let managedUser=existing[0]??null;
     if(enabled&&!managedUser){
       const company=(client.companyName||client.name||'Client Enterprise').trim().slice(0,150);const email=client.email!.trim().toLowerCase();const randomPassword=await argon2.hash(randomBytes(32).toString('hex'));
-      const created=await this.prisma.$transaction(async tx=>{
-        const orgRows=await tx.$queryRaw<Array<{id:string}>>`
-          INSERT INTO "Organization" (id,name,"tenantKind","managedByOrganizationId","isPlatformManaged","createdAt","updatedAt")
-          VALUES (gen_random_uuid(),${`Enterprise • ${company}`},'ENTERPRISE_CLIENT',${rootOrganizationId}::uuid,TRUE,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
-          RETURNING id
-        `;
-        const childOrgId=orgRows[0].id;
-        const userRows=await tx.$queryRaw<Array<{id:string;organizationId:string;email:string;isActive:boolean}>>`
+      managedUser=await this.prisma.$transaction(async tx=>{
+        const orgRows=await tx.$queryRaw<Array<{id:string}>>`INSERT INTO "Organization" (id,name,"tenantKind","managedByOrganizationId","isPlatformManaged","createdAt","updatedAt") VALUES (gen_random_uuid(),${`Enterprise • ${company}`},'ENTERPRISE_CLIENT',${rootOrganizationId}::uuid,TRUE,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) RETURNING id`;
+        const childOrgId=orgRows[0].id;const userRows=await tx.$queryRaw<Array<{id:string;organizationId:string;email:string;isActive:boolean}>>`
           INSERT INTO "User" (id,"organizationId",email,"passwordHash","firstName","lastName",role,"isActive",permissions,"managedClientId","passwordResetRequired","authVersion","createdAt","updatedAt")
           VALUES (gen_random_uuid(),${childOrgId}::uuid,${email},${randomPassword},${client.name.split(/\s+/)[0]||'Client'},${client.name.split(/\s+/).slice(1).join(' ')||'Enterprise'},'ADMIN',TRUE,
-            ${JSON.stringify({
-              'dashboard.view':true,'clients.view':true,'events.view':true,'events.manage':true,'studio.view':true,
-              'marketing.view':true,'reports.export':true,'communications.manage':false,'site.manage':false,'team.manage':false,
-              'clients.manage':false,'clients.delete':false,'marketing.manage':false
-            })}::jsonb,${clientId}::uuid,TRUE,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
-          RETURNING id,"organizationId",email,"isActive"
-        `;
-        await tx.auditLog.create({data:{organizationId:rootOrganizationId,userId:ownerUserId,action:'ENTERPRISE_ACCESS_CREATED',entityType:'Client',entityId:clientId,metadata:{childOrganizationId:childOrgId,userId:userRows[0].id,onboardingStatus,kycOverride}}});
-        return userRows[0];
+            ${JSON.stringify({'dashboard.view':true,'clients.view':true,'events.view':true,'events.manage':true,'studio.view':true,'marketing.view':true,'reports.export':true,'communications.manage':false,'site.manage':false,'team.manage':false,'clients.manage':false,'clients.delete':false,'marketing.manage':false})}::jsonb,${clientId}::uuid,TRUE,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+          RETURNING id,"organizationId",email,"isActive"`;
+        await tx.auditLog.create({data:{organizationId:rootOrganizationId,userId:ownerUserId,action:'ENTERPRISE_ACCESS_CREATED',entityType:'Client',entityId:clientId,metadata:{childOrganizationId:childOrgId,userId:userRows[0].id,onboardingStatus,kycOverride,contractId:signedContract?.id,contractNumber:signedContract?.contractNumber}}});return userRows[0];
       });
-      managedUser=created;
-    }else if(managedUser){
-      await this.prisma.$executeRaw`UPDATE "User" SET "isActive"=${enabled},"authVersion"="authVersion"+1,"passwordResetRequired"=${enabled?true:false},"updatedAt"=CURRENT_TIMESTAMP WHERE id=${managedUser.id}::uuid`;
-      await this.prisma.auditLog.create({data:{organizationId:rootOrganizationId,userId:ownerUserId,action:enabled?'ENTERPRISE_ACCESS_ENABLED':'ENTERPRISE_ACCESS_DISABLED',entityType:'Client',entityId:clientId,metadata:{managedUserId:managedUser.id,onboardingStatus,kycOverride}}});
-    }
-
-    if(enabled&&managedUser?.email)await this.auth.requestPasswordReset(managedUser.email,{userAgent:kycOverride?'KHE_OWNER_KYC_OVERRIDE_ACCESS':'KHE_OWNER_MANAGED_ACCESS'});
-    return this.report(rootOrganizationId,ownerRole,clientId);
+    }else if(managedUser){await this.prisma.$executeRaw`UPDATE "User" SET "isActive"=${enabled},"authVersion"="authVersion"+1,"passwordResetRequired"=${enabled?true:false},"updatedAt"=CURRENT_TIMESTAMP WHERE id=${managedUser.id}::uuid`;await this.prisma.auditLog.create({data:{organizationId:rootOrganizationId,userId:ownerUserId,action:enabled?'ENTERPRISE_ACCESS_ENABLED':'ENTERPRISE_ACCESS_DISABLED',entityType:'Client',entityId:clientId,metadata:{managedUserId:managedUser.id,onboardingStatus,kycOverride,contractId:signedContract?.id,contractNumber:signedContract?.contractNumber}}});}
+    if(enabled&&managedUser?.email)await this.auth.requestPasswordReset(managedUser.email,{userAgent:kycOverride?'KHE_OWNER_KYC_OVERRIDE_ACCESS':'KHE_OWNER_MANAGED_ACCESS'});return this.report(rootOrganizationId,ownerRole,clientId);
   }
 
   async report(rootOrganizationId:string,ownerRole:string,clientId:string){
-    await this.ensureRootOwner(rootOrganizationId,ownerRole);const client=await this.client(rootOrganizationId,clientId);
-    const users=await this.prisma.$queryRaw<Array<{id:string;organizationId:string;email:string;role:string;isActive:boolean;failedLoginAttempts:number;passwordResetRequired:boolean;passwordChangedAt:Date|null;passwordChangeCount:number;createdAt:Date}>>`
-      SELECT u.id,u."organizationId",u.email,u.role::text AS role,u."isActive",u."failedLoginAttempts",u."passwordResetRequired",u."passwordChangedAt",u."passwordChangeCount",u."createdAt"
-      FROM "User" u JOIN "Organization" o ON o.id=u."organizationId"
-      WHERE u."managedClientId"=${clientId}::uuid AND o."managedByOrganizationId"=${rootOrganizationId}::uuid ORDER BY u."createdAt" ASC
-    `;
-    const userIds=users.map(u=>u.id);
-    const events=userIds.length?await this.prisma.$queryRaw<any[]>`
-      SELECT id,"userId",email,"eventType","ipAddress",metadata,"createdAt" FROM "PasswordSecurityEvent"
-      WHERE "userId"=ANY(${userIds}::uuid[]) ORDER BY "createdAt" DESC LIMIT 100
-    `:[];
-    const resetRequests=events.filter((event:any)=>event.eventType==='PASSWORD_RESET_REQUESTED').length;
-    const failedAttempts=events.filter((event:any)=>event.eventType==='LOGIN_PASSWORD_FAILED'||event.eventType==='PASSWORD_LOCKED_AFTER_FAILURES').length;
-    const onboardingStatus=await this.onboardingStatus(rootOrganizationId,clientId);
-    return{
-      client:{id:client.id,name:client.name,email:client.email,subscriptionPlan:client.subscriptionPlan,subscriptionStatus:client.subscriptionStatus,paymentStatus:client.paymentStatus},
-      onboardingStatus,
-      ownerKycOverrideAvailable:client.subscriptionPlan==='ENTERPRISE'&&client.paymentStatus==='PAID'&&onboardingStatus!=='APPROVED',
-      ownerPasswordRequiredForActivation:true,
-      accessEnabled:users.some(user=>user.isActive),
-      users,
-      passwordReport:{resetRequests,failedAttempts,passwordChanges:users.reduce((sum,user)=>sum+Number(user.passwordChangeCount||0),0),lastPasswordChangeAt:users.map(u=>u.passwordChangedAt).filter(Boolean).sort((a,b)=>new Date(b!).getTime()-new Date(a!).getTime())[0]??null,events},
-      ownerControlsOnly:true,
-      isolation:'ENTERPRISE_CLIENT_TENANT',
-      securityVisibility:'HEALTH_STATUS_ONLY',
-    };
+    await this.ensureRootOwner(rootOrganizationId,ownerRole);const client=await this.client(rootOrganizationId,clientId);const users=await this.prisma.$queryRaw<Array<{id:string;organizationId:string;email:string;role:string;isActive:boolean;failedLoginAttempts:number;passwordResetRequired:boolean;passwordChangedAt:Date|null;passwordChangeCount:number;createdAt:Date}>>`
+      SELECT u.id,u."organizationId",u.email,u.role::text AS role,u."isActive",u."failedLoginAttempts",u."passwordResetRequired",u."passwordChangedAt",u."passwordChangeCount",u."createdAt" FROM "User" u JOIN "Organization" o ON o.id=u."organizationId" WHERE u."managedClientId"=${clientId}::uuid AND o."managedByOrganizationId"=${rootOrganizationId}::uuid ORDER BY u."createdAt" ASC`;
+    const userIds=users.map(u=>u.id);const events=userIds.length?await this.prisma.$queryRaw<any[]>`SELECT id,"userId",email,"eventType","ipAddress",metadata,"createdAt" FROM "PasswordSecurityEvent" WHERE "userId"=ANY(${userIds}::uuid[]) ORDER BY "createdAt" DESC LIMIT 100`:[];const resetRequests=events.filter((event:any)=>event.eventType==='PASSWORD_RESET_REQUESTED').length;const failedAttempts=events.filter((event:any)=>event.eventType==='LOGIN_PASSWORD_FAILED'||event.eventType==='PASSWORD_LOCKED_AFTER_FAILURES').length;const onboardingStatus=await this.onboardingStatus(rootOrganizationId,clientId);const signedContract=await this.contracts.signedForAccess(rootOrganizationId,clientId);
+    return{client:{id:client.id,name:client.name,email:client.email,subscriptionPlan:client.subscriptionPlan,subscriptionStatus:client.subscriptionStatus,paymentStatus:client.paymentStatus},onboardingStatus,signedContract,contractRequired:true,ownerKycOverrideAvailable:client.subscriptionPlan==='ENTERPRISE'&&client.paymentStatus==='PAID'&&Boolean(signedContract)&&onboardingStatus!=='APPROVED',ownerPasswordRequiredForActivation:true,accessEnabled:users.some(user=>user.isActive),users,passwordReport:{resetRequests,failedAttempts,passwordChanges:users.reduce((sum,user)=>sum+Number(user.passwordChangeCount||0),0),lastPasswordChangeAt:users.map(u=>u.passwordChangedAt).filter(Boolean).sort((a,b)=>new Date(b!).getTime()-new Date(a!).getTime())[0]??null,events},ownerControlsOnly:true,isolation:'ENTERPRISE_CLIENT_TENANT',securityVisibility:'HEALTH_STATUS_ONLY'};
   }
 }
