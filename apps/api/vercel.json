@@ -17,6 +17,14 @@
     {
       "path": "/api/enterprise/onboarding/system/review-sla",
       "schedule": "5 */6 * * *"
+    },
+    {
+      "path": "/api/commerce/system/subscriptions/lifecycle",
+      "schedule": "25 * * * *"
+    },
+    {
+      "path": "/api/enterprise/onboarding/system/reverification",
+      "schedule": "40 6 * * *"
     }
   ],
   "git": {
