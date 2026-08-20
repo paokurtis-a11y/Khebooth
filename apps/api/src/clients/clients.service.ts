@@ -57,11 +57,12 @@ export class ClientsService {
   }
 
   async list(organizationId: string) {
-    const clients = await this.prisma.client.findMany({ where: { organizationId }, orderBy: { createdAt: 'desc' } });
+    const archived=await this.prisma.$queryRaw<Array<{id:string}>>`SELECT id FROM "Client" WHERE "organizationId"=${organizationId}::uuid AND "archivedAt" IS NOT NULL`;
+    const clients = await this.prisma.client.findMany({ where: { organizationId,...(archived.length?{id:{notIn:archived.map((item)=>item.id)}}:{}) }, orderBy: { createdAt: 'desc' } });
     if (clients.length === 0) return [];
     const subscriptions = await this.prisma.$queryRaw<SubscriptionSnapshot[]>`
       SELECT id,"subscriptionPlan","subscriptionStatus","paymentStatus","subscriptionStartedAt","subscriptionEndsAt"
-      FROM "Client" WHERE "organizationId" = ${organizationId}::uuid
+      FROM "Client" WHERE "organizationId" = ${organizationId}::uuid AND "archivedAt" IS NULL
     `;
     const byId = new Map(subscriptions.map((item) => [item.id, item]));
     return clients.map((client) => this.present({ ...client, ...byId.get(client.id) }));
@@ -80,8 +81,8 @@ export class ClientsService {
     const subscription = this.resolveSubscription(dto);
     const result=await this.prisma.$transaction(async (tx) => {
       const client = await tx.client.create({data:{organizationId,name:`${firstName} ${lastName}`,email,phone:dto.phone?.trim()||null,companyName:dto.companyName?.trim()||null,notes:dto.notes?.trim()||null}});
-      await tx.$executeRaw`UPDATE "Client" SET "subscriptionPlan"=${subscription.subscriptionPlan},"subscriptionStatus"=${subscription.subscriptionStatus},"paymentStatus"=${subscription.paymentStatus},"subscriptionStartedAt"=${subscription.subscriptionStartedAt},"subscriptionEndsAt"=${subscription.subscriptionEndsAt} WHERE id=${client.id}::uuid`;
-      await tx.auditLog.create({data:{organizationId,userId,action:'CLIENT_CREATED',entityType:'Client',entityId:client.id,metadata:{subscriptionPlan:subscription.subscriptionPlan,subscriptionStatus:subscription.subscriptionStatus,paymentStatus:subscription.paymentStatus}}});
+      await tx.$executeRaw`UPDATE "Client" SET "subscriptionPlan"=${subscription.subscriptionPlan},"subscriptionStatus"=${subscription.subscriptionStatus},"paymentStatus"=${subscription.paymentStatus},"subscriptionStartedAt"=${subscription.subscriptionStartedAt},"subscriptionEndsAt"=${subscription.subscriptionEndsAt},"emailSource"='MANUAL_CRM',"emailLastCapturedAt"=CURRENT_TIMESTAMP WHERE id=${client.id}::uuid`;
+      await tx.auditLog.create({data:{organizationId,userId,action:'CLIENT_CREATED',entityType:'Client',entityId:client.id,metadata:{subscriptionPlan:subscription.subscriptionPlan,subscriptionStatus:subscription.subscriptionStatus,paymentStatus:subscription.paymentStatus,emailSource:'MANUAL_CRM'}}});
       return this.present({ ...client, id: client.id, ...subscription });
     });
     await this.maybeInviteEnterprise(result.id,subscription);return result;
@@ -91,11 +92,12 @@ export class ClientsService {
     const current = await this.get(organizationId, id);const currentSubscription = await this.subscriptionFor(id);
     const firstName = (dto.firstName ?? current.firstName).trim();const lastName = (dto.name ?? current.lastName).trim();const email = (dto.email ?? current.email ?? '').trim().toLowerCase();
     if (!firstName || !lastName || !email) throw new BadRequestException('First name, last name and email are required');
-    const subscription = this.resolveSubscription(dto, currentSubscription);
+    const subscription = this.resolveSubscription(dto, currentSubscription);const emailChanged=(current.email??'').trim().toLowerCase()!==email;
     const result=await this.prisma.$transaction(async (tx) => {
       const client = await tx.client.update({where:{id},data:{name:`${firstName} ${lastName}`,email,...(dto.phone!==undefined?{phone:dto.phone.trim()||null}:{}),...(dto.companyName!==undefined?{companyName:dto.companyName.trim()||null}:{}),...(dto.notes!==undefined?{notes:dto.notes.trim()||null}:{})}});
-      await tx.$executeRaw`UPDATE "Client" SET "subscriptionPlan"=${subscription.subscriptionPlan},"subscriptionStatus"=${subscription.subscriptionStatus},"paymentStatus"=${subscription.paymentStatus},"subscriptionStartedAt"=${subscription.subscriptionStartedAt},"subscriptionEndsAt"=${subscription.subscriptionEndsAt} WHERE id=${id}::uuid`;
-      await tx.auditLog.create({data:{organizationId,userId,action:'CLIENT_UPDATED',entityType:'Client',entityId:id,metadata:{subscriptionPlan:subscription.subscriptionPlan,subscriptionStatus:subscription.subscriptionStatus,paymentStatus:subscription.paymentStatus}}});
+      await tx.$executeRaw`UPDATE "Client" SET "subscriptionPlan"=${subscription.subscriptionPlan},"subscriptionStatus"=${subscription.subscriptionStatus},"paymentStatus"=${subscription.paymentStatus},"subscriptionStartedAt"=${subscription.subscriptionStartedAt},"subscriptionEndsAt"=${subscription.subscriptionEndsAt},"emailSource"='MANUAL_CRM',"emailLastCapturedAt"=CURRENT_TIMESTAMP,"marketingEmailsEnabled"=CASE WHEN ${emailChanged} THEN FALSE ELSE "marketingEmailsEnabled" END,"marketingConsentAt"=CASE WHEN ${emailChanged} THEN NULL ELSE "marketingConsentAt" END,"marketingConsentSource"=CASE WHEN ${emailChanged} THEN NULL ELSE "marketingConsentSource" END,"marketingConsentVersion"=CASE WHEN ${emailChanged} THEN NULL ELSE "marketingConsentVersion" END,"marketingUnsubscribedAt"=CASE WHEN ${emailChanged} THEN NULL ELSE "marketingUnsubscribedAt" END WHERE id=${id}::uuid`;
+      if(emailChanged)await tx.$executeRaw`UPDATE "MarketingEmailJourney" SET "cancelledAt"=CURRENT_TIMESTAMP,"nextDueAt"=NULL,"updatedAt"=CURRENT_TIMESTAMP WHERE "clientId"=${id}::uuid AND "completedAt" IS NULL AND "cancelledAt" IS NULL`;
+      await tx.auditLog.create({data:{organizationId,userId,action:'CLIENT_UPDATED',entityType:'Client',entityId:id,metadata:{subscriptionPlan:subscription.subscriptionPlan,subscriptionStatus:subscription.subscriptionStatus,paymentStatus:subscription.paymentStatus,emailChanged,marketingConsentReset:emailChanged}}});
       return this.present({ ...client, ...subscription });
     });
     await this.maybeInviteEnterprise(id,subscription);return result;
