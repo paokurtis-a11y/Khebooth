@@ -1,8 +1,8 @@
 import 'react-native';
 
 declare module 'react-native' {
-  interface StyleSheetStatic {
-    readonly absoluteFillObject: {
+  namespace StyleSheet {
+    const absoluteFillObject: {
       readonly position: 'absolute';
       readonly left: 0;
       readonly right: 0;
