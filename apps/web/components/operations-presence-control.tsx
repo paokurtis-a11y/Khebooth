@@ -12,18 +12,19 @@ const LABELS:Record<string,string>={AVAILABLE:'Disponible',BUSY:'Occupé',AWAY:'
 export function OperationsPresenceControl({role}:{role?:string}){
   const pathname=usePathname();const isAgent=['OWNER','ADMIN','OPERATOR'].includes(role??'');const isManager=['OWNER','ADMIN'].includes(role??'');
   const[presence,setPresence]=useState<Presence|null>(null);const[shareLocation,setShareLocation]=useState(false);const[busy,setBusy]=useState(false);const[error,setError]=useState('');
-  const actionCount=useRef(0);const lastPath=useRef<string|null>(null);
+  const actionCount=useRef(0);const lastPath=useRef<string|null>(null);const lastWorkforcePulse=useRef(0);
 
   useEffect(()=>setShareLocation(getApproximateLocationSharing()),[]);
   useEffect(()=>{const handler=()=>{actionCount.current=Math.min(50,actionCount.current+1);};document.addEventListener('click',handler,{passive:true});return()=>document.removeEventListener('click',handler);},[]);
+
+  const pulseOperations=()=>{if(!isAgent)return;void apiRequest('/operations/routing/pulse',{method:'POST'}).catch(()=>undefined);const now=Date.now();if(now-lastWorkforcePulse.current>=300000){lastWorkforcePulse.current=now;void apiRequest('/operations/workforce/pulse',{method:'POST'}).catch(()=>undefined);}};
 
   const heartbeat=async(pageView=0)=>{
     const sessionKey=getOperationsSessionKey();if(!sessionKey)return;
     const actions=actionCount.current;actionCount.current=0;
     try{
       const next=await apiRequest<Presence>('/operations/presence/heartbeat',{method:'POST',body:JSON.stringify({sessionKey,surface:'WEB_PORTAL',shareApproximateLocation:shareLocation,pageViews:pageView,actions})});
-      setPresence(next);setError('');
-      if(isAgent)void apiRequest('/operations/routing/pulse',{method:'POST'}).catch(()=>undefined);
+      setPresence(next);setError('');pulseOperations();
     }catch(e){actionCount.current=Math.min(50,actionCount.current+actions);setError(e instanceof Error?e.message:'Présence indisponible');}
   };
 
@@ -33,7 +34,7 @@ export function OperationsPresenceControl({role}:{role?:string}){
     setBusy(true);setError('');
     try{
       const next=await apiRequest<Presence>('/operations/presence/availability',{method:'POST',body:JSON.stringify({sessionKey:getOperationsSessionKey(),availability,shareApproximateLocation:shareLocation})});
-      setPresence(next);if(isAgent)void apiRequest('/operations/routing/pulse',{method:'POST'}).catch(()=>undefined);
+      setPresence(next);lastWorkforcePulse.current=0;pulseOperations();
     }catch(e){setError(e instanceof Error?e.message:'Statut impossible à modifier');}finally{setBusy(false);}
   };
 
@@ -57,7 +58,7 @@ export function OperationsPresenceControl({role}:{role?:string}){
         <option value="AVAILABLE">Disponible — recevoir les tâches</option><option value="BUSY">Occupé</option><option value="AWAY">Pause</option><option value="UNAVAILABLE">Indisponible</option>
       </select>
       <div className="muted" style={{fontSize:10,marginTop:6}}>{LABELS[presence.availability]??presence.availability}{presence.acceptingAssignments?' · Routing intelligent actif':' · Aucune auto-assignation'}</div>
-      {isManager?<Link href="/operations/routing" style={{display:'block',marginTop:7,fontSize:11,fontWeight:900,color:'#d2ad4f'}}>Routing & SLA →</Link>:null}
+      {isManager?<div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:7}}><Link href="/operations/routing" style={{fontSize:11,fontWeight:900,color:'#d2ad4f'}}>Routing & SLA →</Link><Link href="/operations/workforce" style={{fontSize:11,fontWeight:900,color:'#d2ad4f'}}>Workforce →</Link></div>:null}
     </div>:null}
   </>;
 }
