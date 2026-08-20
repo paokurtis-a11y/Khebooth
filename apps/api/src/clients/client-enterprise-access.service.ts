@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import * as argon2 from 'argon2';
 import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -21,18 +21,41 @@ export class ClientEnterpriseAccessService{
     if(!rows[0])throw new NotFoundException('Client not found');return rows[0];
   }
 
-  private async requireApprovedOnboarding(organizationId:string,clientId:string){
+  private async onboardingStatus(organizationId:string,clientId:string){
     const rows=await this.prisma.$queryRaw<Array<{status:string}>>`
       SELECT status FROM "EnterpriseOnboarding" WHERE "organizationId"=${organizationId}::uuid AND "clientId"=${clientId}::uuid LIMIT 1`;
-    if(rows[0]?.status!=='APPROVED')throw new BadRequestException('Enterprise identity verification and OWNER approval are required before enabling platform access');
+    return rows[0]?.status??'NOT_STARTED';
   }
 
-  async setAccess(rootOrganizationId:string,ownerUserId:string,ownerRole:string,clientId:string,enabled:boolean){
+  private async reauthenticateOwner(organizationId:string,ownerUserId:string,password:string){
+    if(!password)throw new UnauthorizedException('OWNER_PASSWORD_REQUIRED');
+    const rows=await this.prisma.$queryRaw<Array<{id:string;passwordHash:string;role:string;isActive:boolean}>>`
+      SELECT id,"passwordHash",role::text AS role,"isActive" FROM "User"
+      WHERE id=${ownerUserId}::uuid AND "organizationId"=${organizationId}::uuid LIMIT 1`;
+    const owner=rows[0];
+    if(!owner||owner.role!=='OWNER'||!owner.isActive)throw new UnauthorizedException('OWNER_REAUTHENTICATION_FAILED');
+    const valid=await argon2.verify(owner.passwordHash,password).catch(()=>false);
+    if(!valid){
+      await this.prisma.auditLog.create({data:{organizationId,userId:ownerUserId,action:'ENTERPRISE_OWNER_REAUTH_FAILED',entityType:'User',entityId:ownerUserId}});
+      throw new UnauthorizedException('Mot de passe OWNER incorrect');
+    }
+    await this.prisma.auditLog.create({data:{organizationId,userId:ownerUserId,action:'ENTERPRISE_OWNER_REAUTH_SUCCESS',entityType:'User',entityId:ownerUserId}});
+  }
+
+  async setAccess(rootOrganizationId:string,ownerUserId:string,ownerRole:string,clientId:string,enabled:boolean,ownerPassword=''){
     await this.ensureRootOwner(rootOrganizationId,ownerRole);const client=await this.client(rootOrganizationId,clientId);
     if(enabled&&client.subscriptionPlan!=='ENTERPRISE')throw new BadRequestException('Enterprise KHE Booth access requires the ENTERPRISE plan');
     if(enabled&&client.paymentStatus!=='PAID')throw new BadRequestException('Enterprise payment must be validated before enabling KHE Booth access');
     if(enabled&&!client.email)throw new BadRequestException('A valid client email is required before enabling KHE Booth access');
-    if(enabled)await this.requireApprovedOnboarding(rootOrganizationId,clientId);
+
+    const onboardingStatus=await this.onboardingStatus(rootOrganizationId,clientId);
+    const kycOverride=enabled&&onboardingStatus!=='APPROVED';
+    if(enabled){
+      await this.reauthenticateOwner(rootOrganizationId,ownerUserId,ownerPassword);
+      if(kycOverride){
+        await this.prisma.auditLog.create({data:{organizationId:rootOrganizationId,userId:ownerUserId,action:'ENTERPRISE_OWNER_KYC_OVERRIDE',entityType:'Client',entityId:clientId,metadata:{onboardingStatus,passwordReauthenticated:true,paymentStatus:client.paymentStatus}}});
+      }
+    }
 
     const existing=await this.prisma.$queryRaw<Array<{id:string;organizationId:string;email:string;isActive:boolean}>>`
       SELECT u.id,u."organizationId",u.email,u."isActive" FROM "User" u
@@ -61,16 +84,16 @@ export class ClientEnterpriseAccessService{
             })}::jsonb,${clientId}::uuid,TRUE,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
           RETURNING id,"organizationId",email,"isActive"
         `;
-        await tx.auditLog.create({data:{organizationId:rootOrganizationId,userId:ownerUserId,action:'ENTERPRISE_ACCESS_CREATED',entityType:'Client',entityId:clientId,metadata:{childOrganizationId:childOrgId,userId:userRows[0].id}}});
+        await tx.auditLog.create({data:{organizationId:rootOrganizationId,userId:ownerUserId,action:'ENTERPRISE_ACCESS_CREATED',entityType:'Client',entityId:clientId,metadata:{childOrganizationId:childOrgId,userId:userRows[0].id,onboardingStatus,kycOverride}}});
         return userRows[0];
       });
       managedUser=created;
     }else if(managedUser){
       await this.prisma.$executeRaw`UPDATE "User" SET "isActive"=${enabled},"authVersion"="authVersion"+1,"passwordResetRequired"=${enabled?true:false},"updatedAt"=CURRENT_TIMESTAMP WHERE id=${managedUser.id}::uuid`;
-      await this.prisma.auditLog.create({data:{organizationId:rootOrganizationId,userId:ownerUserId,action:enabled?'ENTERPRISE_ACCESS_ENABLED':'ENTERPRISE_ACCESS_DISABLED',entityType:'Client',entityId:clientId,metadata:{managedUserId:managedUser.id}}});
+      await this.prisma.auditLog.create({data:{organizationId:rootOrganizationId,userId:ownerUserId,action:enabled?'ENTERPRISE_ACCESS_ENABLED':'ENTERPRISE_ACCESS_DISABLED',entityType:'Client',entityId:clientId,metadata:{managedUserId:managedUser.id,onboardingStatus,kycOverride}}});
     }
 
-    if(enabled&&managedUser?.email)await this.auth.requestPasswordReset(managedUser.email,{userAgent:'KHE_OWNER_MANAGED_ACCESS'});
+    if(enabled&&managedUser?.email)await this.auth.requestPasswordReset(managedUser.email,{userAgent:kycOverride?'KHE_OWNER_KYC_OVERRIDE_ACCESS':'KHE_OWNER_MANAGED_ACCESS'});
     return this.report(rootOrganizationId,ownerRole,clientId);
   }
 
@@ -88,10 +111,12 @@ export class ClientEnterpriseAccessService{
     `:[];
     const resetRequests=events.filter((event:any)=>event.eventType==='PASSWORD_RESET_REQUESTED').length;
     const failedAttempts=events.filter((event:any)=>event.eventType==='LOGIN_PASSWORD_FAILED'||event.eventType==='PASSWORD_LOCKED_AFTER_FAILURES').length;
-    const onboardingRows=await this.prisma.$queryRaw<Array<{status:string}>>`SELECT status FROM "EnterpriseOnboarding" WHERE "clientId"=${clientId}::uuid LIMIT 1`;
+    const onboardingStatus=await this.onboardingStatus(rootOrganizationId,clientId);
     return{
       client:{id:client.id,name:client.name,email:client.email,subscriptionPlan:client.subscriptionPlan,subscriptionStatus:client.subscriptionStatus,paymentStatus:client.paymentStatus},
-      onboardingStatus:onboardingRows[0]?.status??'PAYMENT_PENDING',
+      onboardingStatus,
+      ownerKycOverrideAvailable:client.subscriptionPlan==='ENTERPRISE'&&client.paymentStatus==='PAID'&&onboardingStatus!=='APPROVED',
+      ownerPasswordRequiredForActivation:true,
       accessEnabled:users.some(user=>user.isActive),
       users,
       passwordReport:{resetRequests,failedAttempts,passwordChanges:users.reduce((sum,user)=>sum+Number(user.passwordChangeCount||0),0),lastPasswordChangeAt:users.map(u=>u.passwordChangedAt).filter(Boolean).sort((a,b)=>new Date(b!).getTime()-new Date(a!).getTime())[0]??null,events},
