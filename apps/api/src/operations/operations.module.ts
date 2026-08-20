@@ -9,6 +9,8 @@ import { OperationsService } from './operations.service';
 import { PublicAnalyticsController } from './public-analytics.controller';
 import { RoutingIntelligenceController } from './routing-intelligence.controller';
 import { RoutingIntelligenceService } from './routing-intelligence.service';
+import { ShiftBriefController } from './shift-brief.controller';
+import { ShiftBriefService } from './shift-brief.service';
 import { ShiftHandoverController } from './shift-handover.controller';
 import { ShiftHandoverService } from './shift-handover.service';
 import { SupportFeedbackController } from './support-feedback.controller';
@@ -17,5 +19,5 @@ import { WorkforceIntelligenceService } from './workforce-intelligence.service';
 import { WorkforceScheduleOptimizerController } from './workforce-schedule-optimizer.controller';
 import { WorkforceScheduleOptimizerService } from './workforce-schedule-optimizer.service';
 
-@Module({imports:[PrismaModule],controllers:[OperationsController,PublicAnalyticsController,SupportFeedbackController,RoutingIntelligenceController,WorkforceIntelligenceController,WorkforceScheduleOptimizerController,AgentWorkforceController,LiveShiftController,ShiftHandoverController],providers:[OperationsService,RoutingIntelligenceService,WorkforceIntelligenceService,WorkforceScheduleOptimizerService,AgentWorkforceService,ShiftHandoverService,LiveShiftService],exports:[OperationsService,RoutingIntelligenceService,WorkforceIntelligenceService,WorkforceScheduleOptimizerService,AgentWorkforceService,ShiftHandoverService,LiveShiftService]})
+@Module({imports:[PrismaModule],controllers:[OperationsController,PublicAnalyticsController,SupportFeedbackController,RoutingIntelligenceController,WorkforceIntelligenceController,WorkforceScheduleOptimizerController,AgentWorkforceController,LiveShiftController,ShiftHandoverController,ShiftBriefController],providers:[OperationsService,RoutingIntelligenceService,WorkforceIntelligenceService,WorkforceScheduleOptimizerService,AgentWorkforceService,ShiftHandoverService,ShiftBriefService,LiveShiftService],exports:[OperationsService,RoutingIntelligenceService,WorkforceIntelligenceService,WorkforceScheduleOptimizerService,AgentWorkforceService,ShiftHandoverService,ShiftBriefService,LiveShiftService]})
 export class OperationsModule{}
