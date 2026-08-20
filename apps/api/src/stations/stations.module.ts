@@ -14,6 +14,8 @@ import { PublicMediaController } from './public-media.controller';
 import { PublicSocialController } from './public-social.controller';
 import { SharingBusinessService } from './sharing-business.service';
 import { StationAuthGuard } from './station-auth.guard';
+import { StationBillingController } from './station-billing.controller';
+import { StationBillingService } from './station-billing.service';
 import { StationConnectionService } from './station-connection.service';
 import { StationNotificationsService } from './station-notifications.service';
 import { StationProfileService } from './station-profile.service';
@@ -23,7 +25,7 @@ import { StationsService } from './stations.service';
 
 @Module({
   imports: [AuthModule, EventsModule, CommerceModule, SubscriptionsModule],
-  controllers: [StationsController, PublicMediaController, PublicSocialController],
-  providers: [StationsService, StationRenewalService, StationProfileService, StationNotificationsService, ClientEventWorkspaceService, DesignStorageService, ProfileStorageService, MediaStorageService, MediaCatalogService, MediaSharingService, MediaTrashService, SharingBusinessService, StationConnectionService, StationAuthGuard],
+  controllers: [StationsController, StationBillingController, PublicMediaController, PublicSocialController],
+  providers: [StationsService, StationRenewalService, StationProfileService, StationNotificationsService, StationBillingService, ClientEventWorkspaceService, DesignStorageService, ProfileStorageService, MediaStorageService, MediaCatalogService, MediaSharingService, MediaTrashService, SharingBusinessService, StationConnectionService, StationAuthGuard],
 })
 export class StationsModule {}
