@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { apiRequest } from '@/lib/api';
@@ -9,7 +10,7 @@ type Presence={isAgent:boolean;online:boolean;availability:string;acceptingAssig
 const LABELS:Record<string,string>={AVAILABLE:'Disponible',BUSY:'Occupé',AWAY:'Pause',UNAVAILABLE:'Indisponible'};
 
 export function OperationsPresenceControl({role}:{role?:string}){
-  const pathname=usePathname();const isAgent=['OWNER','ADMIN','OPERATOR'].includes(role??'');
+  const pathname=usePathname();const isAgent=['OWNER','ADMIN','OPERATOR'].includes(role??'');const isManager=['OWNER','ADMIN'].includes(role??'');
   const[presence,setPresence]=useState<Presence|null>(null);const[shareLocation,setShareLocation]=useState(false);const[busy,setBusy]=useState(false);const[error,setError]=useState('');
   const actionCount=useRef(0);const lastPath=useRef<string|null>(null);
 
@@ -22,16 +23,17 @@ export function OperationsPresenceControl({role}:{role?:string}){
     try{
       const next=await apiRequest<Presence>('/operations/presence/heartbeat',{method:'POST',body:JSON.stringify({sessionKey,surface:'WEB_PORTAL',shareApproximateLocation:shareLocation,pageViews:pageView,actions})});
       setPresence(next);setError('');
+      if(isAgent)void apiRequest('/operations/routing/pulse',{method:'POST'}).catch(()=>undefined);
     }catch(e){actionCount.current=Math.min(50,actionCount.current+actions);setError(e instanceof Error?e.message:'Présence indisponible');}
   };
 
-  useEffect(()=>{const pageView=lastPath.current===pathname?0:1;lastPath.current=pathname;void heartbeat(pageView);const timer=window.setInterval(()=>void heartbeat(0),30000);return()=>window.clearInterval(timer);},[pathname,shareLocation]);
+  useEffect(()=>{const pageView=lastPath.current===pathname?0:1;lastPath.current=pathname;void heartbeat(pageView);const timer=window.setInterval(()=>void heartbeat(0),30000);return()=>window.clearInterval(timer);},[pathname,shareLocation,isAgent]);
 
   const setAvailability=async(availability:string)=>{
     setBusy(true);setError('');
     try{
       const next=await apiRequest<Presence>('/operations/presence/availability',{method:'POST',body:JSON.stringify({sessionKey:getOperationsSessionKey(),availability,shareApproximateLocation:shareLocation})});
-      setPresence(next);
+      setPresence(next);if(isAgent)void apiRequest('/operations/routing/pulse',{method:'POST'}).catch(()=>undefined);
     }catch(e){setError(e instanceof Error?e.message:'Statut impossible à modifier');}finally{setBusy(false);}
   };
 
@@ -54,7 +56,8 @@ export function OperationsPresenceControl({role}:{role?:string}){
       <select className="input" aria-label="Disponibilité agent" disabled={busy} value={presence.availability||'UNAVAILABLE'} onChange={e=>void setAvailability(e.target.value)} style={{marginTop:8,padding:'7px 9px'}}>
         <option value="AVAILABLE">Disponible — recevoir les tâches</option><option value="BUSY">Occupé</option><option value="AWAY">Pause</option><option value="UNAVAILABLE">Indisponible</option>
       </select>
-      <div className="muted" style={{fontSize:10,marginTop:6}}>{LABELS[presence.availability]??presence.availability}{presence.acceptingAssignments?' · Auto-assignation active':' · Aucune auto-assignation'}</div>
+      <div className="muted" style={{fontSize:10,marginTop:6}}>{LABELS[presence.availability]??presence.availability}{presence.acceptingAssignments?' · Routing intelligent actif':' · Aucune auto-assignation'}</div>
+      {isManager?<Link href="/operations/routing" style={{display:'block',marginTop:7,fontSize:11,fontWeight:900,color:'#d2ad4f'}}>Routing & SLA →</Link>:null}
     </div>:null}
   </>;
 }
