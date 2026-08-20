@@ -12,6 +12,7 @@ import { ClientsService } from './clients.service';
 import { CreateClientDto } from './dto/create-client.dto';
 import { UpdateClientDto } from './dto/update-client.dto';
 import { EnterpriseOnboardingService } from './enterprise-onboarding.service';
+import { EnterpriseQuoteCheckoutService } from './enterprise-quote-checkout.service';
 
 @UseGuards(AuthGuard('jwt'), RolesGuard, PermissionsGuard)
 @Controller('clients')
@@ -20,6 +21,7 @@ export class ClientsController {
     private readonly clients: ClientsService,
     private readonly enterprise:ClientEnterpriseAccessService,
     private readonly onboarding:EnterpriseOnboardingService,
+    private readonly enterpriseQuoteCheckout:EnterpriseQuoteCheckoutService,
   ) {}
 
   @Permissions('clients.view') @Get() list(@CurrentUser() user: AuthenticatedUser) { return this.clients.list(user.organizationId); }
@@ -73,4 +75,7 @@ export class ClientsController {
 
   @Permissions('clients.manage') @Roles(UserRole.OWNER,UserRole.ADMIN) @Post(':id/enterprise-quotes')
   enterpriseQuote(@CurrentUser() user:AuthenticatedUser,@Param('id',new ParseUUIDPipe()) id:string,@Body() body:Record<string,unknown>){return this.onboarding.createQuote(user.organizationId,user.id,user.role,id,body);}
+
+  @Permissions('clients.manage') @Roles(UserRole.OWNER,UserRole.ADMIN) @Post(':id/enterprise-quotes/:quoteId/send')
+  sendEnterpriseQuote(@CurrentUser() user:AuthenticatedUser,@Param('id',new ParseUUIDPipe()) id:string,@Param('quoteId',new ParseUUIDPipe()) quoteId:string){return this.enterpriseQuoteCheckout.send(user.organizationId,user.id,user.role,id,quoteId);}
 }
