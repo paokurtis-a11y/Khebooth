@@ -31,6 +31,7 @@ export interface AppSettings {
 
 const SETTINGS_KEY = 'khe.app.settings.v1';
 const STATION_TOKEN_KEY = 'khe.station.token.v1';
+const NOTIFICATION_VALIDATED_KEY = 'khe.notification.validated.v1';
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   wifiPreferred: true,
@@ -121,6 +122,9 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
   const [networkType, setNetworkType] = useState<string>('UNKNOWN');
   const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES);
   const [notificationMessage, setNotificationMessage] = useState('');
+  const [notificationValidated, setNotificationValidated] = useState(false);
+  const [notificationEditing, setNotificationEditing] = useState(true);
+  const [notificationTested, setNotificationTested] = useState(false);
   const [locationPermission, setLocationPermission] = useState<Location.LocationPermissionResponse | null>(null);
   const [locationMessage, setLocationMessage] = useState('');
 
@@ -131,6 +135,9 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
     void (async () => {
       const local = await loadNotificationPreferences();
       setNotificationPreferences(local);
+      const validated = (await SecureStore.getItemAsync(NOTIFICATION_VALIDATED_KEY)) === 'true';
+      setNotificationValidated(validated);
+      setNotificationEditing(!validated);
       const token = await SecureStore.getItemAsync(STATION_TOKEN_KEY);
       if (!token) return;
       try {
@@ -186,18 +193,37 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
     }
   }
 
-  async function updateNotifications(patch: Partial<NotificationPreferences>): Promise<void> {
-    const next = { ...notificationPreferences, ...patch };
-    setNotificationPreferences(next);
-    await saveNotificationPreferences(next);
-    setNotificationMessage('Réglage enregistré localement.');
+  function changeNotificationDraft(patch: Partial<NotificationPreferences>): void {
+    setNotificationPreferences((current) => ({ ...current, ...patch }));
+    setNotificationTested(false);
+    setNotificationValidated(false);
+    setNotificationMessage('Réglage modifié. Testez-le avant de le valider.');
+  }
+
+  async function testNotifications(): Promise<void> {
+    await playNotificationFeedback(notificationPreferences);
+    setNotificationTested(true);
+    setNotificationMessage('✓ Test effectué. Si le résultat vous convient, validez ce réglage.');
+  }
+
+  async function validateNotifications(): Promise<void> {
+    if (!notificationTested) {
+      setNotificationMessage('Testez d’abord la notification avant de valider.');
+      return;
+    }
+    await saveNotificationPreferences(notificationPreferences);
     const token = await SecureStore.getItemAsync(STATION_TOKEN_KEY);
-    if (!token) return;
     try {
-      await api.updateNotificationPreferences(token, next);
-      setNotificationMessage('✓ Réglage synchronisé entre CAPTURE et SHARING.');
+      if (token) await api.updateNotificationPreferences(token, notificationPreferences);
+      await SecureStore.setItemAsync(NOTIFICATION_VALIDATED_KEY, 'true', { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY });
+      setNotificationValidated(true);
+      setNotificationEditing(false);
+      setNotificationMessage('✓ Notification validée et synchronisée.');
     } catch (error) {
-      setNotificationMessage(`Réglage local conservé. ${error instanceof Error ? error.message : ''}`.trim());
+      await SecureStore.setItemAsync(NOTIFICATION_VALIDATED_KEY, 'true', { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY });
+      setNotificationValidated(true);
+      setNotificationEditing(false);
+      setNotificationMessage(`✓ Réglage validé sur cette tablette. Synchronisation Cloud à reprendre plus tard. ${error instanceof Error ? error.message : ''}`.trim());
     }
   }
 
@@ -252,16 +278,20 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
 
         <View style={styles.sectionCard}>
           <Text style={styles.cardTitle}>NOTIFICATIONS</Text>
-          <Text style={styles.sectionTitle}>Son et vibration</Text>
-          <ToggleRow title="Notifications KHE" help="Active ou coupe les retours sonores et vibratoires de KHE Booth." value={notificationPreferences.enabled} onChange={(enabled) => void updateNotifications({ enabled })} />
-          <ToggleRow title="Son" help="Vous pouvez choisir un son KHE ou garder l’application silencieuse." value={notificationPreferences.soundEnabled && notificationPreferences.sound !== 'silent'} onChange={(soundEnabled) => void updateNotifications({ soundEnabled, sound: soundEnabled ? (notificationPreferences.sound === 'silent' ? 'khe_chime' : notificationPreferences.sound) : 'silent' })} />
-          <ChoiceRow label="Son" value={notificationPreferences.sound} onChange={(sound) => void updateNotifications({ sound, soundEnabled: sound !== 'silent' })} values={[["khe_chime", "KHE Chime"], ["khe_gold", "KHE Gold"], ["khe_pulse", "KHE Pulse"], ["default", "Classique"], ["silent", "Silencieux"]]} />
-          <ChoiceRow label="Volume" value={String(notificationPreferences.soundVolume)} onChange={(value) => void updateNotifications({ soundVolume: Number(value) })} values={[["25", "25%"], ["50", "50%"], ["70", "70%"], ["100", "100%"]]} />
-          <ToggleRow title="Vibration" help="Utilise la vibration de l’appareil lorsqu’elle est disponible." value={notificationPreferences.vibrationEnabled} onChange={(vibrationEnabled) => void updateNotifications({ vibrationEnabled, vibrationMode: vibrationEnabled ? (notificationPreferences.vibrationMode === 'off' ? 'double' : notificationPreferences.vibrationMode) : 'off' })} />
-          <ChoiceRow label="Mode de vibration" value={notificationPreferences.vibrationMode} onChange={(vibrationMode) => void updateNotifications({ vibrationMode, vibrationEnabled: vibrationMode !== 'off' })} values={[["short", "Courte"], ["double", "Double"], ["triple", "Triple"], ["long", "Longue"], ["off", "Aucune"]]} />
-          <ChoiceRow label="Intensité souhaitée" value={notificationPreferences.vibrationIntensity} onChange={(vibrationIntensity) => void updateNotifications({ vibrationIntensity })} values={[["light", "Légère"], ["medium", "Moyenne"], ["strong", "Forte"]]} />
-          <Text style={styles.help}>Selon Android/iOS et le matériel, KHE peut contrôler le motif mais pas toujours la puissance physique du moteur de vibration. Les réglages système restent prioritaires.</Text>
-          <Pressable style={styles.testButton} onPress={() => void playNotificationFeedback(notificationPreferences)}><Text style={styles.testText}>Tester la notification</Text></Pressable>
+          <View style={styles.notificationHeading}><View style={{flex:1}}><Text style={styles.sectionTitle}>Son et vibration</Text><Text style={styles.help}>{notificationValidated && !notificationEditing ? 'Réglage validé. Appuyez sur Modifier pour effectuer un nouveau test.' : 'Configurez, testez puis validez votre notification KHE.'}</Text></View>{notificationValidated && !notificationEditing ? <View style={styles.validBadge}><Text style={styles.validBadgeText}>VALIDÉ ✓</Text></View> : null}</View>
+          <View pointerEvents={notificationValidated && !notificationEditing ? 'none' : 'auto'} style={notificationValidated && !notificationEditing ? styles.settingsLocked : undefined}>
+            <View style={styles.notificationControls}>
+              <ToggleRow title="Notifications KHE" help="Active ou coupe les retours sonores et vibratoires de KHE Booth." value={notificationPreferences.enabled} onChange={(enabled) => changeNotificationDraft({ enabled })} />
+              <ToggleRow title="Son" help="Vous pouvez choisir un son KHE ou garder l’application silencieuse." value={notificationPreferences.soundEnabled && notificationPreferences.sound !== 'silent'} onChange={(soundEnabled) => changeNotificationDraft({ soundEnabled, sound: soundEnabled ? (notificationPreferences.sound === 'silent' ? 'khe_chime' : notificationPreferences.sound) : 'silent' })} />
+              <ChoiceRow label="Son" value={notificationPreferences.sound} onChange={(sound) => changeNotificationDraft({ sound, soundEnabled: sound !== 'silent' })} values={[["khe_chime", "KHE Chime"], ["khe_gold", "KHE Gold"], ["khe_pulse", "KHE Pulse"], ["khe_flash", "KHE Flash"], ["khe_velvet", "KHE Velvet"], ["khe_victory", "KHE Victory"], ["khe_night", "KHE Night"], ["default", "Classique"], ["silent", "Silencieux"]]} />
+              <ChoiceRow label="Volume" value={String(notificationPreferences.soundVolume)} onChange={(value) => changeNotificationDraft({ soundVolume: Number(value) })} values={[["25", "25%"], ["50", "50%"], ["70", "70%"], ["100", "100%"]]} />
+              <ToggleRow title="Vibration" help="Utilise la vibration de l’appareil lorsqu’elle est disponible." value={notificationPreferences.vibrationEnabled} onChange={(vibrationEnabled) => changeNotificationDraft({ vibrationEnabled, vibrationMode: vibrationEnabled ? (notificationPreferences.vibrationMode === 'off' ? 'double' : notificationPreferences.vibrationMode) : 'off' })} />
+              <ChoiceRow label="Mode de vibration" value={notificationPreferences.vibrationMode} onChange={(vibrationMode) => changeNotificationDraft({ vibrationMode, vibrationEnabled: vibrationMode !== 'off' })} values={[["short", "Courte"], ["double", "Double"], ["triple", "Triple"], ["heartbeat", "Battement KHE"], ["long", "Longue"], ["off", "Aucune"]]} />
+              <ChoiceRow label="Intensité souhaitée" value={notificationPreferences.vibrationIntensity} onChange={(vibrationIntensity) => changeNotificationDraft({ vibrationIntensity })} values={[["light", "Légère"], ["medium", "Moyenne"], ["strong", "Forte"]]} />
+              <Text style={styles.help}>Selon Android/iOS et le matériel, KHE peut contrôler le motif mais pas toujours la puissance physique du moteur de vibration. Les réglages système restent prioritaires.</Text>
+            </View>
+          </View>
+          {notificationValidated && !notificationEditing ? <Pressable style={styles.modifyNotificationButton} onPress={() => {setNotificationEditing(true);setNotificationTested(false);setNotificationMessage('Vous pouvez modifier le réglage. Testez-le avant la prochaine validation.');}}><Text style={styles.modifyNotificationText}>MODIFIER LA NOTIFICATION</Text></Pressable> : <View style={styles.notificationActions}><Pressable style={styles.testButton} onPress={() => void testNotifications()}><Text style={styles.testText}>TESTER LA NOTIFICATION</Text></Pressable><Pressable style={[styles.validateButton,!notificationTested&&styles.validateDisabled]} onPress={() => void validateNotifications()}><Text style={styles.validateText}>VALIDER LE RÉGLAGE</Text></Pressable></View>}
           {notificationMessage ? <Text style={styles.inlineMessage}>{notificationMessage}</Text> : null}
         </View>
 
@@ -307,8 +337,9 @@ const styles = StyleSheet.create({
   choiceText: { color: '#ddd', fontSize: 11, fontWeight: '800' },
   choiceTextActive: { color: '#111' },
   previewCard:{backgroundColor:'#f5fbff',borderWidth:1,borderColor:'#8ad9f5',borderRadius:16,padding:16,gap:7},previewLabel:{fontSize:9,fontWeight:'900',letterSpacing:1.5,color:'#8b6819'},previewTitle:{color:'#17242b',fontWeight:'900'},previewBody:{color:'#4f6672'},
-  testButton: { backgroundColor: '#b31520', borderRadius: 12, padding: 12, alignItems: 'center' },
-  testText: { color: '#fff', fontWeight: '900' },
+  notificationHeading:{flexDirection:'row',alignItems:'flex-start',gap:10},validBadge:{backgroundColor:'#d2ad4f',borderRadius:999,paddingHorizontal:9,paddingVertical:6},validBadgeText:{color:'#111',fontSize:9,fontWeight:'900'},notificationControls:{gap:10},settingsLocked:{opacity:.58},notificationActions:{flexDirection:'row',flexWrap:'wrap',gap:8},
+  testButton: { flexGrow:1,minWidth:150,backgroundColor: '#b31520', borderRadius: 12, padding: 12, alignItems: 'center' },
+  testText: { color: '#fff', fontWeight: '900',fontSize:10 },validateButton:{flexGrow:1,minWidth:150,backgroundColor:'#d2ad4f',borderRadius:12,padding:12,alignItems:'center'},validateDisabled:{opacity:.45},validateText:{color:'#111',fontWeight:'900',fontSize:10},modifyNotificationButton:{backgroundColor:'#d2ad4f',borderRadius:12,padding:13,alignItems:'center'},modifyNotificationText:{color:'#111',fontWeight:'900',fontSize:10,letterSpacing:.4},
   outlineButton: { borderWidth: 1, borderColor: '#d2ad4f', borderRadius: 12, padding: 11, alignItems: 'center' },
   outlineText: { color: '#d2ad4f', fontWeight: '900' },
   inlineMessage: { color: '#d8c69b', fontSize: 11, lineHeight: 17 },
