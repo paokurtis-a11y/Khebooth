@@ -1,5 +1,4 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import ExcelJS from '@excel.js/exceljs';
 import { AlignmentType, Document, HeadingLevel, Packer, Paragraph, Table, TableCell, TableRow, TextRun, WidthType } from 'docx';
 import sharp from 'sharp';
 import { MarketingService } from './marketing.service';
@@ -7,6 +6,8 @@ import { MarketingService } from './marketing.service';
 export type MarketingReportFormat='pdf'|'jpeg'|'docx'|'xlsx';
 
 type Dashboard=Awaited<ReturnType<MarketingService['dashboard']>>;
+type ExcelJsModule=typeof import('@excel.js/exceljs');
+const nativeImport=new Function('specifier','return import(specifier)') as (specifier:string)=>Promise<ExcelJsModule>;
 
 @Injectable()
 export class ReportExportService{
@@ -63,6 +64,8 @@ export class ReportExportService{
   }
 
   private async xlsx(report:Dashboard):Promise<Buffer>{
+    const module=await nativeImport('@excel.js/exceljs');
+    const ExcelJS=module.default;
     const workbook=new ExcelJS.Workbook();
     workbook.creator='KHE Booth';workbook.company='Kurtis Hypnotic Events';workbook.created=new Date();
     const summary=workbook.addWorksheet('Synthèse',{views:[{state:'frozen',ySplit:1}]});
