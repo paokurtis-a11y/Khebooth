@@ -16,6 +16,6 @@ import { SubscriptionLifecycleService } from './subscription-lifecycle.service';
   imports:[AuthModule,MarketingModule],
   controllers:[CommerceController],
   providers:[CommerceService,CustomerAccessService,EnterprisePaymentOnboardingService,LocalizedSiteService,MarketPricingService,PaymentAnalyticsService,PromotionCheckoutService,SiteContentService,SubscriptionLifecycleService],
-  exports:[CommerceService,MarketPricingService],
+  exports:[CommerceService,MarketPricingService,EnterprisePaymentOnboardingService],
 })
 export class CommerceModule {}
