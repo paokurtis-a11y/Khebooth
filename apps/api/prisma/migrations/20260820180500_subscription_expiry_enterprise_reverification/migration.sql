@@ -62,6 +62,39 @@ FROM (
 ) d
 WHERE o."clientId"=d."clientId" AND o.status='APPROVED';
 
+CREATE OR REPLACE FUNCTION khe_assign_enterprise_verification_cycle()
+RETURNS trigger AS $$
+DECLARE active_cycle INTEGER;
+BEGIN
+  SELECT "verificationCycle" INTO active_cycle FROM "EnterpriseOnboarding" WHERE "clientId"=NEW."clientId";
+  NEW."verificationCycle":=COALESCE(active_cycle,0);
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS "EnterpriseDocument_assign_verification_cycle" ON "EnterpriseVerificationDocument";
+CREATE TRIGGER "EnterpriseDocument_assign_verification_cycle"
+BEFORE INSERT ON "EnterpriseVerificationDocument"
+FOR EACH ROW EXECUTE FUNCTION khe_assign_enterprise_verification_cycle();
+
+CREATE OR REPLACE FUNCTION khe_mark_enterprise_reverification_documents_received()
+RETURNS trigger AS $$
+BEGIN
+  IF NEW."verificationCycle">0 AND NEW."documentType" IN ('IDENTITY_CARD','PASSPORT','PROOF_OF_ADDRESS') THEN
+    UPDATE "EnterpriseOnboarding"
+       SET "reverificationStatus"=CASE WHEN "reverificationStatus" IN ('ACTION_REQUIRED','OVERDUE','CHANGES_REQUESTED') THEN 'DOCUMENTS_RECEIVED' ELSE "reverificationStatus" END,
+           "updatedAt"=CURRENT_TIMESTAMP
+     WHERE "clientId"=NEW."clientId";
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS "EnterpriseDocument_reverification_received" ON "EnterpriseVerificationDocument";
+CREATE TRIGGER "EnterpriseDocument_reverification_received"
+AFTER INSERT ON "EnterpriseVerificationDocument"
+FOR EACH ROW EXECUTE FUNCTION khe_mark_enterprise_reverification_documents_received();
+
 -- Reconcile the current verification cycle only. Initial onboarding can auto-approve;
 -- annual re-verification refreshes the yearly validity without requiring another manual approval.
 CREATE OR REPLACE FUNCTION khe_reconcile_enterprise_validation(target_client UUID)
