@@ -1,6 +1,7 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Res, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { UserRole } from '@prisma/client';
+import type { Response } from 'express';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/auth.types';
 import { Permissions } from '../auth/permissions.decorator';
@@ -11,6 +12,9 @@ import { ClientEnterpriseAccessService } from './client-enterprise-access.servic
 import { ClientsService } from './clients.service';
 import { CreateClientDto } from './dto/create-client.dto';
 import { UpdateClientDto } from './dto/update-client.dto';
+import { EnterpriseCommercialService } from './enterprise-commercial.service';
+import { EnterpriseContractExportService } from './enterprise-contract-export.service';
+import { EnterpriseContractService } from './enterprise-contract.service';
 import { EnterpriseOnboardingService } from './enterprise-onboarding.service';
 import { EnterpriseQuoteCheckoutService } from './enterprise-quote-checkout.service';
 
@@ -21,6 +25,9 @@ export class ClientsController {
     private readonly clients: ClientsService,
     private readonly enterprise:ClientEnterpriseAccessService,
     private readonly onboarding:EnterpriseOnboardingService,
+    private readonly commercial:EnterpriseCommercialService,
+    private readonly contracts:EnterpriseContractService,
+    private readonly contractExports:EnterpriseContractExportService,
     private readonly enterpriseQuoteCheckout:EnterpriseQuoteCheckoutService,
   ) {}
 
@@ -33,10 +40,16 @@ export class ClientsController {
   updateEnterpriseTemplate(@CurrentUser() user:AuthenticatedUser,@Param('templateId',new ParseUUIDPipe()) templateId:string,@Body() body:Record<string,unknown>){return this.onboarding.updateTemplate(user.organizationId,user.id,user.role,templateId,body);}
 
   @Permissions('clients.view') @Roles(UserRole.OWNER,UserRole.ADMIN) @Get('enterprise/offers/catalog')
-  enterpriseOffers(@CurrentUser() user:AuthenticatedUser){return this.onboarding.offers(user.organizationId,user.role);}
+  enterpriseOffers(@CurrentUser() user:AuthenticatedUser){return this.commercial.offers(user.organizationId,user.role);}
 
   @Permissions('clients.manage') @Roles(UserRole.OWNER) @Patch('enterprise/offers/catalog/:offerId')
-  updateEnterpriseOffer(@CurrentUser() user:AuthenticatedUser,@Param('offerId',new ParseUUIDPipe()) offerId:string,@Body() body:Record<string,unknown>){return this.onboarding.updateOffer(user.organizationId,user.role,offerId,body);}
+  updateEnterpriseOffer(@CurrentUser() user:AuthenticatedUser,@Param('offerId',new ParseUUIDPipe()) offerId:string,@Body() body:Record<string,unknown>){return this.commercial.updateOffer(user.organizationId,user.role,offerId,body);}
+
+  @Permissions('clients.view') @Roles(UserRole.OWNER) @Get('enterprise/contracts/templates')
+  enterpriseContractTemplates(@CurrentUser() user:AuthenticatedUser){return this.contracts.templates(user.organizationId,user.role);}
+
+  @Permissions('clients.manage') @Roles(UserRole.OWNER) @Patch('enterprise/contracts/templates/:templateId')
+  updateEnterpriseContractTemplate(@CurrentUser() user:AuthenticatedUser,@Param('templateId',new ParseUUIDPipe()) templateId:string,@Body() body:Record<string,unknown>){return this.contracts.updateTemplate(user.organizationId,user.id,user.role,templateId,body);}
 
   @Permissions('clients.view') @Get(':id') get(@CurrentUser() user: AuthenticatedUser, @Param('id', new ParseUUIDPipe()) id: string) { return this.clients.get(user.organizationId, id); }
 
@@ -54,6 +67,9 @@ export class ClientsController {
 
   @Permissions('clients.view') @Roles(UserRole.OWNER) @Get(':id/enterprise-access-report')
   enterpriseAccessReport(@CurrentUser() user:AuthenticatedUser,@Param('id',new ParseUUIDPipe()) id:string){return this.enterprise.report(user.organizationId,user.role,id);}
+
+  @Permissions('clients.view') @Roles(UserRole.OWNER,UserRole.ADMIN) @Get(':id/enterprise-journey')
+  enterpriseJourney(@CurrentUser() user:AuthenticatedUser,@Param('id',new ParseUUIDPipe()) id:string){return this.commercial.journey(user.organizationId,user.role,id);}
 
   @Permissions('clients.view') @Roles(UserRole.OWNER,UserRole.ADMIN) @Get(':id/enterprise-onboarding')
   enterpriseOnboarding(@CurrentUser() user:AuthenticatedUser,@Param('id',new ParseUUIDPipe()) id:string){return this.onboarding.adminReport(user.organizationId,user.role,id);}
@@ -74,8 +90,14 @@ export class ClientsController {
   reviewEnterpriseDocument(@CurrentUser() user:AuthenticatedUser,@Param('id',new ParseUUIDPipe()) id:string,@Param('documentId',new ParseUUIDPipe()) documentId:string,@Body() body:Record<string,unknown>){return this.onboarding.reviewDocument(user.organizationId,user.id,user.role,id,documentId,body);}
 
   @Permissions('clients.manage') @Roles(UserRole.OWNER,UserRole.ADMIN) @Post(':id/enterprise-quotes')
-  enterpriseQuote(@CurrentUser() user:AuthenticatedUser,@Param('id',new ParseUUIDPipe()) id:string,@Body() body:Record<string,unknown>){return this.onboarding.createQuote(user.organizationId,user.id,user.role,id,body);}
+  enterpriseQuote(@CurrentUser() user:AuthenticatedUser,@Param('id',new ParseUUIDPipe()) id:string,@Body() body:Record<string,unknown>){return this.commercial.createQuote(user.organizationId,user.id,user.role,id,body);}
 
   @Permissions('clients.manage') @Roles(UserRole.OWNER,UserRole.ADMIN) @Post(':id/enterprise-quotes/:quoteId/send')
   sendEnterpriseQuote(@CurrentUser() user:AuthenticatedUser,@Param('id',new ParseUUIDPipe()) id:string,@Param('quoteId',new ParseUUIDPipe()) quoteId:string){return this.enterpriseQuoteCheckout.send(user.organizationId,user.id,user.role,id,quoteId);}
+
+  @Permissions('clients.view') @Roles(UserRole.OWNER,UserRole.ADMIN) @Get(':id/enterprise-contracts')
+  enterpriseContracts(@CurrentUser() user:AuthenticatedUser,@Param('id',new ParseUUIDPipe()) id:string){return this.contracts.adminContracts(user.organizationId,user.role,id);}
+
+  @Permissions('clients.view') @Roles(UserRole.OWNER,UserRole.ADMIN) @Get(':id/enterprise-contracts/:contractId/export/:format')
+  async exportEnterpriseContract(@CurrentUser() user:AuthenticatedUser,@Param('id',new ParseUUIDPipe()) id:string,@Param('contractId',new ParseUUIDPipe()) contractId:string,@Param('format') format:string,@Res() response:Response){const file=await this.contractExports.adminExport(user.organizationId,user.role,id,contractId,format);response.setHeader('Content-Type',file.contentType);response.setHeader('Content-Disposition',`attachment; filename="${file.filename.replace(/[^a-zA-Z0-9._-]/g,'-')}"`);response.setHeader('Cache-Control','private, no-store');response.send(file.buffer);}
 }
