@@ -21,10 +21,18 @@ export class ClientEnterpriseAccessService{
     if(!rows[0])throw new NotFoundException('Client not found');return rows[0];
   }
 
+  private async requireApprovedOnboarding(organizationId:string,clientId:string){
+    const rows=await this.prisma.$queryRaw<Array<{status:string}>>`
+      SELECT status FROM "EnterpriseOnboarding" WHERE "organizationId"=${organizationId}::uuid AND "clientId"=${clientId}::uuid LIMIT 1`;
+    if(rows[0]?.status!=='APPROVED')throw new BadRequestException('Enterprise identity verification and OWNER approval are required before enabling platform access');
+  }
+
   async setAccess(rootOrganizationId:string,ownerUserId:string,ownerRole:string,clientId:string,enabled:boolean){
     await this.ensureRootOwner(rootOrganizationId,ownerRole);const client=await this.client(rootOrganizationId,clientId);
     if(enabled&&client.subscriptionPlan!=='ENTERPRISE')throw new BadRequestException('Enterprise KHE Booth access requires the ENTERPRISE plan');
+    if(enabled&&client.paymentStatus!=='PAID')throw new BadRequestException('Enterprise payment must be validated before enabling KHE Booth access');
     if(enabled&&!client.email)throw new BadRequestException('A valid client email is required before enabling KHE Booth access');
+    if(enabled)await this.requireApprovedOnboarding(rootOrganizationId,clientId);
 
     const existing=await this.prisma.$queryRaw<Array<{id:string;organizationId:string;email:string;isActive:boolean}>>`
       SELECT u.id,u."organizationId",u.email,u."isActive" FROM "User" u
@@ -80,8 +88,10 @@ export class ClientEnterpriseAccessService{
     `:[];
     const resetRequests=events.filter((event:any)=>event.eventType==='PASSWORD_RESET_REQUESTED').length;
     const failedAttempts=events.filter((event:any)=>event.eventType==='LOGIN_PASSWORD_FAILED'||event.eventType==='PASSWORD_LOCKED_AFTER_FAILURES').length;
+    const onboardingRows=await this.prisma.$queryRaw<Array<{status:string}>>`SELECT status FROM "EnterpriseOnboarding" WHERE "clientId"=${clientId}::uuid LIMIT 1`;
     return{
       client:{id:client.id,name:client.name,email:client.email,subscriptionPlan:client.subscriptionPlan,subscriptionStatus:client.subscriptionStatus,paymentStatus:client.paymentStatus},
+      onboardingStatus:onboardingRows[0]?.status??'PAYMENT_PENDING',
       accessEnabled:users.some(user=>user.isActive),
       users,
       passwordReport:{resetRequests,failedAttempts,passwordChanges:users.reduce((sum,user)=>sum+Number(user.passwordChangeCount||0),0),lastPasswordChangeAt:users.map(u=>u.passwordChangedAt).filter(Boolean).sort((a,b)=>new Date(b!).getTime()-new Date(a!).getTime())[0]??null,events},
