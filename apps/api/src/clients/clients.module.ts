@@ -10,11 +10,12 @@ import { EnterpriseFormExportService } from './enterprise-form-export.service';
 import { EnterpriseOnboardingController } from './enterprise-onboarding.controller';
 import { EnterpriseOnboardingService } from './enterprise-onboarding.service';
 import { EnterpriseQuoteCheckoutService } from './enterprise-quote-checkout.service';
+import { EnterpriseVerificationService } from './enterprise-verification.service';
 
 @Module({
   imports:[AuthModule],
   controllers:[ClientsController,EnterpriseOnboardingController],
-  providers:[ClientsService,ClientEnterpriseAccessService,EnterpriseOnboardingService,EnterpriseFormExportService,EnterpriseQuoteCheckoutService,EnterpriseContractService,EnterpriseContractExportService,EnterpriseCommercialService],
-  exports:[EnterpriseOnboardingService,EnterpriseContractService,EnterpriseCommercialService],
+  providers:[ClientsService,ClientEnterpriseAccessService,EnterpriseOnboardingService,EnterpriseFormExportService,EnterpriseQuoteCheckoutService,EnterpriseContractService,EnterpriseContractExportService,EnterpriseCommercialService,EnterpriseVerificationService],
+  exports:[EnterpriseOnboardingService,EnterpriseContractService,EnterpriseCommercialService,EnterpriseVerificationService],
 })
 export class ClientsModule {}
