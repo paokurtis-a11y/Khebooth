@@ -3,5 +3,8 @@
   "rootDir": "..",
   "testRegex": ".*\\.e2e-spec\\.ts$",
   "transform": {"^.+\\.(t|j)s$": "ts-jest"},
+  "moduleNameMapper": {
+    "^@excel\\.js/exceljs$": "<rootDir>/test/mocks/exceljs.ts"
+  },
   "testEnvironment": "node"
 }
