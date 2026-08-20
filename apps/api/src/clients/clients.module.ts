@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { CommerceModule } from '../commerce/commerce.module';
 import { ClientEnterpriseAccessService } from './client-enterprise-access.service';
 import { ClientsController } from './clients.controller';
 import { ClientsService } from './clients.service';
@@ -15,7 +16,7 @@ import { EnterpriseReverificationService } from './enterprise-reverification.ser
 import { EnterpriseVerificationService } from './enterprise-verification.service';
 
 @Module({
-  imports:[AuthModule],
+  imports:[AuthModule,CommerceModule],
   controllers:[ClientsController,EnterpriseOnboardingController,EnterpriseAdminController],
   providers:[ClientsService,ClientEnterpriseAccessService,EnterpriseOnboardingService,EnterpriseFormExportService,EnterpriseQuoteCheckoutService,EnterpriseContractService,EnterpriseContractExportService,EnterpriseCommercialService,EnterpriseVerificationService,EnterpriseReverificationService],
   exports:[EnterpriseOnboardingService,EnterpriseContractService,EnterpriseCommercialService,EnterpriseVerificationService,EnterpriseReverificationService],
