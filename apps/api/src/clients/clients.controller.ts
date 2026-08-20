@@ -68,36 +68,36 @@ export class ClientsController {
   @Permissions('clients.view') @Roles(UserRole.OWNER) @Get(':id/enterprise-access-report')
   enterpriseAccessReport(@CurrentUser() user:AuthenticatedUser,@Param('id',new ParseUUIDPipe()) id:string){return this.enterprise.report(user.organizationId,user.role,id);}
 
-  @Permissions('clients.view') @Roles(UserRole.OWNER,UserRole.ADMIN) @Get(':id/enterprise-journey')
+  @Permissions('clients.view') @Roles(UserRole.OWNER,UserRole.ADMIN,UserRole.OPERATOR) @Get(':id/enterprise-journey')
   enterpriseJourney(@CurrentUser() user:AuthenticatedUser,@Param('id',new ParseUUIDPipe()) id:string){return this.commercial.journey(user.organizationId,user.role,id);}
 
-  @Permissions('clients.view') @Roles(UserRole.OWNER,UserRole.ADMIN) @Get(':id/enterprise-onboarding')
+  @Permissions('clients.view') @Roles(UserRole.OWNER,UserRole.ADMIN,UserRole.OPERATOR) @Get(':id/enterprise-onboarding')
   enterpriseOnboarding(@CurrentUser() user:AuthenticatedUser,@Param('id',new ParseUUIDPipe()) id:string){return this.onboarding.adminReport(user.organizationId,user.role,id);}
 
-  @Permissions('clients.manage') @Roles(UserRole.OWNER,UserRole.ADMIN) @Post(':id/enterprise-onboarding/invite')
+  @Permissions('clients.manage') @Roles(UserRole.OWNER,UserRole.ADMIN,UserRole.OPERATOR) @Post(':id/enterprise-onboarding/invite')
   enterpriseInvite(@CurrentUser() user:AuthenticatedUser,@Param('id',new ParseUUIDPipe()) id:string){return this.onboarding.invite(user.organizationId,user.id,user.role,id);}
 
-  @Permissions('clients.manage') @Roles(UserRole.OWNER,UserRole.ADMIN) @Patch(':id/enterprise-onboarding/review')
+  @Permissions('enterprise.verify') @Roles(UserRole.OWNER,UserRole.ADMIN,UserRole.OPERATOR) @Patch(':id/enterprise-onboarding/review')
   enterpriseReview(@CurrentUser() user:AuthenticatedUser,@Param('id',new ParseUUIDPipe()) id:string,@Body() body:Record<string,unknown>){return this.onboarding.reviewOnboarding(user.organizationId,user.id,user.role,id,body);}
 
-  @Permissions('clients.view') @Roles(UserRole.OWNER,UserRole.ADMIN) @Get(':id/profile-avatar')
+  @Permissions('clients.view') @Roles(UserRole.OWNER,UserRole.ADMIN,UserRole.OPERATOR) @Get(':id/profile-avatar')
   clientProfileAvatar(@CurrentUser() user:AuthenticatedUser,@Param('id',new ParseUUIDPipe()) id:string){return this.onboarding.profileAvatarTicket(user.organizationId,user.role,id);}
 
-  @Permissions('clients.view') @Roles(UserRole.OWNER,UserRole.ADMIN) @Get(':id/enterprise-documents/:documentId')
+  @Permissions('enterprise.verify') @Roles(UserRole.OWNER,UserRole.ADMIN,UserRole.OPERATOR) @Get(':id/enterprise-documents/:documentId')
   enterpriseDocument(@CurrentUser() user:AuthenticatedUser,@Param('id',new ParseUUIDPipe()) id:string,@Param('documentId',new ParseUUIDPipe()) documentId:string){return this.onboarding.documentTicket(user.organizationId,user.role,id,documentId);}
 
-  @Permissions('clients.manage') @Roles(UserRole.OWNER,UserRole.ADMIN) @Patch(':id/enterprise-documents/:documentId')
+  @Permissions('enterprise.verify') @Roles(UserRole.OWNER,UserRole.ADMIN,UserRole.OPERATOR) @Patch(':id/enterprise-documents/:documentId')
   reviewEnterpriseDocument(@CurrentUser() user:AuthenticatedUser,@Param('id',new ParseUUIDPipe()) id:string,@Param('documentId',new ParseUUIDPipe()) documentId:string,@Body() body:Record<string,unknown>){return this.onboarding.reviewDocument(user.organizationId,user.id,user.role,id,documentId,body);}
 
-  @Permissions('clients.manage') @Roles(UserRole.OWNER,UserRole.ADMIN) @Post(':id/enterprise-quotes')
+  @Permissions('clients.manage') @Roles(UserRole.OWNER,UserRole.ADMIN,UserRole.OPERATOR) @Post(':id/enterprise-quotes')
   enterpriseQuote(@CurrentUser() user:AuthenticatedUser,@Param('id',new ParseUUIDPipe()) id:string,@Body() body:Record<string,unknown>){return this.commercial.createQuote(user.organizationId,user.id,user.role,id,body);}
 
-  @Permissions('clients.manage') @Roles(UserRole.OWNER,UserRole.ADMIN) @Post(':id/enterprise-quotes/:quoteId/send')
+  @Permissions('clients.manage') @Roles(UserRole.OWNER,UserRole.ADMIN,UserRole.OPERATOR) @Post(':id/enterprise-quotes/:quoteId/send')
   sendEnterpriseQuote(@CurrentUser() user:AuthenticatedUser,@Param('id',new ParseUUIDPipe()) id:string,@Param('quoteId',new ParseUUIDPipe()) quoteId:string){return this.enterpriseQuoteCheckout.send(user.organizationId,user.id,user.role,id,quoteId);}
 
-  @Permissions('clients.view') @Roles(UserRole.OWNER,UserRole.ADMIN) @Get(':id/enterprise-contracts')
+  @Permissions('clients.view') @Roles(UserRole.OWNER,UserRole.ADMIN,UserRole.OPERATOR) @Get(':id/enterprise-contracts')
   enterpriseContracts(@CurrentUser() user:AuthenticatedUser,@Param('id',new ParseUUIDPipe()) id:string){return this.contracts.adminContracts(user.organizationId,user.role,id);}
 
-  @Permissions('clients.view') @Roles(UserRole.OWNER,UserRole.ADMIN) @Get(':id/enterprise-contracts/:contractId/export/:format')
+  @Permissions('clients.view') @Roles(UserRole.OWNER,UserRole.ADMIN,UserRole.OPERATOR) @Get(':id/enterprise-contracts/:contractId/export/:format')
   async exportEnterpriseContract(@CurrentUser() user:AuthenticatedUser,@Param('id',new ParseUUIDPipe()) id:string,@Param('contractId',new ParseUUIDPipe()) contractId:string,@Param('format') format:string,@Res() response:Response){const file=await this.contractExports.adminExport(user.organizationId,user.role,id,contractId,format);response.setHeader('Content-Type',file.contentType);response.setHeader('Content-Disposition',`attachment; filename="${file.filename.replace(/[^a-zA-Z0-9._-]/g,'-')}"`);response.setHeader('Cache-Control','private, no-store');response.send(file.buffer);}
 }
