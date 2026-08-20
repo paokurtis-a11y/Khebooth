@@ -1,1 +1,1 @@
-Release retry after connecting khebooth-media Blob Store to khebooth-api on 2026-08-19 23:45 Europe/Zurich.
+Production redeploy after ExcelJS ESM runtime hotfix on 2026-08-20. Expected main includes PR #48 mobile notification/billing features and PR #49 API startup fix.
