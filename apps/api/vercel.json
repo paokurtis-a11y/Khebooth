@@ -13,6 +13,10 @@
     {
       "path": "/api/stations/system/trash/purge",
       "schedule": "35 3 * * *"
+    },
+    {
+      "path": "/api/enterprise/onboarding/system/review-sla",
+      "schedule": "5 */6 * * *"
     }
   ],
   "git": {
