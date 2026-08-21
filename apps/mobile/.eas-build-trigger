@@ -1,3 +1,3 @@
-trigger=2026-08-20T14:10:00+02:00
-reason=mobile-notification-center-animated-menu-sharing-billing
-release_source_commit=88612832d4e5d93cfc85d7ad1d2bb559616576db
+trigger=2026-08-21T08:10:00+02:00
+reason=capture-sharing-link-health-event-safe-sync-live-languages
+release_source_commit=382b0fa8e661294a0c48b208f641a1440f24fb13
