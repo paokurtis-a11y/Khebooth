@@ -4,7 +4,7 @@
   "buildCommand": "npm run build",
   "outputDirectory": ".next",
   "framework": "nextjs",
-  "ignoreCommand": "git diff --quiet \"${VERCEL_GIT_PREVIOUS_SHA:-HEAD^}\" \"${VERCEL_GIT_COMMIT_SHA:-HEAD}\" -- ':(top)apps/web' ':(top)packages/contracts' ':(top)pnpm-lock.yaml' ':(top)package.json' ':(top)pnpm-workspace.yaml'",
+  "ignoreCommand": "bash scripts/vercel-ignore.sh",
   "git": {
     "deploymentEnabled": {
       "*": false,
