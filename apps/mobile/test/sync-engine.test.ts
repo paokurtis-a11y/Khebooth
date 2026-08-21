@@ -9,6 +9,7 @@ import { FakeStationApi, TEST_EVENT_ID } from './helpers';
 
 const DRAIN_AT = new Date('2030-01-01T00:00:00.000Z');
 const RETRY_AT = new Date('2030-01-01T00:00:10.000Z');
+const OTHER_EVENT_ID = '77777777-7777-4777-8777-777777777777';
 
 class SuccessfulTransfer implements MediaTransfer {
   calls = 0;
@@ -145,4 +146,34 @@ test('queuing the same local media is idempotent and rejects conflicting metadat
     () => engine.queueMedia({ ...input, contentHash: 'sha256:different' }),
     /different media/,
   );
+});
+
+test('queued media from another event stays local and is never uploaded with the active station token', async () => {
+  const { api, store, vault } = await activatedContext();
+  const transfer = new SuccessfulTransfer(api);
+  const engine = new SyncEngine(api, store, vault, transfer);
+  const localId = 'old-event-video';
+
+  await engine.queueMedia({
+    eventId: OTHER_EVENT_ID,
+    localId,
+    idempotencyKey: `old-event:${localId}:v1`,
+    contentHash: `sha256:${localId}`,
+    byteSize: 120,
+    mimeType: 'video/mp4',
+    localUri: `file:///documents/khe/${localId}.mp4`,
+    capturedAt: '2026-08-14T18:00:00.000Z',
+  });
+
+  const result = await engine.drain(DRAIN_AT);
+  assert.deepEqual(result, { attempted: 0, synced: 0, failed: 0 });
+  assert.equal(api.createCalls, 0, 'cross-event media must never reach the API');
+  assert.equal(transfer.calls, 0);
+
+  const preserved = await store.getMedia(localId);
+  assert.equal(preserved?.eventId, OTHER_EVENT_ID);
+  assert.equal(preserved?.syncState, 'QUEUED');
+  assert.equal(preserved?.retryCount, 0);
+  assert.equal(preserved?.localUri, `file:///documents/khe/${localId}.mp4`);
+  assert.equal((await store.listQueue()).length, 1, 'old-event queue item must stay pending for its original event');
 });

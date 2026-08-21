@@ -78,13 +78,23 @@ export class SyncEngine {
     const stationToken = await this.vault.getStationToken();
     if (!stationToken) throw new Error('Station credential unavailable');
 
-    const queue = (await this.store.listQueue()).filter((item) => new Date(item.nextAttemptAt).getTime() <= now.getTime());
+    const dueQueue = (await this.store.listQueue()).filter((item) => new Date(item.nextAttemptAt).getTime() <= now.getTime());
+    const queue = [] as typeof dueQueue;
+    for (const item of dueQueue) {
+      const media = await this.store.getMedia(item.localId);
+      // Media from a previous event intentionally stays queued and stored locally.
+      // A station token is event-scoped, so never attempt that media until the
+      // CAPTURE tablet is back on the matching event context.
+      if (!media || media.eventId !== station.session.eventId) continue;
+      queue.push(item);
+    }
+
     const result: DrainResult = { attempted: 0, synced: 0, failed: 0 };
 
     for (const item of queue) {
       result.attempted += 1;
       try {
-        await this.syncOne(stationToken, item.localId);
+        await this.syncOne(stationToken, station.session.eventId, item.localId);
         result.synced += 1;
       } catch (error) {
         result.failed += 1;
@@ -94,9 +104,12 @@ export class SyncEngine {
     return result;
   }
 
-  private async syncOne(stationToken: string, localId: string): Promise<void> {
+  private async syncOne(stationToken: string, eventId: string, localId: string): Promise<void> {
     const media = await this.store.getMedia(localId);
     if (!media) throw new Error(`Queued media ${localId} is missing from local storage`);
+    if (media.eventId !== eventId) {
+      throw new Error(`Queued media ${localId} belongs to a different event`);
+    }
     if (media.syncState === 'SYNCED') {
       await this.store.removeQueueItem(localId);
       return;
@@ -112,6 +125,7 @@ export class SyncEngine {
     };
 
     const remote = await this.api.createMedia(stationToken, payload);
+    if (remote.eventId !== eventId) throw new Error('Server created media under a different event');
     let working: LocalMediaRecord = {
       ...media,
       remoteId: remote.id,
@@ -169,6 +183,7 @@ export class SyncEngine {
 
     // The server performs a Blob HEAD and validates exact size + MIME before this can succeed.
     const finalized = await this.api.finalizeUpload(stationToken, remote.id);
+    if (finalized.media.eventId !== eventId) throw new Error('Finalized media belongs to a different event');
     if (finalized.media.syncState !== 'SYNCED' || !finalized.media.acknowledgedAt) {
       throw new Error('Server did not acknowledge synchronized media');
     }
