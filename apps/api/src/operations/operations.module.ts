@@ -4,6 +4,8 @@ import { AgentWorkforceController } from './agent-workforce.controller';
 import { AgentWorkforceService } from './agent-workforce.service';
 import { LiveShiftController } from './live-shift.controller';
 import { LiveShiftService } from './live-shift.service';
+import { OperationsCommandCenterController } from './operations-command-center.controller';
+import { OperationsCommandCenterService } from './operations-command-center.service';
 import { OperationsController } from './operations.controller';
 import { OperationsService } from './operations.service';
 import { PublicAnalyticsController } from './public-analytics.controller';
@@ -21,5 +23,5 @@ import { WorkforceIntelligenceService } from './workforce-intelligence.service';
 import { WorkforceScheduleOptimizerController } from './workforce-schedule-optimizer.controller';
 import { WorkforceScheduleOptimizerService } from './workforce-schedule-optimizer.service';
 
-@Module({imports:[PrismaModule],controllers:[OperationsController,PublicAnalyticsController,SupportFeedbackController,RoutingIntelligenceController,WorkforceIntelligenceController,WorkforceScheduleOptimizerController,AgentWorkforceController,LiveShiftController,ShiftHandoverController,ShiftBriefController,SlaRescueController],providers:[OperationsService,RoutingIntelligenceService,WorkforceIntelligenceService,WorkforceScheduleOptimizerService,AgentWorkforceService,ShiftHandoverService,ShiftBriefService,SlaRescueService,LiveShiftService],exports:[OperationsService,RoutingIntelligenceService,WorkforceIntelligenceService,WorkforceScheduleOptimizerService,AgentWorkforceService,ShiftHandoverService,ShiftBriefService,SlaRescueService,LiveShiftService]})
+@Module({imports:[PrismaModule],controllers:[OperationsController,OperationsCommandCenterController,PublicAnalyticsController,SupportFeedbackController,RoutingIntelligenceController,WorkforceIntelligenceController,WorkforceScheduleOptimizerController,AgentWorkforceController,LiveShiftController,ShiftHandoverController,ShiftBriefController,SlaRescueController],providers:[OperationsService,OperationsCommandCenterService,RoutingIntelligenceService,WorkforceIntelligenceService,WorkforceScheduleOptimizerService,AgentWorkforceService,ShiftHandoverService,ShiftBriefService,SlaRescueService,LiveShiftService],exports:[OperationsService,OperationsCommandCenterService,RoutingIntelligenceService,WorkforceIntelligenceService,WorkforceScheduleOptimizerService,AgentWorkforceService,ShiftHandoverService,ShiftBriefService,SlaRescueService,LiveShiftService]})
 export class OperationsModule{}
