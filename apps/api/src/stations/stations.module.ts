@@ -14,7 +14,9 @@ import { PublicMediaController } from './public-media.controller';
 import { PublicSocialController } from './public-social.controller';
 import { SharingBusinessService } from './sharing-business.service';
 import { SocialCredentialCipher } from './social-credential-cipher';
-import { SocialProviderConnectionService } from './social-provider-connection.service';
+import { SocialDeveloperCredentialController } from './social-developer-credential.controller';
+import { SocialDeveloperCredentialService } from './social-developer-credential.service';
+import { SocialProviderConnectionV2Service } from './social-provider-connection-v2.service';
 import { SocialProviderReadinessController } from './social-provider-readiness.controller';
 import { StationAuthGuard } from './station-auth.guard';
 import { StationBillingController } from './station-billing.controller';
@@ -28,7 +30,7 @@ import { StationsService } from './stations.service';
 
 @Module({
   imports: [AuthModule, EventsModule, CommerceModule, SubscriptionsModule],
-  controllers: [StationsController, StationBillingController, PublicMediaController, PublicSocialController, SocialProviderReadinessController],
-  providers: [StationsService, StationRenewalService, StationProfileService, StationNotificationsService, StationBillingService, ClientEventWorkspaceService, DesignStorageService, ProfileStorageService, MediaStorageService, MediaCatalogService, MediaSharingService, MediaTrashService, SharingBusinessService, StationConnectionService, StationAuthGuard, SocialCredentialCipher, SocialProviderConnectionService],
+  controllers: [StationsController, StationBillingController, PublicMediaController, PublicSocialController, SocialProviderReadinessController, SocialDeveloperCredentialController],
+  providers: [StationsService, StationRenewalService, StationProfileService, StationNotificationsService, StationBillingService, ClientEventWorkspaceService, DesignStorageService, ProfileStorageService, MediaStorageService, MediaCatalogService, MediaSharingService, MediaTrashService, SharingBusinessService, StationConnectionService, StationAuthGuard, SocialCredentialCipher, SocialDeveloperCredentialService, SocialProviderConnectionV2Service],
 })
 export class StationsModule {}
