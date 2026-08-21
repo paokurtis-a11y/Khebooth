@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { HttpStationApi } from '../api/station-api';
 import { API_BASE_URL } from '../config';
+import { t, type AppLanguage } from '../experience/i18n';
 import {
   DEFAULT_NOTIFICATION_PREFERENCES,
   loadNotificationPreferences,
@@ -109,14 +110,23 @@ function ChoiceRow({ label, values, value, onChange }: { label: string; values: 
   );
 }
 
-function permissionAccuracyLabel(permission: Location.LocationPermissionResponse | null): string {
-  if (!permission?.granted) return permission?.canAskAgain === false ? 'Refusée — réglages système requis' : 'Non autorisée';
-  if (permission.android?.accuracy === 'fine' || permission.ios?.accuracy === 'full') return 'Précise';
-  if (permission.android?.accuracy === 'coarse' || permission.ios?.accuracy === 'reduced') return 'Approximative';
-  return 'Autorisée';
+function permissionAccuracyLabel(permission: Location.LocationPermissionResponse | null, language: AppLanguage): string {
+  const labels: Record<AppLanguage, { denied: string; blocked: string; precise: string; approximate: string; allowed: string }> = {
+    fr: { denied: 'Non autorisée', blocked: 'Refusée — réglages système requis', precise: 'Précise', approximate: 'Approximative', allowed: 'Autorisée' },
+    en: { denied: 'Not allowed', blocked: 'Denied — device settings required', precise: 'Precise', approximate: 'Approximate', allowed: 'Allowed' },
+    de: { denied: 'Nicht erlaubt', blocked: 'Abgelehnt — Geräteeinstellungen erforderlich', precise: 'Genau', approximate: 'Ungefähr', allowed: 'Erlaubt' },
+    it: { denied: 'Non autorizzata', blocked: 'Rifiutata — servono le impostazioni dispositivo', precise: 'Precisa', approximate: 'Approssimativa', allowed: 'Autorizzata' },
+    es: { denied: 'No autorizada', blocked: 'Rechazada — requiere ajustes del dispositivo', precise: 'Precisa', approximate: 'Aproximada', allowed: 'Autorizada' },
+    pt: { denied: 'Não autorizada', blocked: 'Recusada — requer definições do dispositivo', precise: 'Precisa', approximate: 'Aproximada', allowed: 'Autorizada' },
+  };
+  const copy=labels[language];
+  if (!permission?.granted) return permission?.canAskAgain === false ? copy.blocked : copy.denied;
+  if (permission.android?.accuracy === 'fine' || permission.ios?.accuracy === 'full') return copy.precise;
+  if (permission.android?.accuracy === 'coarse' || permission.ios?.accuracy === 'reduced') return copy.approximate;
+  return copy.allowed;
 }
 
-export function SettingsScreen({ onClose }: { onClose: () => void }) {
+export function SettingsScreen({ onClose, language='fr' }: { onClose: () => void; language?: AppLanguage }) {
   const api = useMemo(() => new HttpStationApi(API_BASE_URL), []);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_APP_SETTINGS);
   const [networkType, setNetworkType] = useState<string>('UNKNOWN');
@@ -163,7 +173,7 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
     setLocationMessage('');
     if (!enabled) {
       update({ preciseLocationEnabled: false });
-      setLocationMessage('Localisation désactivée dans KHE Booth. L’application ne demandera pas votre position.');
+      setLocationMessage(language === 'en' ? 'Location disabled in KHE Booth. The app will not request your position.' : 'Localisation désactivée dans KHE Booth. L’application ne demandera pas votre position.');
       return;
     }
     try {
@@ -176,17 +186,17 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
       );
       if (!permission.granted) {
         update({ preciseLocationEnabled: false });
-        setLocationMessage('Autorisation refusée. Vous pourrez la réactiver plus tard.');
+        setLocationMessage(language === 'en' ? 'Permission denied. You can enable it later; KHE Booth remains usable.' : 'Autorisation refusée. Vous pourrez la réactiver plus tard.');
         return;
       }
       if (!precise) {
         update({ preciseLocationEnabled: false });
-        setLocationMessage('La localisation accordée est approximative. Activez « position précise » dans les réglages système si vous souhaitez utiliser cette option.');
+        setLocationMessage(language === 'en' ? 'Only approximate location is allowed. Enable precise location in device settings if you want this option.' : 'La localisation accordée est approximative. Activez « position précise » dans les réglages système si vous souhaitez utiliser cette option.');
         return;
       }
       await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
       update({ preciseLocationEnabled: true });
-      setLocationMessage('✓ Localisation précise activée uniquement lorsque KHE Booth en a besoin.');
+      setLocationMessage(language === 'en' ? '✓ Precise location enabled only when KHE Booth needs it.' : '✓ Localisation précise activée uniquement lorsque KHE Booth en a besoin.');
     } catch (error) {
       update({ preciseLocationEnabled: false });
       setLocationMessage(error instanceof Error ? error.message : 'Impossible d’activer la localisation précise.');
@@ -236,49 +246,49 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
         <View style={styles.header}>
           <View style={{ flex: 1 }}>
             <Text style={styles.brand}>KHE BOOTH</Text>
-            <Text style={styles.title}>Paramètres</Text>
-            <Text style={styles.help}>Personnalisez le confort, l’affichage, le réseau, la localisation et les notifications.</Text>
+            <Text style={styles.title}>{t(language,'settings')}</Text>
+            <Text style={styles.help}>{t(language,'settingsSubtitle')}</Text>
           </View>
-          <Pressable style={styles.close} onPress={onClose}><Text style={styles.closeText}>Fermer</Text></Pressable>
+          <Pressable style={styles.close} onPress={onClose}><Text style={styles.closeText}>{t(language,'close')}</Text></Pressable>
         </View>
 
         <View style={styles.sectionCard}>
-          <Text style={styles.cardTitle}>AFFICHAGE & LISIBILITÉ</Text>
-          <Text style={styles.sectionTitle}>Taille et style des écritures</Text>
-          <Text style={styles.help}>Choisissez une présentation confortable. Le choix est conservé sur cette tablette et sert de préférence d’affichage KHE.</Text>
-          <ChoiceRow label="Taille du texte" value={settings.textScale} onChange={(textScale)=>update({textScale:textScale as TextScalePreference})} values={[["SMALL","Petit"],["NORMAL","Normal"],["LARGE","Grand"],["XLARGE","Très grand"]]} />
-          <ChoiceRow label="Style d’écriture" value={settings.textStyle} onChange={(textStyle)=>update({textStyle:textStyle as TextStylePreference})} values={[["CLASSIC","Classique"],["MODERN","Moderne"],["ELEGANT","Élégant"],["COMFORT","Confort"]]} />
+          <Text style={styles.cardTitle}>{t(language,'displayReadability')}</Text>
+          <Text style={styles.sectionTitle}>{t(language,'textSizeStyle')}</Text>
+          <Text style={styles.help}>{t(language,'displayHelp')}</Text>
+          <ChoiceRow label={t(language,'textSize')} value={settings.textScale} onChange={(textScale)=>update({textScale:textScale as TextScalePreference})} values={[["SMALL",t(language,'small')],["NORMAL",t(language,'normal')],["LARGE",t(language,'large')],["XLARGE",t(language,'xlarge')]]} />
+          <ChoiceRow label={t(language,'textStyle')} value={settings.textStyle} onChange={(textStyle)=>update({textStyle:textStyle as TextStylePreference})} values={[["CLASSIC",t(language,'classic')],["MODERN",t(language,'modern')],["ELEGANT",t(language,'elegant')],["COMFORT",t(language,'comfort')]]} />
           <View style={styles.previewCard}>
-            <Text style={[styles.previewLabel,{fontFamily:previewFont}]}>APERÇU EN DIRECT</Text>
-            <Text style={[styles.previewTitle,{fontFamily:previewFont,fontSize:22*previewMultiplier,lineHeight:28*previewMultiplier}]}>KHE Booth — votre événement</Text>
-            <Text style={[styles.previewBody,{fontFamily:previewFont,fontSize:13*previewMultiplier,lineHeight:19*previewMultiplier}]}>Ce texte montre immédiatement la taille et le style sélectionnés pour améliorer votre confort de lecture.</Text>
+            <Text style={[styles.previewLabel,{fontFamily:previewFont}]}>{t(language,'livePreview')}</Text>
+            <Text style={[styles.previewTitle,{fontFamily:previewFont,fontSize:22*previewMultiplier,lineHeight:28*previewMultiplier}]}>{t(language,'previewTitle')}</Text>
+            <Text style={[styles.previewBody,{fontFamily:previewFont,fontSize:13*previewMultiplier,lineHeight:19*previewMultiplier}]}>{t(language,'previewBody')}</Text>
           </View>
         </View>
 
         <View style={styles.networkCard}>
-          <Text style={styles.cardTitle}>RÉSEAU ACTUEL</Text>
+          <Text style={styles.cardTitle}>{t(language,'currentNetwork')}</Text>
           <Text style={styles.networkType}>{networkType}</Text>
-          <Text style={styles.help}>Le Wi‑Fi reste recommandé pour les médias lourds. Les données mobiles restent autorisées après confirmation.</Text>
+          <Text style={styles.help}>{t(language,'networkHelp')}</Text>
         </View>
-        <ToggleRow title="Préférer le Wi‑Fi" help="KHE privilégie le Wi‑Fi pour les téléchargements et synchronisations lourdes." value={settings.wifiPreferred} onChange={(wifiPreferred) => update({ wifiPreferred })} />
-        <ToggleRow title="Demander avant données mobiles" help="Si KHE détecte une connexion cellulaire, une confirmation sera demandée avant un transfert lourd." value={settings.askBeforeMobileData} onChange={(askBeforeMobileData) => update({ askBeforeMobileData })} />
-        <ToggleRow title="Reconnexion automatique CAPTURE ↔ SHARING" help="Tente de rétablir automatiquement la liaison après une coupure réseau courte." value={settings.autoReconnectStations} onChange={(autoReconnectStations) => update({ autoReconnectStations })} />
-        <ToggleRow title="Aperçus animés dans la galerie" help="Anime les moments vidéo pour une galerie plus vivante. Peut consommer davantage de batterie." value={settings.animatedGalleryPreviews} onChange={(animatedGalleryPreviews) => update({ animatedGalleryPreviews })} />
-        <ToggleRow title="Écran actif pendant l’événement" help="Empêche la mise en veille pendant une station active. Cette option reste facultative." value={settings.keepScreenAwakeDuringEvent} onChange={(keepScreenAwakeDuringEvent) => update({ keepScreenAwakeDuringEvent })} />
-        <ToggleRow title="Confirmation avant suppression" help="Demande une validation avant de supprimer définitivement un média local." value={settings.confirmBeforeDelete} onChange={(confirmBeforeDelete) => update({ confirmBeforeDelete })} />
+        <ToggleRow title={t(language,'wifiPreferred')} help={t(language,'wifiHelp')} value={settings.wifiPreferred} onChange={(wifiPreferred) => update({ wifiPreferred })} />
+        <ToggleRow title={t(language,'mobileAsk')} help={t(language,'mobileHelp')} value={settings.askBeforeMobileData} onChange={(askBeforeMobileData) => update({ askBeforeMobileData })} />
+        <ToggleRow title={t(language,'reconnect')} help={t(language,'reconnectHelp')} value={settings.autoReconnectStations} onChange={(autoReconnectStations) => update({ autoReconnectStations })} />
+        <ToggleRow title={t(language,'animatedPreview')} help={t(language,'animatedPreviewHelp')} value={settings.animatedGalleryPreviews} onChange={(animatedGalleryPreviews) => update({ animatedGalleryPreviews })} />
+        <ToggleRow title={t(language,'keepAwake')} help={t(language,'keepAwakeHelp')} value={settings.keepScreenAwakeDuringEvent} onChange={(keepScreenAwakeDuringEvent) => update({ keepScreenAwakeDuringEvent })} />
+        <ToggleRow title={t(language,'confirmDelete')} help={t(language,'confirmDeleteHelp')} value={settings.confirmBeforeDelete} onChange={(confirmBeforeDelete) => update({ confirmBeforeDelete })} />
 
         <View style={styles.sectionCard}>
-          <Text style={styles.cardTitle}>LOCALISATION</Text>
-          <Text style={styles.sectionTitle}>Localisation précise</Text>
-          <Text style={styles.help}>État système : {permissionAccuracyLabel(locationPermission)}. KHE Booth n’utilise pas la position si cette option est désactivée.</Text>
-          <ToggleRow title="Utiliser ma localisation précise" help="Active la position de haute précision uniquement pour les fonctions KHE qui en ont besoin." value={settings.preciseLocationEnabled} onChange={(value) => void setPreciseLocation(value)} />
+          <Text style={styles.cardTitle}>{t(language,'location')}</Text>
+          <Text style={styles.sectionTitle}>{t(language,'preciseLocation')}</Text>
+          <Text style={styles.help}>{t(language,'systemState')} : {permissionAccuracyLabel(locationPermission,language)}. {t(language,'preciseOptional')}</Text>
+          <ToggleRow title={t(language,'preciseLocationToggle')} help={t(language,'preciseLocationHelp')} value={settings.preciseLocationEnabled} onChange={(value) => void setPreciseLocation(value)} />
           {locationMessage ? <Text style={styles.inlineMessage}>{locationMessage}</Text> : null}
-          <Pressable style={styles.outlineButton} onPress={() => void Linking.openSettings()}><Text style={styles.outlineText}>Ouvrir les réglages de l’appareil</Text></Pressable>
+          <Pressable style={styles.outlineButton} onPress={() => void Linking.openSettings()}><Text style={styles.outlineText}>{t(language,'openSystemSettings')}</Text></Pressable>
         </View>
 
         <View style={styles.sectionCard}>
-          <Text style={styles.cardTitle}>NOTIFICATIONS</Text>
-          <View style={styles.notificationHeading}><View style={{flex:1}}><Text style={styles.sectionTitle}>Son et vibration</Text><Text style={styles.help}>{notificationValidated && !notificationEditing ? 'Réglage validé. Appuyez sur Modifier pour effectuer un nouveau test.' : 'Configurez, testez puis validez votre notification KHE.'}</Text></View>{notificationValidated && !notificationEditing ? <View style={styles.validBadge}><Text style={styles.validBadgeText}>VALIDÉ ✓</Text></View> : null}</View>
+          <Text style={styles.cardTitle}>{t(language,'notifications')}</Text>
+          <View style={styles.notificationHeading}><View style={{flex:1}}><Text style={styles.sectionTitle}>{t(language,'soundVibration')}</Text><Text style={styles.help}>{notificationValidated && !notificationEditing ? 'Réglage validé. Appuyez sur Modifier pour effectuer un nouveau test.' : 'Configurez, testez puis validez votre notification KHE.'}</Text></View>{notificationValidated && !notificationEditing ? <View style={styles.validBadge}><Text style={styles.validBadgeText}>VALIDÉ ✓</Text></View> : null}</View>
           <View pointerEvents={notificationValidated && !notificationEditing ? 'none' : 'auto'} style={notificationValidated && !notificationEditing ? styles.settingsLocked : undefined}>
             <View style={styles.notificationControls}>
               <ToggleRow title="Notifications KHE" help="Active ou coupe les retours sonores et vibratoires de KHE Booth." value={notificationPreferences.enabled} onChange={(enabled) => changeNotificationDraft({ enabled })} />
@@ -298,8 +308,8 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
         <SharingBusinessSettingsPanel api={api} />
 
         <View style={styles.note}>
-          <Text style={styles.noteTitle}>Données mobiles</Text>
-          <Text style={styles.noteText}>KHE ne bloque pas les données mobiles. Lorsqu’une opération lourde démarre sur réseau cellulaire, l’application peut demander votre accord avant de continuer.</Text>
+          <Text style={styles.noteTitle}>{t(language,'mobileData')}</Text>
+          <Text style={styles.noteText}>{t(language,'mobileDataNote')}</Text>
         </View>
       </ScrollView>
     </View>
