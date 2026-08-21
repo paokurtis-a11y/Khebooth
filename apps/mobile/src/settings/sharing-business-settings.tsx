@@ -8,6 +8,7 @@ import type {
   SocialProvider,
   StationExperienceApi,
 } from '../api/station-api';
+import { SocialConnectionsPanel } from './social-connections-panel';
 
 const STATION_TOKEN_KEY = 'khe.station.token.v1';
 const PROVIDERS: Array<{ key: SocialProvider; label: string; placeholder: string }> = [
@@ -145,8 +146,10 @@ export function SharingBusinessSettingsPanel({ api }: { api: StationExperienceAp
               style={styles.input}
             />
           </View>)}
-          <Text style={styles.help}>La connexion API/OAuth de chaque réseau sera affichée séparément de son simple lien public : KHE ne considérera jamais un lien comme une autorisation de publier ou d’envoyer des messages.</Text>
+          <Text style={styles.help}>Ces liens servent aux QR et boutons publics. La connexion API ci-dessous reste indépendante : KHE ne considérera jamais un lien comme une autorisation de publier ou d’envoyer des messages.</Text>
         </View>
+
+        <SocialConnectionsPanel />
 
         <Pressable disabled={saving} style={[styles.saveButton, saving && { opacity: .55 }]} onPress={() => void save()}>
           <Text style={styles.saveText}>{saving ? 'ENREGISTREMENT…' : 'ENREGISTRER LES PARAMÈTRES BUSINESS'}</Text>
