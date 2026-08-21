@@ -1,7 +1,9 @@
 import * as SecureStore from 'expo-secure-store';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { StationExperienceApi } from '../api/station-api';
+import { SQLiteLocalStore } from '../offline/sqlite-store';
+import { StationLinkHealth } from '../station/station-link-health';
 import { CreativeStudio, type CreativePlan } from '../studio/creative-studio';
 import { RemoteControlPanel } from './remote-control-panel';
 import { SharingBillingCenter } from './sharing-billing-center';
@@ -18,11 +20,14 @@ interface SharingStationPanelProps {
 }
 
 export function SharingStationPanel({ eventName, api, stationToken }: SharingStationPanelProps) {
+  const store=useMemo(()=>new SQLiteLocalStore(),[]);
   const [ready, setReady] = useState(false);
   const [checking, setChecking] = useState(true);
   const [error, setError] = useState('');
   const [flowMessage,setFlowMessage]=useState('');
   const [designEvent,setDesignEvent]=useState<{id:string;name:string}|null>(null);
+  const [activeEventId,setActiveEventId]=useState<string|null>(null);
+  const [healthOpen,setHealthOpen]=useState(false);
   const designSavedRef=useRef(false);
   const checkingRef = useRef(false);
 
@@ -32,7 +37,9 @@ export function SharingStationPanel({ eventName, api, stationToken }: SharingSta
     setChecking(true);
     setError('');
     try {
-      await Promise.all([api.control(stationToken), api.listMedia(stationToken), api.clientWorkspace(stationToken)]);
+      const [manifest]=await Promise.all([api.manifest(stationToken),api.control(stationToken), api.listMedia(stationToken), api.clientWorkspace(stationToken)]);
+      await store.init();
+      setActiveEventId(manifest.event.id);
       setReady(true);
     } catch (cause) {
       setReady(false);
@@ -72,6 +79,7 @@ export function SharingStationPanel({ eventName, api, stationToken }: SharingSta
   }
 
   if(designEvent)return <CreativeStudio api={api} stationToken={stationToken} eventId={designEvent.id} onSaved={publishDesign} onClose={()=>void closeDesign()}/>;
+  if(healthOpen&&activeEventId)return <StationLinkHealth mode="SHARING" eventId={activeEventId} eventName={eventName} api={api} stationToken={stationToken} store={store} onClose={()=>setHealthOpen(false)}/>;
 
   if (!ready) {
     return (
@@ -87,6 +95,7 @@ export function SharingStationPanel({ eventName, api, stationToken }: SharingSta
 
   return (
     <View style={styles.readyShell}>
+      <Pressable style={styles.healthButton} onPress={()=>setHealthOpen(true)}><View><Text style={styles.healthEyebrow}>KHE LINK HEALTH</Text><Text style={styles.healthTitle}>⇄ Vérifier CAPTURE ↔ SHARING</Text></View><Text style={styles.healthArrow}>›</Text></Pressable>
       {flowMessage?<View style={styles.flowBanner}><Text style={styles.flowText}>{flowMessage}</Text></View>:null}
       <SharingEventManager api={api} stationToken={stationToken} onCreated={(eventId,eventTitle)=>void startDesign(eventId,eventTitle)} onReady={(eventTitle)=>setFlowMessage(`✓ « ${eventTitle} » est prêt et sera sélectionné automatiquement sur CAPTURE et SHARING dans quelques secondes.`)} />
       <RemoteControlPanel eventName={eventName} api={api} stationToken={stationToken} />
@@ -98,6 +107,8 @@ export function SharingStationPanel({ eventName, api, stationToken }: SharingSta
 }
 
 const styles = StyleSheet.create({
-  readyShell: { gap: 14 },flowBanner:{backgroundColor:'#e8f6ed',borderWidth:1,borderColor:'#9bc8aa',borderRadius:14,padding:12},flowText:{color:'#185a32',fontSize:12,lineHeight:18,fontWeight:'800'},
+  readyShell: { gap: 14 },
+  healthButton:{backgroundColor:'#111113',borderWidth:1,borderColor:'#d2ad4f',borderRadius:16,padding:14,flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:12},healthEyebrow:{color:'#d2ad4f',fontSize:9,fontWeight:'900',letterSpacing:1.5},healthTitle:{color:'#fff',fontSize:15,fontWeight:'900',marginTop:3},healthArrow:{color:'#d2ad4f',fontSize:28,fontWeight:'600'},
+  flowBanner:{backgroundColor:'#e8f6ed',borderWidth:1,borderColor:'#9bc8aa',borderRadius:14,padding:12},flowText:{color:'#185a32',fontSize:12,lineHeight:18,fontWeight:'800'},
   statusCard: { marginTop: 16, backgroundColor: '#111113', borderRadius: 22, padding: 22, gap: 14, borderWidth: 1, borderColor: '#30291d' },statusHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },dot: { width: 9, height: 9, borderRadius: 5, backgroundColor: '#d2ad4f' },eyebrow: { color: '#d2ad4f', fontSize: 11, letterSpacing: 2, fontWeight: '900' },title: { color: '#fff', fontSize: 24, fontWeight: '900' },help: { color: '#c4bfba', lineHeight: 20 },retry: { backgroundColor: '#b31520', borderRadius: 14, padding: 14, alignItems: 'center' },retryText: { color: '#fff', fontWeight: '900', letterSpacing: 0.7 },
 });
