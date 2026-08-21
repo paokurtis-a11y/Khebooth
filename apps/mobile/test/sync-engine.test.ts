@@ -9,6 +9,7 @@ import { FakeStationApi, TEST_EVENT_ID } from './helpers';
 
 const DRAIN_AT = new Date('2030-01-01T00:00:00.000Z');
 const RETRY_AT = new Date('2030-01-01T00:00:10.000Z');
+const OTHER_EVENT_ID = '77777777-7777-4777-8777-777777777777';
 
 class SuccessfulTransfer implements MediaTransfer {
   calls = 0;
@@ -154,7 +155,7 @@ test('queued media from another event stays local and is never uploaded with the
   const localId = 'old-event-video';
 
   await engine.queueMedia({
-    eventId: '11111111-1111-4111-8111-111111111111',
+    eventId: OTHER_EVENT_ID,
     localId,
     idempotencyKey: `old-event:${localId}:v1`,
     contentHash: `sha256:${localId}`,
@@ -170,7 +171,7 @@ test('queued media from another event stays local and is never uploaded with the
   assert.equal(transfer.calls, 0);
 
   const preserved = await store.getMedia(localId);
-  assert.equal(preserved?.eventId, '11111111-1111-4111-8111-111111111111');
+  assert.equal(preserved?.eventId, OTHER_EVENT_ID);
   assert.equal(preserved?.syncState, 'QUEUED');
   assert.equal(preserved?.retryCount, 0);
   assert.equal(preserved?.localUri, `file:///documents/khe/${localId}.mp4`);
