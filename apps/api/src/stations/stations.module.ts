@@ -13,6 +13,7 @@ import { ProfileStorageService } from './profile-storage.service';
 import { PublicMediaController } from './public-media.controller';
 import { PublicSocialController } from './public-social.controller';
 import { SharingBusinessService } from './sharing-business.service';
+import { SocialProviderReadinessController } from './social-provider-readiness.controller';
 import { StationAuthGuard } from './station-auth.guard';
 import { StationBillingController } from './station-billing.controller';
 import { StationBillingService } from './station-billing.service';
@@ -25,7 +26,7 @@ import { StationsService } from './stations.service';
 
 @Module({
   imports: [AuthModule, EventsModule, CommerceModule, SubscriptionsModule],
-  controllers: [StationsController, StationBillingController, PublicMediaController, PublicSocialController],
+  controllers: [StationsController, StationBillingController, PublicMediaController, PublicSocialController, SocialProviderReadinessController],
   providers: [StationsService, StationRenewalService, StationProfileService, StationNotificationsService, StationBillingService, ClientEventWorkspaceService, DesignStorageService, ProfileStorageService, MediaStorageService, MediaCatalogService, MediaSharingService, MediaTrashService, SharingBusinessService, StationConnectionService, StationAuthGuard],
 })
 export class StationsModule {}
