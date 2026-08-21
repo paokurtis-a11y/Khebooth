@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { MediaAssetContract, StationControlContract } from '@khe/contracts';
 import type { LocalMediaRecord, SyncQueueItem } from '../src/offline/types';
-import { evaluateLinkHealth } from '../src/station/link-health-model';
+import { evaluateLinkHealth, type LinkHealthInput } from '../src/station/link-health-model';
 
 const EVENT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const NOW = new Date('2026-08-21T06:00:00.000Z');
@@ -63,9 +63,9 @@ function remoteMedia(overrides: Partial<MediaAssetContract> = {}): MediaAssetCon
   };
 }
 
-function base(overrides: Parameters<typeof evaluateLinkHealth>[0] extends infer T ? Partial<T> : never = {}) {
+function base(overrides: Partial<LinkHealthInput> = {}): LinkHealthInput {
   return {
-    mode: 'SHARING' as const,
+    mode: 'SHARING',
     eventId: EVENT_ID,
     manifestEventId: EVENT_ID,
     networkConnected: true,
