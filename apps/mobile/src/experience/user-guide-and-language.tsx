@@ -1,21 +1,31 @@
 import * as SecureStore from 'expo-secure-store';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { t, type AppLanguage } from './i18n';
 
-export type AppLanguage = 'fr' | 'en' | 'de' | 'it' | 'es' | 'pt';
+export type { AppLanguage } from './i18n';
 
 const LANGUAGE_KEY = 'khe.language.preference.v1';
 const DEVICE_ONLY_OPTIONS: SecureStore.SecureStoreOptions = {
   keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
 };
 
-export const SUPPORTED_LANGUAGES: Array<{ code: AppLanguage; label: string; nativeLabel: string }> = [
-  { code: 'fr', label: 'Français', nativeLabel: 'Français' },
-  { code: 'en', label: 'Anglais', nativeLabel: 'English' },
-  { code: 'de', label: 'Allemand', nativeLabel: 'Deutsch' },
-  { code: 'it', label: 'Italien', nativeLabel: 'Italiano' },
-  { code: 'es', label: 'Espagnol', nativeLabel: 'Español' },
-  { code: 'pt', label: 'Portugais', nativeLabel: 'Português' },
+type LanguageOption = {
+  code: AppLanguage;
+  label: string;
+  nativeLabel: string;
+  flag: string;
+  colors: [string, string, string];
+  foreground: string;
+};
+
+export const SUPPORTED_LANGUAGES: LanguageOption[] = [
+  { code: 'fr', label: 'Français', nativeLabel: 'Français', flag: '🇫🇷', colors: ['#1d3f91', '#ffffff', '#e33a3a'], foreground: '#111111' },
+  { code: 'en', label: 'Anglais', nativeLabel: 'English', flag: '🇬🇧', colors: ['#17346f', '#ffffff', '#cf2435'], foreground: '#111111' },
+  { code: 'de', label: 'Allemand', nativeLabel: 'Deutsch', flag: '🇩🇪', colors: ['#151515', '#d73535', '#e6bc36'], foreground: '#ffffff' },
+  { code: 'it', label: 'Italien', nativeLabel: 'Italiano', flag: '🇮🇹', colors: ['#1f8b4c', '#ffffff', '#d93d49'], foreground: '#111111' },
+  { code: 'es', label: 'Espagnol', nativeLabel: 'Español', flag: '🇪🇸', colors: ['#c62b39', '#f2c94c', '#c62b39'], foreground: '#111111' },
+  { code: 'pt', label: 'Portugais', nativeLabel: 'Português', flag: '🇵🇹', colors: ['#197346', '#d8b342', '#c62b39'], foreground: '#ffffff' },
 ];
 
 export function getDeviceLocaleInfo(): { locale: string; region: string | null; suggestedLanguage: AppLanguage } {
@@ -73,6 +83,24 @@ function GuideSection({ title, body }: { title: string; body: string }) {
   return <View style={styles.card}><Text style={styles.cardTitle}>{title}</Text><Text style={styles.body}>{body}</Text></View>;
 }
 
+function FlagCard({ language, selected, onPress }: { language: LanguageOption; selected: boolean; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={[styles.languageButton, selected && styles.languageButtonActive]}>
+      <View style={styles.flagBand}>
+        {language.colors.map((color, index) => <View key={`${language.code}-${index}`} style={[styles.flagStripe, { backgroundColor: color }]} />)}
+      </View>
+      <View style={styles.languageCopy}>
+        <Text style={styles.flagEmoji}>{language.flag}</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.languageText}>{language.nativeLabel}</Text>
+          <Text style={styles.languageSmall}>{language.label}</Text>
+        </View>
+        {selected ? <View style={styles.selectedBadge}><Text style={styles.selectedBadgeText}>✓</Text></View> : null}
+      </View>
+    </Pressable>
+  );
+}
+
 export function LanguageAndRegion({ onClose, onChanged }: { onClose: () => void; onChanged?: (language: AppLanguage) => void }) {
   const device = useMemo(() => getDeviceLocaleInfo(), []);
   const [selected, setSelected] = useState<AppLanguage>(device.suggestedLanguage);
@@ -93,24 +121,19 @@ export function LanguageAndRegion({ onClose, onChanged }: { onClose: () => void;
     <View style={styles.page}>
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.header}>
-          <View style={{ flex: 1 }}><Text style={styles.brand}>LANGUES</Text><Text style={styles.slogan}>Choisissez la langue qui vous convient.</Text></View>
-          <Pressable style={styles.close} onPress={onClose}><Text style={styles.closeText}>Fermer</Text></Pressable>
+          <View style={{ flex: 1 }}><Text style={styles.brand}>{t(selected, 'languageTitle')}</Text><Text style={styles.slogan}>{t(selected, 'languageSubtitle')}</Text></View>
+          <Pressable style={styles.close} onPress={onClose}><Text style={styles.closeText}>{t(selected, 'close')}</Text></Pressable>
         </View>
         <View style={styles.infoCard}>
-          <Text style={styles.infoLabel}>Région détectée depuis la tablette</Text>
+          <Text style={styles.infoLabel}>{t(selected, 'detectedRegion')}</Text>
           <Text style={styles.infoValue}>{device.locale}{device.region ? ` • ${device.region}` : ''}</Text>
-          <Text style={styles.body}>Langue suggérée : {languageLabel(device.suggestedLanguage)}. Cette détection utilise les réglages régionaux de la tablette et ne nécessite pas le GPS.</Text>
+          <Text style={styles.body}>{t(selected, 'suggestedLanguage')} : {languageLabel(device.suggestedLanguage)}. {t(selected, 'noGps')}</Text>
         </View>
         <View style={styles.languageGrid}>
-          {SUPPORTED_LANGUAGES.map((language) => (
-            <Pressable key={language.code} onPress={() => void choose(language.code)} style={[styles.languageButton, selected === language.code && styles.languageButtonActive]}>
-              <Text style={selected === language.code ? styles.languageTextActive : styles.languageText}>{language.nativeLabel}</Text>
-              <Text style={selected === language.code ? styles.languageSmallActive : styles.languageSmall}>{language.label}</Text>
-            </Pressable>
-          ))}
+          {SUPPORTED_LANGUAGES.map((language) => <FlagCard key={language.code} language={language} selected={selected === language.code} onPress={() => void choose(language.code)} />)}
         </View>
-        {saved ? <Text style={styles.saved}>Langue enregistrée. Les écrans traduits utilisent cette préférence lorsqu’une traduction est disponible.</Text> : null}
-        <Text style={styles.privacy}>La localisation précise reste facultative. KHE ne doit jamais bloquer CAPTURE ou SHARING parce qu’un utilisateur refuse la localisation.</Text>
+        {saved ? <Text style={styles.saved}>{t(selected, 'languageSaved')}</Text> : null}
+        <Text style={styles.privacy}>{t(selected, 'preciseOptional')}</Text>
       </ScrollView>
     </View>
   );
@@ -120,25 +143,29 @@ const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#101010' },
   scroll: { padding: 22, paddingBottom: 60, gap: 14 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  brand: { color: '#ffffff', fontSize: 24, fontWeight: '900', letterSpacing: 3 },
+  brand: { color: '#d2ad4f', fontSize: 24, fontWeight: '900', letterSpacing: 3 },
   slogan: { color: '#c8c8c8', marginTop: 4, fontWeight: '700' },
-  close: { borderWidth: 1, borderColor: '#4d4d4d', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10 },
+  close: { borderWidth: 1, borderColor: '#d2ad4f', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10 },
   closeText: { color: '#ffffff', fontWeight: '900' },
   title: { color: '#ffffff', fontSize: 32, fontWeight: '900' },
   intro: { color: '#bdbdbd', lineHeight: 20 },
   card: { backgroundColor: '#ffffff', borderRadius: 18, padding: 18, gap: 7 },
   cardTitle: { color: '#111111', fontSize: 17, fontWeight: '900' },
   body: { color: '#555555', lineHeight: 19, fontSize: 13 },
-  infoCard: { backgroundColor: '#ffffff', borderRadius: 18, padding: 18, gap: 5 },
+  infoCard: { backgroundColor: '#ffffff', borderRadius: 18, padding: 18, gap: 5, borderWidth: 1, borderColor: '#d2ad4f' },
   infoLabel: { color: '#777777', fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
   infoValue: { color: '#111111', fontSize: 22, fontWeight: '900' },
   languageGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  languageButton: { width: '48%', minWidth: 140, borderWidth: 1, borderColor: '#555555', borderRadius: 16, padding: 15, backgroundColor: '#1a1a1a' },
-  languageButtonActive: { backgroundColor: '#ffffff', borderColor: '#ffffff' },
+  languageButton: { width: '48%', minWidth: 145, borderWidth: 2, borderColor: '#343434', borderRadius: 18, backgroundColor: '#18181b', overflow: 'hidden' },
+  languageButtonActive: { borderColor: '#d2ad4f', backgroundColor: '#241f15' },
+  flagBand: { height: 9, flexDirection: 'row' },
+  flagStripe: { flex: 1 },
+  languageCopy: { minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12 },
+  flagEmoji: { fontSize: 25 },
   languageText: { color: '#ffffff', fontWeight: '900', fontSize: 16 },
-  languageTextActive: { color: '#111111', fontWeight: '900', fontSize: 16 },
-  languageSmall: { color: '#999999', fontSize: 11, marginTop: 3 },
-  languageSmallActive: { color: '#666666', fontSize: 11, marginTop: 3 },
-  saved: { color: '#b9efbd', fontWeight: '800' },
+  languageSmall: { color: '#a8a8a8', fontSize: 11, marginTop: 3 },
+  selectedBadge: { width: 25, height: 25, borderRadius: 13, backgroundColor: '#d2ad4f', alignItems: 'center', justifyContent: 'center' },
+  selectedBadgeText: { color: '#111111', fontWeight: '900' },
+  saved: { color: '#b9efbd', fontWeight: '800', lineHeight: 19 },
   privacy: { color: '#aaaaaa', fontSize: 11, lineHeight: 17 },
 });

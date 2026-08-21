@@ -7,6 +7,7 @@ import { ActivityIndicator, Alert, Animated, Pressable, SafeAreaView, ScrollView
 import { HttpStationApi } from './api/station-api';
 import { CameraCapture } from './capture/camera-capture';
 import { API_BASE_URL } from './config';
+import { t } from './experience/i18n';
 import { LanguageAndRegion, UserGuide, getDeviceLocaleInfo, languageLabel, loadLanguagePreference, type AppLanguage } from './experience/user-guide-and-language';
 import { MediaGallery } from './gallery/media-gallery';
 import { APP_VERSION, AboutAndTerms, TermsGate, fetchReleaseInfo, type ReleaseInfo } from './legal/legal-and-info';
@@ -41,11 +42,11 @@ function refreshErrorMessage(error: unknown): string {
   return `Actualisation impossible : le cache local reste conservé. ${detail}`.trim();
 }
 
-function BackPage({ onBack, children }: { onBack: () => void; children: ReactNode }) {
+function BackPage({ onBack, children, language }: { onBack: () => void; children: ReactNode; language: AppLanguage }) {
   return (
     <SafeAreaView style={styles.backPage}>
       <View style={styles.backBar}>
-        <Pressable style={styles.backButton} onPress={onBack}><Text style={styles.backText}>← RETOUR</Text></Pressable>
+        <Pressable style={styles.backButton} onPress={onBack}><Text style={styles.backText}>← {t(language,'back')}</Text></Pressable>
       </View>
       <View style={styles.backContent}>{children}</View>
     </SafeAreaView>
@@ -205,9 +206,9 @@ function App() {
   }
 
   function confirmDeactivate(): void {
-    Alert.alert('Désactiver cette station ?', 'Le token et la session active seront retirés de cette tablette. Les médias locaux ne seront pas supprimés.', [
-      { text: 'Annuler', style: 'cancel' },
-      { text: 'Désactiver', style: 'destructive', onPress: () => void deactivateStation() },
+    Alert.alert(t(appLanguage,'deactivate'), 'Le token et la session active seront retirés de cette tablette. Les médias locaux ne seront pas supprimés.', [
+      { text: appLanguage === 'en' ? 'Cancel' : 'Annuler', style: 'cancel' },
+      { text: t(appLanguage,'deactivate'), style: 'destructive', onPress: () => void deactivateStation() },
     ]);
   }
 
@@ -245,14 +246,14 @@ function App() {
   const returnToMenu=()=>setMenuOpen(true);
   if (loading) return <SafeAreaView style={styles.center}><ActivityIndicator /><Text style={styles.muted}>Initialisation du stockage offline…</Text></SafeAreaView>;
   if (station && standbyLocked) return <StandbyScreen verifyPassword={verifyLockPassword} onUnlocked={unlockStandby} />;
-  if (aboutOpen) return <BackPage onBack={() => setAboutOpen(false)}><AboutAndTerms onClose={() => {setAboutOpen(false);returnToMenu();}} /></BackPage>;
-  if (guideOpen) return <BackPage onBack={() => setGuideOpen(false)}><UserGuide onClose={() => {setGuideOpen(false);returnToMenu();}} /></BackPage>;
-  if (languageOpen) return <BackPage onBack={() => setLanguageOpen(false)}><LanguageAndRegion onClose={() => {setLanguageOpen(false);returnToMenu();}} onChanged={setAppLanguage} /></BackPage>;
-  if (settingsOpen) return <BackPage onBack={() => setSettingsOpen(false)}><SettingsScreen onClose={() => {setSettingsOpen(false);returnToMenu();}} /></BackPage>;
-  if (studioOpen && station && stationToken) return <BackPage onBack={() => setStudioOpen(false)}><CreativeStudio api={api} stationToken={stationToken} eventId={station.session.eventId} onSaved={(plan)=>api.markClientEventDesignReady(stationToken,station.session.eventId,plan as unknown as Record<string,unknown>)} onClose={() => {setStudioOpen(false);returnToMenu();}} /></BackPage>;
-  if (profileOpen) return <BackPage onBack={() => setProfileOpen(false)}><UserProfile onClose={() => {setProfileOpen(false);returnToMenu();}} /></BackPage>;
-  if (cameraOpen && station?.mode === 'CAPTURE' && stationToken) return <BackPage onBack={() => setCameraOpen(false)}><CameraCapture eventId={station.session.eventId} store={store} api={api} stationToken={stationToken} onClose={() => setCameraOpen(false)} onCaptured={handleCaptured} /></BackPage>;
-  if (galleryOpen && station?.mode === 'CAPTURE') return <BackPage onBack={() => setGalleryOpen(false)}><MediaGallery eventId={station.session.eventId} eventName={eventName ?? station.session.eventId} store={store} onClose={() => setGalleryOpen(false)} /></BackPage>;
+  if (aboutOpen) return <BackPage language={appLanguage} onBack={() => setAboutOpen(false)}><AboutAndTerms onClose={() => {setAboutOpen(false);returnToMenu();}} /></BackPage>;
+  if (guideOpen) return <BackPage language={appLanguage} onBack={() => setGuideOpen(false)}><UserGuide onClose={() => {setGuideOpen(false);returnToMenu();}} /></BackPage>;
+  if (languageOpen) return <BackPage language={appLanguage} onBack={() => setLanguageOpen(false)}><LanguageAndRegion onClose={() => {setLanguageOpen(false);returnToMenu();}} onChanged={setAppLanguage} /></BackPage>;
+  if (settingsOpen) return <BackPage language={appLanguage} onBack={() => setSettingsOpen(false)}><SettingsScreen language={appLanguage} onClose={() => {setSettingsOpen(false);returnToMenu();}} /></BackPage>;
+  if (studioOpen && station && stationToken) return <BackPage language={appLanguage} onBack={() => setStudioOpen(false)}><CreativeStudio api={api} stationToken={stationToken} eventId={station.session.eventId} onSaved={(plan)=>api.markClientEventDesignReady(stationToken,station.session.eventId,plan as unknown as Record<string,unknown>)} onClose={() => {setStudioOpen(false);returnToMenu();}} /></BackPage>;
+  if (profileOpen) return <BackPage language={appLanguage} onBack={() => setProfileOpen(false)}><UserProfile onClose={() => {setProfileOpen(false);returnToMenu();}} /></BackPage>;
+  if (cameraOpen && station?.mode === 'CAPTURE' && stationToken) return <BackPage language={appLanguage} onBack={() => setCameraOpen(false)}><CameraCapture eventId={station.session.eventId} store={store} api={api} stationToken={stationToken} onClose={() => setCameraOpen(false)} onCaptured={handleCaptured} /></BackPage>;
+  if (galleryOpen && station?.mode === 'CAPTURE') return <BackPage language={appLanguage} onBack={() => setGalleryOpen(false)}><MediaGallery eventId={station.session.eventId} eventName={eventName ?? station.session.eventId} store={store} onClose={() => setGalleryOpen(false)} /></BackPage>;
 
   const menuItemStyle=(section:MenuSection)=>[styles.menuItem,activeMenu===section&&styles.menuItemActive];
   const menuTextStyle=(section:MenuSection)=>[styles.menuItemText,activeMenu===section&&styles.menuItemTextActive];
@@ -264,21 +265,21 @@ function App() {
           {station ? (
             <View style={styles.headerTools}>
               <View style={styles.menuAnchor}>
-                <Pressable style={[styles.menuButton,menuOpen&&styles.menuButtonOpen]} onPress={() => setMenuOpen((current) => !current)}><Text style={styles.menuButtonText}>☰</Text><Text style={styles.menuButtonLabel}>Menu</Text>{release.updateAvailable ? <View style={styles.updateDot} /> : null}</Pressable>
+                <Pressable style={[styles.menuButton,menuOpen&&styles.menuButtonOpen]} onPress={() => setMenuOpen((current) => !current)}><Text style={styles.menuButtonText}>☰</Text><Text style={styles.menuButtonLabel}>{t(appLanguage,'menu')}</Text>{release.updateAvailable ? <View style={styles.updateDot} /> : null}</Pressable>
                 {menuOpen ? (
                   <Animated.View style={[styles.menuPanel,{opacity:menuAnim,transform:[{translateY:menuAnim.interpolate({inputRange:[0,1],outputRange:[-10,0]})},{scale:menuAnim.interpolate({inputRange:[0,1],outputRange:[.96,1]})}]}]}>
-                    <Text style={styles.menuBrand}>KHE BOOTH</Text><Text style={styles.menuSession}>{station.mode} • {eventName ?? 'Événement'}</Text>
-                    <Pressable style={menuItemStyle('home')} onPress={()=>{setActiveMenu('home');setMenuOpen(false);}}><Text style={menuTextStyle('home')}>⌂ Accueil</Text></Pressable>
-                    <Pressable style={menuItemStyle('profile')} onPress={() => openMenuSection('profile',()=>setProfileOpen(true))}><Text style={menuTextStyle('profile')}>👤 Profil</Text></Pressable>
-                    {station.mode === 'CAPTURE' ? <Pressable style={menuItemStyle('gallery')} onPress={() => openMenuSection('gallery',()=>setGalleryOpen(true))}><Text style={menuTextStyle('gallery')}>🖨 Imprimer • Photos</Text></Pressable> : null}
-                    <Pressable style={menuItemStyle('settings')} onPress={() => openMenuSection('settings',()=>setSettingsOpen(true))}><Text style={menuTextStyle('settings')}>⚙ Paramètres</Text></Pressable>
-                    <Pressable style={menuItemStyle('studio')} onPress={() => openMenuSection('studio',()=>setStudioOpen(true))}><Text style={menuTextStyle('studio')}>✦ Design • Studio créatif</Text></Pressable>
-                    <Pressable style={menuItemStyle('guide')} onPress={() => openMenuSection('guide',()=>setGuideOpen(true))}><Text style={menuTextStyle('guide')}>Mode d’emploi</Text></Pressable>
-                    <Pressable style={menuItemStyle('language')} onPress={() => openMenuSection('language',()=>setLanguageOpen(true))}><Text style={menuTextStyle('language')}>Langues • {languageLabel(appLanguage)}</Text></Pressable>
-                    <Pressable style={menuItemStyle('terms')} onPress={() => openMenuSection('terms',()=>setAboutOpen(true))}><Text style={menuTextStyle('terms')}>Conditions d’utilisation</Text></Pressable>
-                    <Pressable style={menuItemStyle('version')} onPress={() => openMenuSection('version',()=>setAboutOpen(true))}><Text style={menuTextStyle('version')}>Version {APP_VERSION}{release.updateAvailable ? ` • Mise à jour ${release.latestVersion}` : ' • À jour'}</Text></Pressable>
-                    {station.mode === 'SHARING' && securityOptionsHidden ? <Pressable style={styles.menuItem} onPress={() => { setSecurityOptionsHidden(false); setMenuOpen(false); }}><Text style={styles.menuItemText}>Afficher veille & sécurité</Text></Pressable> : null}
-                    <Pressable style={styles.menuItemDanger} onPress={confirmDeactivate}><Text style={styles.menuItemDangerText}>Désactiver / fermer la session</Text></Pressable>
+                    <Text style={styles.menuBrand}>KHE BOOTH</Text><Text style={styles.menuSession}>{station.mode} • {eventName ?? t(appLanguage,'event')}</Text>
+                    <Pressable style={menuItemStyle('home')} onPress={()=>{setActiveMenu('home');setMenuOpen(false);}}><Text style={menuTextStyle('home')}>⌂ {t(appLanguage,'home')}</Text></Pressable>
+                    <Pressable style={menuItemStyle('profile')} onPress={() => openMenuSection('profile',()=>setProfileOpen(true))}><Text style={menuTextStyle('profile')}>👤 {t(appLanguage,'profile')}</Text></Pressable>
+                    {station.mode === 'CAPTURE' ? <Pressable style={menuItemStyle('gallery')} onPress={() => openMenuSection('gallery',()=>setGalleryOpen(true))}><Text style={menuTextStyle('gallery')}>🖨 {t(appLanguage,'printPhotos')}</Text></Pressable> : null}
+                    <Pressable style={menuItemStyle('settings')} onPress={() => openMenuSection('settings',()=>setSettingsOpen(true))}><Text style={menuTextStyle('settings')}>⚙ {t(appLanguage,'settings')}</Text></Pressable>
+                    <Pressable style={menuItemStyle('studio')} onPress={() => openMenuSection('studio',()=>setStudioOpen(true))}><Text style={menuTextStyle('studio')}>✦ {t(appLanguage,'creativeStudio')}</Text></Pressable>
+                    <Pressable style={menuItemStyle('guide')} onPress={() => openMenuSection('guide',()=>setGuideOpen(true))}><Text style={menuTextStyle('guide')}>{t(appLanguage,'guide')}</Text></Pressable>
+                    <Pressable style={menuItemStyle('language')} onPress={() => openMenuSection('language',()=>setLanguageOpen(true))}><Text style={menuTextStyle('language')}>{t(appLanguage,'languages')} • {languageLabel(appLanguage)}</Text></Pressable>
+                    <Pressable style={menuItemStyle('terms')} onPress={() => openMenuSection('terms',()=>setAboutOpen(true))}><Text style={menuTextStyle('terms')}>{t(appLanguage,'terms')}</Text></Pressable>
+                    <Pressable style={menuItemStyle('version')} onPress={() => openMenuSection('version',()=>setAboutOpen(true))}><Text style={menuTextStyle('version')}>{t(appLanguage,'version')} {APP_VERSION}{release.updateAvailable ? ` • ${t(appLanguage,'update')} ${release.latestVersion}` : ` • ${t(appLanguage,'upToDate')}`}</Text></Pressable>
+                    {station.mode === 'SHARING' && securityOptionsHidden ? <Pressable style={styles.menuItem} onPress={() => { setSecurityOptionsHidden(false); setMenuOpen(false); }}><Text style={styles.menuItemText}>{t(appLanguage,'showSecurity')}</Text></Pressable> : null}
+                    <Pressable style={styles.menuItemDanger} onPress={confirmDeactivate}><Text style={styles.menuItemDangerText}>{t(appLanguage,'deactivate')}</Text></Pressable>
                   </Animated.View>
                 ) : null}
               </View>
@@ -286,18 +287,18 @@ function App() {
             </View>
           ) : null}
 
-          <Text style={styles.brand}>KHE BOOTH</Text><Text style={styles.title}>Station événement</Text><Text style={styles.muted}>Offline-first • Capture et Sharing séparés</Text>
-          {release.updateAvailable ? <View style={styles.updateBanner}><Text style={styles.updateBannerText}>Mise à jour KHE Booth {release.latestVersion} disponible. Ouvrez la cloche ou Menu → Version.</Text></View> : null}
+          <Text style={styles.brand}>KHE BOOTH</Text><Text style={styles.title}>{t(appLanguage,'stationEvent')}</Text><Text style={styles.muted}>{t(appLanguage,'offlineSeparated')}</Text>
+          {release.updateAvailable ? <View style={styles.updateBanner}><Text style={styles.updateBannerText}>{t(appLanguage,'updateAvailable',{version:release.latestVersion})}</Text></View> : null}
 
           {station ? (
             <View style={styles.section}>
-              {!securityOptionsHidden ? <View style={styles.awakeCard}><View style={styles.awakeCopy}><Text style={styles.awakeTitle}>ÉTAT DE VEILLE • FACULTATIF</Text><Text style={styles.awakeStatus}>{keepAwakeEnabled ? 'Écran toujours actif' : 'Veille autorisée'}</Text><Text style={styles.awakeHelp}>{station.mode === 'SHARING' ? 'Vous pouvez utiliser la veille sécurisée ou ignorer entièrement cette configuration.' : 'La station CAPTURE reste éveillée pendant l’événement.'}</Text></View>{station.mode === 'SHARING' ? <Pressable onPress={() => void allowSecureStandby()} style={[styles.awakeButton, styles.awakeButtonActive]}><Text style={styles.awakeButtonTextActive}>AUTORISER VEILLE SÉCURISÉE</Text></Pressable> : null}{station.mode === 'SHARING' ? <Pressable style={styles.skipButton} onPress={() => setSecurityOptionsHidden(true)}><Text style={styles.skipButtonText}>Ignorer ces options pour l’instant</Text></Pressable> : null}</View> : null}
+              {!securityOptionsHidden ? <View style={styles.awakeCard}><View style={styles.awakeCopy}><Text style={styles.awakeTitle}>{t(appLanguage,'awakeOptional')}</Text><Text style={styles.awakeStatus}>{keepAwakeEnabled ? t(appLanguage,'screenAlwaysOn') : t(appLanguage,'standbyAllowed')}</Text><Text style={styles.awakeHelp}>{station.mode === 'SHARING' ? t(appLanguage,'sharingStandbyHelp') : t(appLanguage,'captureStandbyHelp')}</Text></View>{station.mode === 'SHARING' ? <Pressable onPress={() => void allowSecureStandby()} style={[styles.awakeButton, styles.awakeButtonActive]}><Text style={styles.awakeButtonTextActive}>{t(appLanguage,'secureStandby')}</Text></Pressable> : null}{station.mode === 'SHARING' ? <Pressable style={styles.skipButton} onPress={() => setSecurityOptionsHidden(true)}><Text style={styles.skipButtonText}>{t(appLanguage,'ignoreOptions')}</Text></Pressable> : null}</View> : null}
 
-              {station.mode === 'SHARING' && !securityOptionsHidden ? <View style={styles.securityCard}><Text style={styles.awakeTitle}>SÉCURITÉ DE LA RÉGIE • FACULTATIF</Text><Text style={styles.securityTitle}>{lockConfigured ? 'Mot de passe KHE configuré' : 'Créer un mot de passe KHE'}</Text><Text style={styles.awakeHelp}>{lockConfigured ? 'Vous pouvez le remplacer ou ignorer cette section.' : 'Le mot de passe n’est nécessaire que si vous souhaitez utiliser la veille sécurisée KHE.'}</Text><SecurePasswordField value={newLockPassword} onChangeText={setNewLockPassword} placeholder={lockConfigured ? 'Nouveau mot de passe' : 'Mot de passe KHE'} /><SecurePasswordField value={confirmLockPassword} onChangeText={setConfirmLockPassword} placeholder="Confirmer le mot de passe" onSubmitEditing={() => void saveLockPassword()} /><Pressable disabled={!newLockPassword || !confirmLockPassword} onPress={() => void saveLockPassword()} style={styles.securityButton}><Text style={styles.securityButtonText}>{lockConfigured ? 'MODIFIER LE MOT DE PASSE' : 'ENREGISTRER LE MOT DE PASSE'}</Text></Pressable><Pressable style={styles.skipButton} onPress={() => setSecurityOptionsHidden(true)}><Text style={styles.skipButtonText}>Passer cette configuration</Text></Pressable></View> : null}
+              {station.mode === 'SHARING' && !securityOptionsHidden ? <View style={styles.securityCard}><Text style={styles.awakeTitle}>{t(appLanguage,'securityOptional')}</Text><Text style={styles.securityTitle}>{lockConfigured ? t(appLanguage,'passwordConfigured') : t(appLanguage,'createPassword')}</Text><Text style={styles.awakeHelp}>{lockConfigured ? t(appLanguage,'replacePasswordHelp') : t(appLanguage,'passwordOptionalHelp')}</Text><SecurePasswordField value={newLockPassword} onChangeText={setNewLockPassword} placeholder={lockConfigured ? t(appLanguage,'newPassword') : t(appLanguage,'password')} /><SecurePasswordField value={confirmLockPassword} onChangeText={setConfirmLockPassword} placeholder={t(appLanguage,'confirmPassword')} onSubmitEditing={() => void saveLockPassword()} /><Pressable disabled={!newLockPassword || !confirmLockPassword} onPress={() => void saveLockPassword()} style={styles.securityButton}><Text style={styles.securityButtonText}>{lockConfigured ? t(appLanguage,'changePassword') : t(appLanguage,'savePassword')}</Text></Pressable><Pressable style={styles.skipButton} onPress={() => setSecurityOptionsHidden(true)}><Text style={styles.skipButtonText}>{t(appLanguage,'skipConfiguration')}</Text></Pressable></View> : null}
 
-              {station.mode === 'SHARING' && stationToken ? <SharingStationPanel eventName={eventName ?? 'Événement KHE Booth'} api={api} stationToken={stationToken} /> : <><Text style={styles.label}>Station active</Text><Text style={styles.value}>{station.mode}</Text><Text style={styles.label}>Événement</Text><Text style={styles.value}>{eventName ?? station.session.eventId}</Text><Text style={styles.label}>N° d’identification KHE</Text><Text style={styles.value}>{kheEventNumber(station.session.eventId)}</Text><Pressable disabled={busy} style={styles.primaryButton} onPress={() => void refreshManifest()}><Text style={styles.primaryButtonText}>{busy ? 'Synchronisation…' : 'Actualiser le manifest'}</Text></Pressable><View style={styles.captureActions}><Pressable disabled={busy || !stationToken} style={styles.captureButton} onPress={() => setCameraOpen(true)}><Text style={styles.captureButtonText}>Ouvrir la caméra</Text></Pressable><Pressable disabled={busy} style={styles.galleryButton} onPress={() => setGalleryOpen(true)}><Text style={styles.galleryButtonText}>Galerie</Text></Pressable></View><Text style={styles.notice}>Le Studio créatif du menu définit les textes, cadres, effets, image de fond et musique destinés au rendu et à l’aperçu CAPTURE.</Text></>}
+              {station.mode === 'SHARING' && stationToken ? <SharingStationPanel eventName={eventName ?? 'KHE Booth'} api={api} stationToken={stationToken} /> : <><Text style={styles.label}>{t(appLanguage,'stationActive')}</Text><Text style={styles.value}>{station.mode}</Text><Text style={styles.label}>{t(appLanguage,'event')}</Text><Text style={styles.value}>{eventName ?? station.session.eventId}</Text><Text style={styles.label}>{t(appLanguage,'kheId')}</Text><Text style={styles.value}>{kheEventNumber(station.session.eventId)}</Text><Pressable disabled={busy} style={styles.primaryButton} onPress={() => void refreshManifest()}><Text style={styles.primaryButtonText}>{busy ? t(appLanguage,'syncing') : t(appLanguage,'refreshManifest')}</Text></Pressable><View style={styles.captureActions}><Pressable disabled={busy || !stationToken} style={styles.captureButton} onPress={() => setCameraOpen(true)}><Text style={styles.captureButtonText}>{t(appLanguage,'openCamera')}</Text></Pressable><Pressable disabled={busy} style={styles.galleryButton} onPress={() => setGalleryOpen(true)}><Text style={styles.galleryButtonText}>{t(appLanguage,'gallery')}</Text></Pressable></View><Text style={styles.notice}>{t(appLanguage,'studioNotice')}</Text></>}
             </View>
-          ) : <View style={styles.section}><Text style={styles.label}>Mode de la tablette</Text><View style={styles.modeRow}>{(['CAPTURE', 'SHARING'] as const).map((candidate) => <Pressable key={candidate} onPress={() => setMode(candidate)} style={[styles.modeButton, mode === candidate && styles.modeButtonActive]}><Text style={mode === candidate ? styles.modeTextActive : styles.modeText}>{candidate}</Text></Pressable>)}</View><Text style={styles.label}>Code d’activation</Text><TextInput autoCapitalize="characters" autoCorrect={false} value={code} onChangeText={setCode} placeholder="KHE-123456" style={styles.input} /><Text style={styles.activationHelp}>Aucun Event ID à saisir : KHE Booth retrouve automatiquement l’événement lié à ce code.</Text><Pressable disabled={busy || !code.trim()} style={styles.primaryButton} onPress={() => void activate()}><Text style={styles.primaryButtonText}>{busy ? 'Activation…' : 'Activer cette station'}</Text></Pressable><Pressable style={styles.termsLink} onPress={() => setAboutOpen(true)}><Text style={styles.termsLinkText}>Conditions d’utilisation • Version {APP_VERSION}</Text></Pressable></View>}
+          ) : <View style={styles.section}><Text style={styles.label}>{t(appLanguage,'tabletMode')}</Text><View style={styles.modeRow}>{(['CAPTURE', 'SHARING'] as const).map((candidate) => <Pressable key={candidate} onPress={() => setMode(candidate)} style={[styles.modeButton, mode === candidate && styles.modeButtonActive]}><Text style={mode === candidate ? styles.modeTextActive : styles.modeText}>{candidate}</Text></Pressable>)}</View><Text style={styles.label}>{t(appLanguage,'activationCode')}</Text><TextInput autoCapitalize="characters" autoCorrect={false} value={code} onChangeText={setCode} placeholder="KHE-123456" style={styles.input} /><Text style={styles.activationHelp}>{t(appLanguage,'noEventId')}</Text><Pressable disabled={busy || !code.trim()} style={styles.primaryButton} onPress={() => void activate()}><Text style={styles.primaryButtonText}>{busy ? t(appLanguage,'activating') : t(appLanguage,'activateStation')}</Text></Pressable><Pressable style={styles.termsLink} onPress={() => setAboutOpen(true)}><Text style={styles.termsLinkText}>{t(appLanguage,'terms')} • {t(appLanguage,'version')} {APP_VERSION}</Text></Pressable></View>}
           {message ? <Text style={styles.message}>{message}</Text> : null}
         </View>
       </ScrollView>
