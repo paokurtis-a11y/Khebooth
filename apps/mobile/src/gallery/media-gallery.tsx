@@ -3,9 +3,13 @@ import * as Print from 'expo-print';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { HttpStationApi } from '../api/station-api';
+import { API_BASE_URL } from '../config';
 import type { LocalStore } from '../offline/local-store';
 import type { LocalMediaRecord } from '../offline/types';
+import { SecureStoreCredentialVault } from '../security/secure-store-vault';
 import { shareMediaNatively } from '../sharing/native-share';
+import { StationLinkHealth } from '../station/station-link-health';
 
 interface MediaGalleryProps {
   eventId: string;
@@ -28,6 +32,8 @@ function SelectedVideo({ media }: { media: LocalMediaRecord }) {
 export function MediaGallery({ eventId, eventName, store, onClose }: MediaGalleryProps) {
   const { width } = useWindowDimensions();
   const landscape = width >= 760;
+  const api=useMemo(()=>new HttpStationApi(API_BASE_URL),[]);
+  const vault=useMemo(()=>new SecureStoreCredentialVault(),[]);
   const [loading, setLoading] = useState(true);
   const [printing, setPrinting] = useState(false);
   const [sharing, setSharing] = useState(false);
@@ -35,6 +41,8 @@ export function MediaGallery({ eventId, eventName, store, onClose }: MediaGaller
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<MediaFilter>('ALL');
   const [message, setMessage] = useState('');
+  const [healthOpen,setHealthOpen]=useState(false);
+  const [healthToken,setHealthToken]=useState<string|null>(null);
 
   async function refresh(): Promise<void> {
     setLoading(true);
@@ -66,6 +74,12 @@ export function MediaGallery({ eventId, eventName, store, onClose }: MediaGaller
       setSelectedId(filteredMedia[0]?.localId ?? null);
     }
   }, [filteredMedia, selectedId]);
+
+  async function openHealth():Promise<void>{
+    const token=await vault.getStationToken();
+    if(!token){setMessage('Session CAPTURE introuvable. Réactivez la station avant le diagnostic.');return;}
+    setHealthToken(token);setHealthOpen(true);
+  }
 
   async function shareSelected(item: LocalMediaRecord): Promise<void> {
     setSharing(true);
@@ -115,6 +129,8 @@ export function MediaGallery({ eventId, eventName, store, onClose }: MediaGaller
     ]);
   }
 
+  if(healthOpen&&healthToken)return <StationLinkHealth mode="CAPTURE" eventId={eventId} eventName={eventName} api={api} stationToken={healthToken} store={store} onClose={()=>setHealthOpen(false)}/>;
+
   return (
     <View style={styles.page}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator>
@@ -126,6 +142,8 @@ export function MediaGallery({ eventId, eventName, store, onClose }: MediaGaller
           </View>
           <Pressable style={styles.closeButton} onPress={onClose}><Text style={styles.closeText}>Fermer</Text></Pressable>
         </View>
+
+        <Pressable style={styles.healthButton} onPress={()=>void openHealth()}><View><Text style={styles.healthEyebrow}>KHE LINK HEALTH</Text><Text style={styles.healthTitle}>⇄ Vérifier CAPTURE ↔ SHARING</Text></View><Text style={styles.healthArrow}>›</Text></Pressable>
 
         <View style={styles.summaryRow}>
           <View style={styles.summaryCard}><Text style={styles.summaryNumber}>{media.length}</Text><Text style={styles.summaryLabel}>moments</Text></View>
@@ -208,6 +226,8 @@ const styles = StyleSheet.create({
   subtitle: { color: '#666', marginTop: 4 },
   closeButton: { backgroundColor: KHE_BLACK, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12 },
   closeText: { color: '#fff', fontWeight: '900' },
+  healthButton:{backgroundColor:KHE_BLACK,borderWidth:1,borderColor:KHE_GOLD,borderRadius:16,padding:14,flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:12},
+  healthEyebrow:{color:KHE_GOLD,fontSize:9,fontWeight:'900',letterSpacing:1.5},healthTitle:{color:'#fff',fontSize:15,fontWeight:'900',marginTop:3},healthArrow:{color:KHE_GOLD,fontSize:28,fontWeight:'600'},
   summaryRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   summaryCard: { minWidth: 92, flexGrow: 1, backgroundColor: '#fff', borderRadius: 18, padding: 14, borderWidth: 1, borderColor: '#eadfce' },
   summaryNumber: { fontSize: 24, fontWeight: '900', color: KHE_RED },
