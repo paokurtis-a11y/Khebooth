@@ -1,10 +1,10 @@
+import type { StationMode } from '@khe/contracts';
 import * as Network from 'expo-network';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { StationExperienceApi } from '../api/station-api';
 import type { LocalStore } from '../offline/local-store';
 import { evaluateLinkHealth, type LinkHealthSnapshot } from './link-health-model';
-import type { StationMode } from '@khe/contracts';
 
 interface StationLinkHealthProps {
   mode: StationMode;
@@ -56,7 +56,6 @@ export function StationLinkHealth({ mode, eventId, eventName, api, stationToken,
   const refresh = useCallback(async (manual = false) => {
     if (runningRef.current) return;
     runningRef.current = true;
-    if (!snapshot) setLoading(true);
     try {
       const network = await Network.getNetworkStateAsync();
       const networkConnected = network.isConnected !== false && network.isInternetReachable !== false;
@@ -88,9 +87,10 @@ export function StationLinkHealth({ mode, eventId, eventName, api, stationToken,
       runningRef.current = false;
       setLoading(false);
     }
-  }, [api, eventId, mode, snapshot, stationToken, store]);
+  }, [api, eventId, mode, stationToken, store]);
 
   useEffect(() => {
+    setLoading(true);
     void refresh();
     const timer = setInterval(() => void refresh(), REFRESH_MS);
     return () => clearInterval(timer);
@@ -169,7 +169,7 @@ const styles = StyleSheet.create({
   muted: { color: '#9da7b0' },
   hero: { borderWidth: 2, borderRadius: 18, padding: 16, flexDirection: 'row', gap: 12, alignItems: 'center', backgroundColor: '#181b1f' },
   statusDot: { width: 14, height: 14, borderRadius: 7 },
-  heroStatus: { fontWeight: '950', fontSize: 23, letterSpacing: .8 },
+  heroStatus: { fontWeight: '900', fontSize: 23, letterSpacing: .8 },
   heroSummary: { color: '#e4e8eb', lineHeight: 20, marginTop: 3 },
   card: { backgroundColor: '#181b1f', borderWidth: 1, borderColor: '#2f3740', borderRadius: 16, padding: 15, gap: 3 },
   cardTitle: { color: '#d7b24c', fontSize: 11, letterSpacing: 1.2, fontWeight: '900', marginBottom: 7 },
@@ -184,7 +184,7 @@ const styles = StyleSheet.create({
   advice: { color: '#cdeed9', lineHeight: 20, fontSize: 13, paddingVertical: 2 },
   technical: { color: '#8f9aa4', fontSize: 11, lineHeight: 17, marginTop: 8 },
   refreshButton: { backgroundColor: '#d7b24c', borderRadius: 13, paddingVertical: 14, alignItems: 'center' },
-  refreshText: { color: '#111', fontWeight: '950', letterSpacing: .5 },
+  refreshText: { color: '#111', fontWeight: '900', letterSpacing: .5 },
   success: { color: '#75d69c', textAlign: 'center', fontWeight: '800' },
   error: { color: '#ff7b86', textAlign: 'center', fontWeight: '800' },
 });
