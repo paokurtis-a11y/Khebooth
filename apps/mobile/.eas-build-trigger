@@ -1,3 +1,3 @@
-trigger=2026-08-22T15:49:00+02:00
-reason=studio-event-ready-network-release-candidate
-release_source_commit=829abb3a7907880c6ce72e60b8b21f6ba1b50495
+trigger=2026-08-22T15:58:00+02:00
+reason=validated-studio-event-ready-network-release-candidate
+release_source_commit=f241abda0ec509b012c1f79e454eb49872f734ae
