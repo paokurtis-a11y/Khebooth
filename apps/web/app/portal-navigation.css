@@ -12,15 +12,18 @@
 .portal-nav-heading button{border:0;background:transparent;color:#aeb7c3;font:inherit;font-size:9px;letter-spacing:.04em;cursor:pointer;padding:4px 5px;border-radius:7px;transition:color .18s ease,background .18s ease}
 .portal-nav-heading button:hover{color:#f2d478;background:rgba(210,173,79,.08)}
 .portal-nav-group{position:relative;border:1px solid transparent;border-radius:14px;transition:border-color .22s ease,background .22s ease,box-shadow .22s ease,transform .22s ease;overflow:hidden}
-.portal-nav-group::before{content:'';position:absolute;inset:0;pointer-events:none;opacity:0;background:radial-gradient(circle at 12% 0%,rgba(210,173,79,.14),transparent 48%);transition:opacity .22s ease}
+.portal-nav-group::before{content:'';position:absolute;inset:0;pointer-events:none;opacity:0;background:radial-gradient(circle at 12% 0%,rgba(210,173,79,.16),transparent 48%);transition:opacity .22s ease}
 .portal-nav-group:hover{border-color:rgba(104,119,137,.24);background:rgba(255,255,255,.018);transform:translateX(2px)}
-.portal-nav-group.is-active{border-color:rgba(210,173,79,.34);background:linear-gradient(135deg,rgba(210,173,79,.09),rgba(18,24,32,.48));box-shadow:0 10px 28px rgba(0,0,0,.16),inset 0 0 0 1px rgba(255,255,255,.012)}
+.portal-nav-group.is-open:not(.is-active){border-color:rgba(210,173,79,.18);background:rgba(210,173,79,.025)}
+.portal-nav-group.is-active{border-color:rgba(214,175,82,.58);background:linear-gradient(135deg,rgba(214,175,82,.15),rgba(18,24,32,.60));box-shadow:0 10px 28px rgba(0,0,0,.20),0 0 24px rgba(214,175,82,.08),inset 0 0 0 1px rgba(255,255,255,.018)}
 .portal-nav-group.is-active::before,.portal-nav-group.is-open::before{opacity:1}
 .portal-nav-trigger{position:relative;z-index:1;width:100%;display:grid;grid-template-columns:27px minmax(0,1fr) 20px;align-items:center;gap:8px;border:0;background:transparent;color:#d6dce5;text-align:left;padding:10px 10px;cursor:pointer;border-radius:13px;font:inherit;font-size:12px;font-weight:850;transition:color .18s ease,background .18s ease}
 .portal-nav-trigger:hover{color:#fff;background:rgba(255,255,255,.025)}
-.portal-nav-group.is-active>.portal-nav-trigger{color:#f1d47c}
-.portal-nav-icon{width:27px;height:27px;display:grid;place-items:center;border-radius:9px;border:1px solid #313b48;background:linear-gradient(145deg,#171e27,#10161d);color:#d6af52;font-size:13px;box-shadow:inset 0 1px 0 rgba(255,255,255,.03);transition:transform .22s ease,border-color .22s ease,box-shadow .22s ease}
+.portal-nav-group.is-open:not(.is-active)>.portal-nav-trigger{color:#dfca86;background:rgba(210,173,79,.035)}
+.portal-nav-group.is-active>.portal-nav-trigger{color:#f6dd8a;background:linear-gradient(90deg,rgba(214,175,82,.14),rgba(214,175,82,.025));text-shadow:0 0 14px rgba(214,175,82,.16)}
+.portal-nav-icon{width:27px;height:27px;display:grid;place-items:center;border-radius:9px;border:1px solid #313b48;background:linear-gradient(145deg,#171e27,#10161d);color:#d6af52;font-size:13px;box-shadow:inset 0 1px 0 rgba(255,255,255,.03);transition:transform .22s ease,border-color .22s ease,box-shadow .22s ease,background .22s ease,color .22s ease}
 .portal-nav-trigger:hover .portal-nav-icon,.portal-nav-group.is-open .portal-nav-icon{transform:scale(1.06);border-color:rgba(210,173,79,.55);box-shadow:0 0 20px rgba(210,173,79,.08)}
+.portal-nav-group.is-active .portal-nav-icon{color:#f7df91;border-color:#d6af52;background:linear-gradient(145deg,#332b18,#181611);box-shadow:0 0 20px rgba(214,175,82,.15),inset 0 1px 0 rgba(255,255,255,.05)}
 .portal-nav-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .portal-nav-chevron{justify-self:end;color:#788493;font-size:17px;line-height:1;transform:rotate(0deg);transition:transform .24s cubic-bezier(.2,.8,.2,1),color .2s ease}
 .portal-nav-group.is-open .portal-nav-chevron{transform:rotate(180deg);color:#d6af52}
@@ -28,12 +31,12 @@
 .portal-nav-submenu[data-open='true']{grid-template-rows:1fr;opacity:1}
 .portal-nav-submenu-inner{min-height:0;overflow:hidden;display:grid;gap:3px;padding:0 8px}
 .portal-nav-submenu[data-open='true'] .portal-nav-submenu-inner{padding-bottom:8px}
-.portal-nav-submenu a{position:relative;display:grid;grid-template-columns:16px minmax(0,1fr);gap:5px;align-items:center;min-height:34px;padding:7px 9px;border-radius:9px;color:#9faab8;text-decoration:none;font-size:11px;font-weight:740;border:1px solid transparent;transition:color .18s ease,background .18s ease,border-color .18s ease,transform .18s ease}
+.portal-nav-submenu a{position:relative;display:grid;grid-template-columns:16px minmax(0,1fr);gap:5px;align-items:center;min-height:34px;padding:7px 9px;border-radius:9px;color:#9faab8;text-decoration:none;font-size:11px;font-weight:740;border:1px solid transparent;transition:color .18s ease,background .18s ease,border-color .18s ease,transform .18s ease,box-shadow .18s ease}
 .portal-nav-submenu a>span:first-child{color:#5d6978;transform:translateX(-2px);transition:color .18s ease,transform .18s ease}
 .portal-nav-submenu a:hover{color:#eef2f6;background:rgba(255,255,255,.035);border-color:rgba(114,128,146,.18);transform:translateX(2px)}
 .portal-nav-submenu a:hover>span:first-child{color:#d6af52;transform:translateX(1px)}
-.portal-nav-submenu a[aria-current='page']{color:#f2d478;background:linear-gradient(90deg,rgba(210,173,79,.15),rgba(210,173,79,.035));border-color:rgba(210,173,79,.27);box-shadow:inset 3px 0 0 #d6af52}
-.portal-nav-submenu a[aria-current='page']>span:first-child{color:#f2d478}
+.portal-nav-submenu a[aria-current='page']{color:#f7df91;background:linear-gradient(90deg,rgba(214,175,82,.22),rgba(214,175,82,.055));border-color:rgba(214,175,82,.50);box-shadow:inset 3px 0 0 #d6af52,0 7px 20px rgba(0,0,0,.16),0 0 16px rgba(214,175,82,.06);font-weight:900;text-shadow:0 0 12px rgba(214,175,82,.12)}
+.portal-nav-submenu a[aria-current='page']>span:first-child{color:#f7df91;transform:translateX(1px)}
 .portal-user-card{margin-top:24px;padding-top:16px;border-top:1px solid #29323e}
 
 .support-tools{position:fixed;top:18px;right:24px;z-index:40;display:flex;gap:10px;align-items:center}
