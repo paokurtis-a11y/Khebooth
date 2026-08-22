@@ -1,3 +1,3 @@
-trigger=2026-08-22T06:57:00+02:00
-reason=capture-sharing-auto-recovery-stable-qr-release
-release_source_commit=877c097a154436cd6eeea68713081b04db808d9b
+trigger=2026-08-22T11:04:00+02:00
+reason=khe-event-ready-release-candidate
+release_source_commit=9559a38f220afc4a4c4d557700248cc80ec5e7b2
