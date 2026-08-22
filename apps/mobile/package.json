@@ -7,6 +7,8 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
+    "postinstall": "node scripts/prepare-ffmpeg-new-arch.mjs",
+    "prepare:ffmpeg-native": "node scripts/prepare-ffmpeg-new-arch.mjs",
     "lint": "tsc -p tsconfig.json --noEmit",
     "build": "tsc -p tsconfig.build.json",
     "test": "pnpm build && node --test dist/apps/mobile/test/*.test.js"
@@ -40,6 +42,7 @@
     "react-native-svg": "15.15.4"
   },
   "devDependencies": {
+    "@react-native/codegen": "0.85.3",
     "@types/node": "^22.10.0",
     "@types/react": "^19.2.0",
     "typescript": "^5.7.2"
