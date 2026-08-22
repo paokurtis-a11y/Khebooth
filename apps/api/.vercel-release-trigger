@@ -1,1 +1,1 @@
-Production redeploy after ExcelJS ESM runtime hotfix on 2026-08-20. Expected main includes PR #48 mobile notification/billing features and PR #49 API startup fix.
+Production redeploy requested on 2026-08-22 after PR #80 Meta Business Login callback fix. Expected main includes dedicated Graph API v26 callback handling, encrypted Page token persistence, and safe Meta error diagnostics.
