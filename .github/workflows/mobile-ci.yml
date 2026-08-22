@@ -24,6 +24,9 @@ concurrency:
   group: khe-booth-mobile-ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   validate-mobile:
     runs-on: ubuntu-latest
@@ -80,3 +83,40 @@ jobs:
 
       - name: Build mobile TypeScript
         run: pnpm --filter @khe/mobile build
+
+  publish-android-release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: validate-mobile
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download validated Android APK
+        uses: actions/download-artifact@v4
+        with:
+          name: khe-booth-android-debug
+          path: android-release
+
+      - name: Publish stable Android beta release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          APK_SOURCE="android-release/app-debug.apk"
+          APK_RELEASE="KHE-Booth-Android-debug.apk"
+          cp "$APK_SOURCE" "$APK_RELEASE"
+
+          if gh release view android-latest >/dev/null 2>&1; then
+            gh release upload android-latest "$APK_RELEASE" --clobber
+            gh release edit android-latest \
+              --prerelease \
+              --title "KHE Booth Android — bêta" \
+              --notes "APK Android de test généré automatiquement depuis la branche main après validation native. Ce canal reste stable pendant que la signature de production est préparée."
+          else
+            gh release create android-latest "$APK_RELEASE" \
+              --prerelease \
+              --target "$GITHUB_SHA" \
+              --title "KHE Booth Android — bêta" \
+              --notes "APK Android de test généré automatiquement depuis la branche main après validation native. Ce canal reste stable pendant que la signature de production est préparée."
+          fi
