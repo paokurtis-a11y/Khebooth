@@ -5,6 +5,7 @@ import type { StationExperienceApi } from '../api/station-api';
 import type { AppLanguage } from '../experience/i18n';
 import type { LocalStore } from '../offline/local-store';
 import type { PersistedStationContext } from '../offline/types';
+import { reschedulePendingMediaNow } from '../sync/sync-rescue';
 import { countBlockingChecks, countWarnings, eventReadyState, isRecentHeartbeat, type ReadinessCheck, type ReadinessLevel } from './event-ready-model';
 
 interface Props {
@@ -71,8 +72,11 @@ export function EventReadyScreen({api,store,station,stationToken,eventName,langu
         await store.init();
         const snapshot=await store.snapshot(station.session.eventId);
         const pendingCount=snapshot.pendingMedia.length;
+        const highestRetry=snapshot.pendingMedia.reduce((highest,item)=>Math.max(highest,item.retryCount),0);
+        const failedCount=snapshot.pendingMedia.filter((item)=>item.syncState==='FAILED').length;
+        const syncDetail=pendingCount===0?c.noPending:`${pendingCount} ${c.pending}${failedCount?` • ${failedCount} échec(s)`:''}${highestRetry?` • tentative max ${highestRetry}`:''}`;
         next.push({id:'storage',title:c.storage,detail:c.ok,level:'PASS'});
-        next.push({id:'sync',title:c.sync,detail:pendingCount===0?c.noPending:`${pendingCount} ${c.pending}`,level:pendingCount===0?'PASS':'WARN'});
+        next.push({id:'sync',title:c.sync,detail:syncDetail,level:pendingCount===0?'PASS':'WARN'});
       }catch{
         next.push({id:'storage',title:c.storage,detail:c.storageDown,level:'BLOCK'});
         next.push({id:'sync',title:c.sync,detail:c.storageDown,level:'BLOCK'});
@@ -163,12 +167,25 @@ export function EventReadyScreen({api,store,station,stationToken,eventName,langu
     setActionMessage(c.manualLink);
   }
 
+  async function rescueSync(){
+    if(station.mode!=='CAPTURE')return;
+    setFixing(true);setActionMessage('');
+    try{
+      const result=await reschedulePendingMediaNow(store,station.session.eventId);
+      setActionMessage(language==='fr'?`${result.rescheduled} média(s) remis en tête de la file. La synchronisation reprend maintenant.`:`${result.rescheduled} media item(s) moved to the front of the queue. Sync is resuming now.`);
+      await new Promise((resolve)=>setTimeout(resolve,2200));
+      await runChecks();
+    }catch(error){setActionMessage(error instanceof Error?error.message:String(error));}
+    finally{setFixing(false);}
+  }
+
   async function fixAll(){
     setFixing(true);setActionMessage('');
     try{
       if(station.mode==='CAPTURE'){
         if(!cameraPermission?.granted&&cameraPermission?.canAskAgain!==false)await requestCameraPermission();
         if(!microphonePermission?.granted&&microphonePermission?.canAskAgain!==false)await requestMicrophonePermission();
+        await reschedulePendingMediaNow(store,station.session.eventId);
         const control=await api.control(stationToken).catch(()=>null);
         if(control?.sharingConnectionStatus==='PENDING')await api.respondControlConnection(stationToken,true);
       }else{
@@ -197,6 +214,7 @@ export function EventReadyScreen({api,store,station,stationToken,eventName,langu
 
   function rowAction(check:ReadinessCheck):{label:string;run:()=>void}|null{
     if(check.level==='PASS'||check.level==='INFO')return null;
+    if(check.id==='sync'&&station.mode==='CAPTURE')return{label:language==='fr'?'RELANCER MAINTENANT':'RETRY NOW',run:()=>void rescueSync()};
     if(check.id==='camera'&&cameraPermission?.canAskAgain!==false)return{label:c.allow,run:()=>void fixCamera()};
     if(check.id==='microphone'&&microphonePermission?.canAskAgain!==false)return{label:c.allow,run:()=>void fixMicrophone()};
     if(check.id==='link'){
