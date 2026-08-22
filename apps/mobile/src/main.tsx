@@ -15,6 +15,7 @@ import { StationNotificationCenter } from './notifications/station-notification-
 import { SQLiteLocalStore } from './offline/sqlite-store';
 import type { LocalMediaRecord, PersistedStationContext } from './offline/types';
 import { UserProfile } from './profile/user-profile';
+import { EventReadyScreen } from './readiness/event-ready-screen';
 import { SecurePasswordField } from './security/secure-password-field';
 import { SecureStoreCredentialVault } from './security/secure-store-vault';
 import { StandbyScreen } from './security/standby-screen';
@@ -27,7 +28,7 @@ import { useCaptureSync } from './sync/capture-sync-runner';
 const EVENT_KEEP_AWAKE_TAG = 'khe-booth-event';
 const CREATIVE_PLAN_KEY='khe.creative.plan.v1';
 
-type MenuSection='home'|'profile'|'gallery'|'settings'|'studio'|'guide'|'language'|'terms'|'version';
+type MenuSection='home'|'ready'|'profile'|'gallery'|'settings'|'studio'|'guide'|'language'|'terms'|'version';
 
 function makeInstallationId(): string {
   return `khe-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
@@ -74,6 +75,7 @@ function App() {
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeMenu,setActiveMenu]=useState<MenuSection>('home');
+  const [readyOpen,setReadyOpen]=useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [languageOpen, setLanguageOpen] = useState(false);
@@ -195,7 +197,7 @@ function App() {
   async function deactivateStation(): Promise<void> {
     setBusy(true);
     try {
-      setCameraOpen(false); setGalleryOpen(false); setMenuOpen(false); setAboutOpen(false); setGuideOpen(false); setLanguageOpen(false); setSettingsOpen(false); setStudioOpen(false); setProfileOpen(false);setActiveMenu('home');
+      setCameraOpen(false); setGalleryOpen(false); setMenuOpen(false); setReadyOpen(false); setAboutOpen(false); setGuideOpen(false); setLanguageOpen(false); setSettingsOpen(false); setStudioOpen(false); setProfileOpen(false);setActiveMenu('home');
       await vault.clearStationToken();
       await vault.saveStandbyLocked(false);
       await store.clearStation();
@@ -246,6 +248,7 @@ function App() {
   const returnToMenu=()=>setMenuOpen(true);
   if (loading) return <SafeAreaView style={styles.center}><ActivityIndicator /><Text style={styles.muted}>Initialisation du stockage offline…</Text></SafeAreaView>;
   if (station && standbyLocked) return <StandbyScreen verifyPassword={verifyLockPassword} onUnlocked={unlockStandby} />;
+  if (readyOpen && station && stationToken) return <BackPage language={appLanguage} onBack={() => setReadyOpen(false)}><EventReadyScreen api={api} store={store} station={station} stationToken={stationToken} eventName={eventName ?? station.session.eventId} language={appLanguage} keepAwakeEnabled={keepAwakeEnabled} onClose={() => {setReadyOpen(false);returnToMenu();}} /></BackPage>;
   if (aboutOpen) return <BackPage language={appLanguage} onBack={() => setAboutOpen(false)}><AboutAndTerms onClose={() => {setAboutOpen(false);returnToMenu();}} /></BackPage>;
   if (guideOpen) return <BackPage language={appLanguage} onBack={() => setGuideOpen(false)}><UserGuide onClose={() => {setGuideOpen(false);returnToMenu();}} /></BackPage>;
   if (languageOpen) return <BackPage language={appLanguage} onBack={() => setLanguageOpen(false)}><LanguageAndRegion onClose={() => {setLanguageOpen(false);returnToMenu();}} onChanged={setAppLanguage} /></BackPage>;
@@ -270,6 +273,7 @@ function App() {
                   <Animated.View style={[styles.menuPanel,{opacity:menuAnim,transform:[{translateY:menuAnim.interpolate({inputRange:[0,1],outputRange:[-10,0]})},{scale:menuAnim.interpolate({inputRange:[0,1],outputRange:[.96,1]})}]}]}>
                     <Text style={styles.menuBrand}>KHE BOOTH</Text><Text style={styles.menuSession}>{station.mode} • {eventName ?? t(appLanguage,'event')}</Text>
                     <Pressable style={menuItemStyle('home')} onPress={()=>{setActiveMenu('home');setMenuOpen(false);}}><Text style={menuTextStyle('home')}>⌂ {t(appLanguage,'home')}</Text></Pressable>
+                    <Pressable style={menuItemStyle('ready')} onPress={() => openMenuSection('ready',()=>setReadyOpen(true))}><Text style={menuTextStyle('ready')}>★ KHE EVENT READY</Text></Pressable>
                     <Pressable style={menuItemStyle('profile')} onPress={() => openMenuSection('profile',()=>setProfileOpen(true))}><Text style={menuTextStyle('profile')}>👤 {t(appLanguage,'profile')}</Text></Pressable>
                     {station.mode === 'CAPTURE' ? <Pressable style={menuItemStyle('gallery')} onPress={() => openMenuSection('gallery',()=>setGalleryOpen(true))}><Text style={menuTextStyle('gallery')}>🖨 {t(appLanguage,'printPhotos')}</Text></Pressable> : null}
                     <Pressable style={menuItemStyle('settings')} onPress={() => openMenuSection('settings',()=>setSettingsOpen(true))}><Text style={menuTextStyle('settings')}>⚙ {t(appLanguage,'settings')}</Text></Pressable>
@@ -292,6 +296,8 @@ function App() {
 
           {station ? (
             <View style={styles.section}>
+              {stationToken?<Pressable style={styles.eventReadyCard} onPress={()=>{setActiveMenu('ready');setReadyOpen(true);}}><View style={styles.eventReadyStar}><Text style={styles.eventReadyStarText}>★</Text></View><View style={styles.eventReadyCopy}><Text style={styles.eventReadyTitle}>KHE EVENT READY</Text><Text style={styles.eventReadyText}>CAPTURE • SHARING • CLOUD • SYNC • QR</Text></View><Text style={styles.eventReadyArrow}>›</Text></Pressable>:null}
+
               {!securityOptionsHidden ? <View style={styles.awakeCard}><View style={styles.awakeCopy}><Text style={styles.awakeTitle}>{t(appLanguage,'awakeOptional')}</Text><Text style={styles.awakeStatus}>{keepAwakeEnabled ? t(appLanguage,'screenAlwaysOn') : t(appLanguage,'standbyAllowed')}</Text><Text style={styles.awakeHelp}>{station.mode === 'SHARING' ? t(appLanguage,'sharingStandbyHelp') : t(appLanguage,'captureStandbyHelp')}</Text></View>{station.mode === 'SHARING' ? <Pressable onPress={() => void allowSecureStandby()} style={[styles.awakeButton, styles.awakeButtonActive]}><Text style={styles.awakeButtonTextActive}>{t(appLanguage,'secureStandby')}</Text></Pressable> : null}{station.mode === 'SHARING' ? <Pressable style={styles.skipButton} onPress={() => setSecurityOptionsHidden(true)}><Text style={styles.skipButtonText}>{t(appLanguage,'ignoreOptions')}</Text></Pressable> : null}</View> : null}
 
               {station.mode === 'SHARING' && !securityOptionsHidden ? <View style={styles.securityCard}><Text style={styles.awakeTitle}>{t(appLanguage,'securityOptional')}</Text><Text style={styles.securityTitle}>{lockConfigured ? t(appLanguage,'passwordConfigured') : t(appLanguage,'createPassword')}</Text><Text style={styles.awakeHelp}>{lockConfigured ? t(appLanguage,'replacePasswordHelp') : t(appLanguage,'passwordOptionalHelp')}</Text><SecurePasswordField value={newLockPassword} onChangeText={setNewLockPassword} placeholder={lockConfigured ? t(appLanguage,'newPassword') : t(appLanguage,'password')} /><SecurePasswordField value={confirmLockPassword} onChangeText={setConfirmLockPassword} placeholder={t(appLanguage,'confirmPassword')} onSubmitEditing={() => void saveLockPassword()} /><Pressable disabled={!newLockPassword || !confirmLockPassword} onPress={() => void saveLockPassword()} style={styles.securityButton}><Text style={styles.securityButtonText}>{lockConfigured ? t(appLanguage,'changePassword') : t(appLanguage,'savePassword')}</Text></Pressable><Pressable style={styles.skipButton} onPress={() => setSecurityOptionsHidden(true)}><Text style={styles.skipButtonText}>{t(appLanguage,'skipConfiguration')}</Text></Pressable></View> : null}
@@ -313,6 +319,7 @@ const styles = StyleSheet.create({
   backPage: { flex: 1, backgroundColor: '#101010' }, backBar: { paddingHorizontal: 14, paddingTop: 8, paddingBottom: 6, backgroundColor: '#101010' }, backButton: { alignSelf: 'flex-start', borderWidth: 1, borderColor: '#ffffff', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 9 }, backText: { color: '#ffffff', fontSize: 11, fontWeight: '900', letterSpacing: 0.7 }, backContent: { flex: 1 },
   card: { width: '100%', maxWidth: 760, alignSelf: 'center', backgroundColor: '#fff', borderRadius: 24, padding: 22, gap: 8 }, cardLandscape: { maxWidth: 980 }, brand: { fontSize: 13, letterSpacing: 3, fontWeight: '800', paddingTop: 4 }, title: { fontSize: 30, lineHeight: 36, fontWeight: '800' }, muted: { opacity: 0.6, lineHeight: 18 }, section: { marginTop: 18, gap: 10 }, label: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', opacity: 0.55 }, value: { fontSize: 18, fontWeight: '700' }, small: { fontSize: 12, opacity: 0.65 },
   modeRow: { flexDirection: 'row', gap: 10 }, modeButton: { flex: 1, borderWidth: 1, borderColor: '#c9c9c9', borderRadius: 12, padding: 12, alignItems: 'center' }, modeButtonActive: { backgroundColor: '#111', borderColor: '#111' }, modeText: { fontWeight: '700' }, modeTextActive: { color: '#fff', fontWeight: '700' }, input: { borderWidth: 1, borderColor: '#d6d6d6', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: '#fff' }, activationHelp: { fontSize: 12, lineHeight: 17, opacity: 0.6 }, primaryButton: { marginTop: 8, backgroundColor: '#111', borderRadius: 12, padding: 14, alignItems: 'center' }, primaryButtonText: { color: '#fff', fontWeight: '800' },
+  eventReadyCard:{flexDirection:'row',alignItems:'center',gap:12,backgroundColor:'#18150f',borderWidth:1,borderColor:'#d2ad4f',borderRadius:16,padding:14,shadowColor:'#d2ad4f',shadowOpacity:.16,shadowRadius:10},eventReadyStar:{width:38,height:38,borderRadius:19,backgroundColor:'#d2ad4f',alignItems:'center',justifyContent:'center'},eventReadyStarText:{color:'#111',fontSize:20,fontWeight:'900'},eventReadyCopy:{flex:1},eventReadyTitle:{fontSize:14,fontWeight:'900',color:'#d2ad4f',letterSpacing:.7},eventReadyText:{fontSize:10,fontWeight:'800',color:'#b7a97c',marginTop:3},eventReadyArrow:{fontSize:28,fontWeight:'700',color:'#d2ad4f'},
   awakeCard: { borderWidth: 1, borderColor: '#d5d5d5', borderRadius: 16, padding: 14, gap: 10 }, awakeCopy: { gap: 3 }, awakeTitle: { fontSize: 10, fontWeight: '900', letterSpacing: 1.5, opacity: 0.55 }, awakeStatus: { fontSize: 17, fontWeight: '900' }, awakeHelp: { fontSize: 11, lineHeight: 16, opacity: 0.62 }, awakeButton: { borderWidth: 1, borderColor: '#111', borderRadius: 11, paddingVertical: 11, alignItems: 'center' }, awakeButtonActive: { backgroundColor: '#111' }, awakeButtonTextActive: { color: '#fff', fontWeight: '900', fontSize: 11 },
   securityCard: { borderWidth: 1, borderColor: '#d5d5d5', borderRadius: 16, padding: 14, gap: 9 }, securityTitle: { fontSize: 16, fontWeight: '900' }, securityButton: { backgroundColor: '#ededed', borderRadius: 11, paddingVertical: 12, alignItems: 'center' }, securityButtonText: { fontWeight: '900', fontSize: 11 }, skipButton: { paddingVertical: 9, alignItems: 'center' }, skipButtonText: { fontSize: 11, fontWeight: '800', textDecorationLine: 'underline', opacity: 0.65 },
   captureActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, captureButton: { flexGrow: 1, minWidth: 160, borderWidth: 1, borderColor: '#111', borderRadius: 12, padding: 14, alignItems: 'center' }, captureButtonText: { color: '#111', fontWeight: '800' }, galleryButton: { flexGrow: 1, minWidth: 140, backgroundColor: '#111', borderRadius: 12, padding: 14, alignItems: 'center' }, galleryButtonText: { color: '#fff', fontWeight: '800' }, notice: { marginTop: 8, fontSize: 12, lineHeight: 18, opacity: 0.65 }, message: { marginTop: 14, fontSize: 13, lineHeight: 18 },
