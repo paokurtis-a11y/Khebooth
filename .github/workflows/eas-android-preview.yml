@@ -19,7 +19,7 @@ jobs:
   build-android-preview:
     name: Build Android preview APK
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -57,6 +57,6 @@ jobs:
         working-directory: apps/mobile
         run: eas project:info
 
-      - name: Start Android preview APK build
+      - name: Build and validate Android preview APK
         working-directory: apps/mobile
-        run: eas build --platform android --profile preview --non-interactive --no-wait
+        run: eas build --platform android --profile preview --non-interactive --wait --message "KHE Booth RC $GITHUB_SHA"
