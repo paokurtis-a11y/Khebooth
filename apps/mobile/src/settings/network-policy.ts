@@ -4,7 +4,7 @@ import type { AppSettings } from './app-settings';
 export type SyncNetworkDecision = 'ALLOW' | 'PROMPT_CELLULAR' | 'WAIT_FOR_WIFI' | 'OFFLINE';
 
 export interface NetworkPolicyState {
-  type: Network.NetworkStateType | null | undefined;
+  type?: Network.NetworkStateType | null;
   isConnected?: boolean | null;
   isInternetReachable?: boolean | null;
 }
