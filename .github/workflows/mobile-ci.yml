@@ -63,11 +63,44 @@ jobs:
       - name: Test offline foundation
         run: pnpm --filter @khe/mobile test
 
+      - name: Verify Expo production and beta identities
+        working-directory: apps/mobile
+        run: |
+          set -euo pipefail
+          pnpm exec expo config --json > /tmp/khe-expo-production.json
+          KHE_ANDROID_CHANNEL=beta pnpm exec expo config --json > /tmp/khe-expo-beta.json
+          node <<'NODE'
+          const fs = require('fs');
+          const production = JSON.parse(fs.readFileSync('/tmp/khe-expo-production.json', 'utf8'));
+          const beta = JSON.parse(fs.readFileSync('/tmp/khe-expo-beta.json', 'utf8'));
+          if (production.android?.package !== 'com.kurtishypnotic.khebooth') {
+            throw new Error(`Unexpected production package: ${production.android?.package}`);
+          }
+          if (production.name !== 'KHE Booth') {
+            throw new Error(`Unexpected production app name: ${production.name}`);
+          }
+          if (beta.android?.package !== 'com.kurtishypnotic.khebooth.beta') {
+            throw new Error(`Unexpected beta package: ${beta.android?.package}`);
+          }
+          if (beta.name !== 'KHE Booth Beta') {
+            throw new Error(`Unexpected beta app name: ${beta.name}`);
+          }
+          console.log('Android identities verified:', production.android.package, beta.android.package);
+          NODE
+
       - name: Validate Android native prebuild
         working-directory: apps/mobile
         env:
           CI: '1'
+          KHE_ANDROID_CHANNEL: beta
         run: pnpm exec expo prebuild --platform android --clean --no-install
+
+      - name: Verify Android beta package identity
+        working-directory: apps/mobile
+        run: |
+          set -euo pipefail
+          grep -Eq "applicationId[[:space:]]+['\"]com\.kurtishypnotic\.khebooth\.beta['\"]" android/app/build.gradle
+          grep -q '<string name="app_name">KHE Booth Beta</string>' android/app/src/main/res/values/strings.xml
 
       - name: Compile Android native debug APK
         working-directory: apps/mobile/android
@@ -112,11 +145,11 @@ jobs:
             gh release edit android-latest \
               --prerelease \
               --title "KHE Booth Android — bêta" \
-              --notes "APK Android de test généré automatiquement depuis la branche main après validation native. Ce canal reste stable pendant que la signature de production est préparée."
+              --notes "APK Android bêta généré automatiquement depuis main après validation native. Le package bêta com.kurtishypnotic.khebooth.beta est distinct de la production et peut être installé à côté d’une ancienne KHE Booth sans conflit de package."
           else
             gh release create android-latest "$APK_RELEASE" \
               --prerelease \
               --target "$GITHUB_SHA" \
               --title "KHE Booth Android — bêta" \
-              --notes "APK Android de test généré automatiquement depuis la branche main après validation native. Ce canal reste stable pendant que la signature de production est préparée."
+              --notes "APK Android bêta généré automatiquement depuis main après validation native. Le package bêta com.kurtishypnotic.khebooth.beta est distinct de la production et peut être installé à côté d’une ancienne KHE Booth sans conflit de package."
           fi
