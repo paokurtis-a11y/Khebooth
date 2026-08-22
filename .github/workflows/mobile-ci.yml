@@ -63,6 +63,31 @@ jobs:
       - name: Test offline foundation
         run: pnpm --filter @khe/mobile test
 
+      - name: Verify Expo production and beta identities
+        working-directory: apps/mobile
+        run: |
+          set -euo pipefail
+          pnpm exec expo config --json > /tmp/khe-expo-production.json
+          KHE_ANDROID_CHANNEL=beta pnpm exec expo config --json > /tmp/khe-expo-beta.json
+          node <<'NODE'
+          const fs = require('fs');
+          const production = JSON.parse(fs.readFileSync('/tmp/khe-expo-production.json', 'utf8'));
+          const beta = JSON.parse(fs.readFileSync('/tmp/khe-expo-beta.json', 'utf8'));
+          if (production.android?.package !== 'com.kurtishypnotic.khebooth') {
+            throw new Error(`Unexpected production package: ${production.android?.package}`);
+          }
+          if (production.name !== 'KHE Booth') {
+            throw new Error(`Unexpected production app name: ${production.name}`);
+          }
+          if (beta.android?.package !== 'com.kurtishypnotic.khebooth.beta') {
+            throw new Error(`Unexpected beta package: ${beta.android?.package}`);
+          }
+          if (beta.name !== 'KHE Booth Beta') {
+            throw new Error(`Unexpected beta app name: ${beta.name}`);
+          }
+          console.log('Android identities verified:', production.android.package, beta.android.package);
+          NODE
+
       - name: Validate Android native prebuild
         working-directory: apps/mobile
         env:
