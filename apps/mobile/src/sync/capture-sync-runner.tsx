@@ -1,8 +1,10 @@
+import * as Network from 'expo-network';
 import { useEffect, useMemo, useRef } from 'react';
-import { Alert } from 'react-native';
+import { Alert, AppState } from 'react-native';
 import type { StationApi } from '../api/station-api';
 import type { LocalStore } from '../offline/local-store';
 import type { CredentialVault } from '../security/credential-vault';
+import { shouldRecoverFromAppState, shouldRecoverFromNetwork } from '../station/recovery-trigger';
 import { respondSharingConnection } from '../station/sharing-connection-client';
 import { SignedUrlMediaTransfer } from './media-transfer';
 import { SyncEngine } from './sync-engine';
@@ -39,12 +41,24 @@ export function useCaptureSync(
       }
     };
 
+    const recoverNow = () => {
+      if (!cancelled) void drain();
+    };
+
     void drain();
-    const timer = setInterval(() => void drain(), SYNC_INTERVAL_MS);
+    const timer = setInterval(recoverNow, SYNC_INTERVAL_MS);
+    const networkSubscription = Network.addNetworkStateListener((state) => {
+      if (shouldRecoverFromNetwork(state)) recoverNow();
+    });
+    const appStateSubscription = AppState.addEventListener('change', (state) => {
+      if (shouldRecoverFromAppState(state)) recoverNow();
+    });
 
     return () => {
       cancelled = true;
       clearInterval(timer);
+      networkSubscription.remove();
+      appStateSubscription.remove();
     };
   }, [enabled, syncEngine]);
 
@@ -97,12 +111,24 @@ export function useCaptureSync(
       }
     };
 
+    const recoverConnectionNow = () => {
+      if (!cancelled) void pollConnectionRequest();
+    };
+
     void pollConnectionRequest();
-    const timer = setInterval(() => void pollConnectionRequest(), CONNECTION_POLL_INTERVAL_MS);
+    const timer = setInterval(recoverConnectionNow, CONNECTION_POLL_INTERVAL_MS);
+    const networkSubscription = Network.addNetworkStateListener((state) => {
+      if (shouldRecoverFromNetwork(state)) recoverConnectionNow();
+    });
+    const appStateSubscription = AppState.addEventListener('change', (state) => {
+      if (shouldRecoverFromAppState(state)) recoverConnectionNow();
+    });
 
     return () => {
       cancelled = true;
       clearInterval(timer);
+      networkSubscription.remove();
+      appStateSubscription.remove();
     };
   }, [api, enabled, vault]);
 }
