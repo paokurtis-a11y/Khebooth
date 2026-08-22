@@ -1,0 +1,3 @@
+import { NextResponse } from 'next/server';
+function apiBase(){return(process.env.NEXT_PUBLIC_API_URL||'https://khebooth-api.vercel.app/api').replace(/\/$/,'');}
+export async function GET(_request:Request,{params}:{params:Promise<{token:string}>}){const{token}=await params;try{const response=await fetch(`${apiBase()}/public/events/${encodeURIComponent(token)}`,{cache:'no-store',headers:{Accept:'application/json'}});const body=await response.text();return new NextResponse(body,{status:response.status,headers:{'Content-Type':'application/json','Cache-Control':'private, no-store, max-age=0','X-Robots-Tag':'noindex, nofollow, noarchive'}});}catch{return NextResponse.json({message:'Galerie temporairement indisponible.'},{status:503,headers:{'Cache-Control':'no-store'}});}}
