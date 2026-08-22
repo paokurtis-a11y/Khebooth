@@ -2,19 +2,22 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { StationMode } from '@prisma/client';
 import { head, issueSignedToken, presignUrl } from '@vercel/blob';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, createHmac, randomUUID } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AuthenticatedStation } from './station-auth.types';
 
 const DOWNLOAD_TICKET_TTL_MS = 10 * 60 * 1000;
 const DEFAULT_PUBLIC_SHARE_BASE_URL = 'https://khebooth-rdvo.vercel.app';
+const STABLE_SHARE_TOKEN_VERSION = 2;
 
 interface ShareRow { id:string;createdAt:Date; }
+interface ActiveShareRow extends ShareRow { tokenHash:string;tokenVersion:number; }
 interface MediaRow { id:string;syncState:string;acknowledgedAt:Date|null;displayName:string|null; }
 interface PublicShareRow {
   id:string;organizationId:string;eventId:string;mediaAssetId:string;displayName:string|null;byteSize:number;mimeType:string;capturedAt:Date|null;acknowledgedAt:Date|null;eventName:string;
@@ -35,14 +38,49 @@ export class MediaSharingService {
     const media=rows[0];
     if(!media)throw new NotFoundException('Media asset not found');
     if(media.syncState!=='SYNCED'||!media.acknowledgedAt)throw new BadRequestException('Only synchronized media can be shared');
-    const token=randomBytes(32).toString('base64url');const tokenHash=this.hashToken(token);
-    const shares=await this.prisma.$queryRaw<ShareRow[]>`
-      INSERT INTO "MediaShareLink" ("organizationId","eventId","mediaAssetId","tokenHash")
-      VALUES (${station.organizationId}::uuid,${station.eventId}::uuid,${media.id}::uuid,${tokenHash}) RETURNING "id","createdAt"
-    `;
-    const share=shares[0];if(!share)throw new ServiceUnavailableException('Unable to create media share');
     const baseUrl=(process.env.PUBLIC_SHARE_BASE_URL?.trim()||DEFAULT_PUBLIC_SHARE_BASE_URL).replace(/\/$/,'');
-    return{id:share.id,mediaId:media.id,displayName:media.displayName,shareUrl:`${baseUrl}/m/${token}`,createdAt:share.createdAt};
+
+    return this.prisma.$transaction(async(tx)=>{
+      const activeRows=await tx.$queryRaw<ActiveShareRow[]>`
+        SELECT "id","tokenHash","tokenVersion","createdAt"
+        FROM "MediaShareLink"
+        WHERE "organizationId"=${station.organizationId}::uuid
+          AND "eventId"=${station.eventId}::uuid
+          AND "mediaAssetId"=${media.id}::uuid
+          AND "revokedAt" IS NULL
+        ORDER BY "createdAt" DESC
+        LIMIT 1
+        FOR UPDATE
+      `;
+      const active=activeRows[0];
+      if(active?.tokenVersion===STABLE_SHARE_TOKEN_VERSION){
+        const token=this.tokenForShare(active.id);
+        if(this.hashToken(token)===active.tokenHash){
+          return{id:active.id,mediaId:media.id,displayName:media.displayName,shareUrl:`${baseUrl}/m/${token}`,createdAt:active.createdAt,reused:true};
+        }
+      }
+
+      if(active){
+        await tx.$executeRaw`
+          UPDATE "MediaShareLink" SET "revokedAt"=CURRENT_TIMESTAMP
+          WHERE "organizationId"=${station.organizationId}::uuid
+            AND "eventId"=${station.eventId}::uuid
+            AND "mediaAssetId"=${media.id}::uuid
+            AND "revokedAt" IS NULL
+        `;
+      }
+
+      const shareId=randomUUID();
+      const token=this.tokenForShare(shareId);
+      const tokenHash=this.hashToken(token);
+      const shares=await tx.$queryRaw<ShareRow[]>`
+        INSERT INTO "MediaShareLink" ("id","organizationId","eventId","mediaAssetId","tokenHash","tokenVersion")
+        VALUES (${shareId}::uuid,${station.organizationId}::uuid,${station.eventId}::uuid,${media.id}::uuid,${tokenHash},${STABLE_SHARE_TOKEN_VERSION})
+        RETURNING "id","createdAt"
+      `;
+      const share=shares[0];if(!share)throw new ServiceUnavailableException('Unable to create media share');
+      return{id:share.id,mediaId:media.id,displayName:media.displayName,shareUrl:`${baseUrl}/m/${token}`,createdAt:share.createdAt,reused:false};
+    });
   }
 
   async revokeShare(station:AuthenticatedStation,shareId:string){
@@ -75,6 +113,12 @@ export class MediaSharingService {
   private fallbackName(share:PublicShareRow){return`KHE ${share.eventName?.trim()?`${share.eventName.trim()} `:''}${share.mimeType.startsWith('image/')?'Photo':'Vidéo'}`.trim();}
   private assertSharing(station:AuthenticatedStation){if(station.mode!==StationMode.SHARING)throw new ForbiddenException('Only a Sharing station can manage guest links');}
   private hashToken(token:string){return createHash('sha256').update(token).digest('hex');}
+  private tokenForShare(shareId:string){return createHmac('sha256',this.signingKey()).update(`share:${shareId}`,'utf8').digest('base64url');}
+  private signingKey(){
+    const source=process.env.MEDIA_SHARE_SIGNING_SECRET?.trim()||process.env.JWT_SECRET?.trim();
+    if(!source||source.length<24)throw new InternalServerErrorException('KHE media share signing is not configured');
+    return createHash('sha256').update(`khe-media-share-v2:${source}`,'utf8').digest();
+  }
   private pathnameFor(media:{organizationId:string;eventId:string;mediaAssetId:string;mimeType:string}){return`organizations/${media.organizationId}/events/${media.eventId}/media/${media.mediaAssetId}.${this.extensionForMimeType(media.mimeType)}`;}
   private extensionForMimeType(mimeType:string){switch(mimeType){case'image/jpeg':return'jpg';case'image/png':return'png';case'image/webp':return'webp';case'video/mp4':return'mp4';case'video/quicktime':return'mov';default:throw new BadRequestException(`Unsupported media type: ${mimeType}`);}}
 }
