@@ -244,11 +244,17 @@ function App() {
     setMessage(`Capture ${format} conservée localement (${Math.max(1, Math.round(media.byteSize / 1024 / 1024))} Mo) et placée en attente de synchronisation.`);
   }
 
+  function enableEventScreen():void{
+    setKeepAwakeEnabled(true);
+    setStandbyLocked(false);
+    void vault.saveStandbyLocked(false);
+  }
+
   function openMenuSection(section:MenuSection,action:()=>void){setActiveMenu(section);setMenuOpen(false);action();}
   const returnToMenu=()=>setMenuOpen(true);
   if (loading) return <SafeAreaView style={styles.center}><ActivityIndicator /><Text style={styles.muted}>Initialisation du stockage offline…</Text></SafeAreaView>;
   if (station && standbyLocked) return <StandbyScreen verifyPassword={verifyLockPassword} onUnlocked={unlockStandby} />;
-  if (readyOpen && station && stationToken) return <BackPage language={appLanguage} onBack={() => setReadyOpen(false)}><EventReadyScreen api={api} store={store} station={station} stationToken={stationToken} eventName={eventName ?? station.session.eventId} language={appLanguage} keepAwakeEnabled={keepAwakeEnabled} onClose={() => {setReadyOpen(false);returnToMenu();}} /></BackPage>;
+  if (readyOpen && station && stationToken) return <BackPage language={appLanguage} onBack={() => setReadyOpen(false)}><EventReadyScreen api={api} store={store} station={station} stationToken={stationToken} eventName={eventName ?? station.session.eventId} language={appLanguage} keepAwakeEnabled={keepAwakeEnabled} onEnableKeepAwake={enableEventScreen} onClose={() => {setReadyOpen(false);returnToMenu();}} /></BackPage>;
   if (aboutOpen) return <BackPage language={appLanguage} onBack={() => setAboutOpen(false)}><AboutAndTerms onClose={() => {setAboutOpen(false);returnToMenu();}} /></BackPage>;
   if (guideOpen) return <BackPage language={appLanguage} onBack={() => setGuideOpen(false)}><UserGuide onClose={() => {setGuideOpen(false);returnToMenu();}} /></BackPage>;
   if (languageOpen) return <BackPage language={appLanguage} onBack={() => setLanguageOpen(false)}><LanguageAndRegion onClose={() => {setLanguageOpen(false);returnToMenu();}} onChanged={setAppLanguage} /></BackPage>;
