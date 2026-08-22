@@ -19,6 +19,7 @@
     "@livekit/react-native-webrtc": "144.1.2",
     "expo": "~56.0.12",
     "expo-audio": "~56.0.13",
+    "expo-battery": "~56.0.4",
     "expo-camera": "~56.0.8",
     "expo-document-picker": "~56.0.4",
     "expo-file-system": "~56.0.9",
