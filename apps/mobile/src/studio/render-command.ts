@@ -76,23 +76,29 @@ function textFilters(plan: CreativePlan, width: number, height: number) {
   return filters;
 }
 
+function decorations(plan: CreativePlan, width: number, height: number) {
+  return [colorFilter(plan.colorEffect), frameFilter(plan.frameStyle), ...textFilters(plan, width, height)].filter(Boolean) as string[];
+}
+
+function backgroundFilter(input: RenderCommandInput, width: number, height: number, inputIndex: number, outputLabel: string) {
+  const cropX = Math.max(-50, Math.min(50, input.plan.background?.cropX ?? 0));
+  const cropY = Math.max(-50, Math.min(50, input.plan.background?.cropY ?? 0));
+  const zoom = Math.max(1, Math.min(3, input.plan.background?.zoom ?? 1));
+  const opacity = Math.max(0.15, Math.min(1, input.plan.background?.opacity ?? 0.55));
+  return `[${inputIndex}:v]scale=${Math.round(width * zoom)}:${Math.round(height * zoom)}:force_original_aspect_ratio=increase,crop=${width}:${height}:(iw-ow)/2+(${cropX}/100)*(iw-ow):(ih-oh)/2+(${cropY}/100)*(ih-oh),format=rgba,colorchannelmixer=aa=${opacity}[${outputLabel}]`;
+}
+
 function decorateVideo(label: string, input: RenderCommandInput, width: number, height: number, filters: string[]) {
   let current = label;
   if (input.backgroundPath) {
-    const bgIndex = 1;
-    const bgLabel = 'khebg';
-    const cropX = Math.max(-50, Math.min(50, input.plan.background?.cropX ?? 0));
-    const cropY = Math.max(-50, Math.min(50, input.plan.background?.cropY ?? 0));
-    const zoom = Math.max(1, Math.min(3, input.plan.background?.zoom ?? 1));
-    const opacity = Math.max(0.15, Math.min(1, input.plan.background?.opacity ?? 0.55));
-    filters.push(`[${bgIndex}:v]scale=${Math.round(width * zoom)}:${Math.round(height * zoom)}:force_original_aspect_ratio=increase,crop=${width}:${height}:(iw-ow)/2+(${cropX}/100)*(iw-ow):(ih-oh)/2+(${cropY}/100)*(ih-oh),format=rgba,colorchannelmixer=aa=${opacity}[${bgLabel}]`);
-    filters.push(`[${current}][${bgLabel}]overlay=0:0[khebgmix]`);
+    filters.push(backgroundFilter(input, width, height, 1, 'khebg'));
+    filters.push(`[${current}][khebg]overlay=0:0[khebgmix]`);
     current = 'khebgmix';
   }
 
-  const decorations = [colorFilter(input.plan.colorEffect), frameFilter(input.plan.frameStyle), ...textFilters(input.plan, width, height)].filter(Boolean) as string[];
-  if (decorations.length) {
-    filters.push(`[${current}]${decorations.join(',')}[khedecorated]`);
+  const finalDecorations = decorations(input.plan, width, height);
+  if (finalDecorations.length) {
+    filters.push(`[${current}]${finalDecorations.join(',')}[khedecorated]`);
     current = 'khedecorated';
   }
   return current;
@@ -169,17 +175,18 @@ export function buildRenderCommand(input: RenderCommandInput): RenderCommand {
   if (input.selectedMusic && input.musicPath) args.push('-stream_loop', '-1', '-i', input.musicPath);
 
   if (input.mimeType === 'image/jpeg') {
-    const filters: string[] = [`scale=${width}:${height}:force_original_aspect_ratio=increase`, `crop=${width}:${height}`, 'setsar=1'];
-    const effect = colorFilter(input.plan.colorEffect);
-    if (effect) filters.push(effect);
-    const frame = frameFilter(input.plan.frameStyle);
-    if (frame) filters.push(frame);
-    filters.push(...textFilters(input.plan, width, height));
     if (input.backgroundPath) {
-      const opacity = Math.max(0.15, Math.min(1, input.plan.background?.opacity ?? 0.55));
-      const source = filters.join(',');
-      args.push('-filter_complex', `[0:v]${source}[photo];[1:v]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},format=rgba,colorchannelmixer=aa=${opacity}[bg];[photo][bg]overlay=0:0[final]`, '-map', '[final]');
+      const graph: string[] = [
+        `[0:v]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},setsar=1[photo]`,
+        backgroundFilter(input, width, height, 1, 'bg'),
+        '[photo][bg]overlay=0:0[composed]',
+      ];
+      const finalDecorations = decorations(input.plan, width, height);
+      const finalLabel = finalDecorations.length ? 'final' : 'composed';
+      if (finalDecorations.length) graph.push(`[composed]${finalDecorations.join(',')}[final]`);
+      args.push('-filter_complex', graph.join(';'), '-map', `[${finalLabel}]`);
     } else {
+      const filters = [`scale=${width}:${height}:force_original_aspect_ratio=increase`, `crop=${width}:${height}`, 'setsar=1', ...decorations(input.plan, width, height)];
       args.push('-vf', filters.join(','));
     }
     args.push('-frames:v', '1', '-q:v', '2', input.outputPath);
