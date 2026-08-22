@@ -25,7 +25,7 @@ concurrency:
 jobs:
   validate-mobile:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -51,6 +51,10 @@ jobs:
 
       - name: Test offline foundation
         run: pnpm --filter @khe/mobile test
+
+      - name: Validate Android native prebuild
+        working-directory: apps/mobile
+        run: pnpm exec expo prebuild --platform android --clean --no-install --non-interactive
 
       - name: Build mobile TypeScript
         run: pnpm --filter @khe/mobile build
