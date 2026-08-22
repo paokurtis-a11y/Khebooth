@@ -1,0 +1,99 @@
+name: KHE Booth Android ARM64 Share
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/android-arm64-share.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-arm64-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.6.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Build shared contracts
+        run: pnpm --filter @khe/contracts build
+
+      - name: Prebuild Android beta
+        working-directory: apps/mobile
+        env:
+          CI: '1'
+          KHE_ANDROID_CHANNEL: beta
+        run: pnpm exec expo prebuild --platform android --clean --no-install
+
+      - name: Restrict APK to ARM64 only
+        working-directory: apps/mobile
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+
+          gradle = Path('android/app/build.gradle')
+          text = gradle.read_text()
+          pattern = r'(\n\s*defaultConfig\s*\{\s*\n)'
+          replacement = r'\1        ndk { abiFilters "arm64-v8a" }\n'
+          text, count = re.subn(pattern, replacement, text, count=1)
+          if count != 1:
+              raise SystemExit('Could not inject ARM64 abiFilters into app/build.gradle')
+          gradle.write_text(text)
+
+          props = Path('android/gradle.properties')
+          ptext = props.read_text()
+          if re.search(r'(?m)^reactNativeArchitectures=', ptext):
+              ptext = re.sub(r'(?m)^reactNativeArchitectures=.*$', 'reactNativeArchitectures=arm64-v8a', ptext)
+          else:
+              ptext += '\nreactNativeArchitectures=arm64-v8a\n'
+          props.write_text(ptext)
+          PY
+
+      - name: Compile ARM64 debug APK
+        working-directory: apps/mobile/android
+        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace -PreactNativeArchitectures=arm64-v8a
+
+      - name: Verify APK contains ARM64 only
+        working-directory: apps/mobile
+        run: |
+          set -euo pipefail
+          APK='android/app/build/outputs/apk/debug/app-debug.apk'
+          unzip -l "$APK" | grep 'lib/arm64-v8a/' >/dev/null
+          if unzip -l "$APK" | grep -Eq 'lib/(armeabi-v7a|x86|x86_64)/'; then
+            echo 'Unexpected non-ARM64 native libraries found.' >&2
+            exit 1
+          fi
+          ls -lh "$APK"
+          sha256sum "$APK"
+
+      - name: Upload shareable ARM64 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: KHE-Booth-Android-ARM64
+          path: apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
