@@ -4,15 +4,27 @@ import { PrismaService } from '../prisma/prisma.service';
 import type { AuthenticatedStation } from './station-auth.types';
 
 const MAX_BACKGROUND_BYTES = 12 * 1024 * 1024;
+const MAX_MUSIC_BYTES = 80 * 1024 * 1024;
 const UPLOAD_TTL_MS = 15 * 60 * 1000;
 const DOWNLOAD_TTL_MS = 60 * 60 * 1000;
 const ALLOWED_BACKGROUND_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const ALLOWED_MUSIC_TYPES = new Set(['audio/mpeg', 'audio/mp4', 'audio/wav', 'audio/x-wav', 'audio/aac', 'audio/x-m4a']);
+
+function assetKind(contentType: string): 'background' | 'music' {
+  if (ALLOWED_BACKGROUND_TYPES.has(contentType)) return 'background';
+  if (ALLOWED_MUSIC_TYPES.has(contentType)) return 'music';
+  throw new BadRequestException('Format de ressource Studio non supporté');
+}
 
 function extensionFor(contentType: string): string {
   if (contentType === 'image/jpeg') return 'jpg';
   if (contentType === 'image/png') return 'png';
   if (contentType === 'image/webp') return 'webp';
-  throw new BadRequestException('Format d’image de fond non supporté');
+  if (contentType === 'audio/mpeg') return 'mp3';
+  if (contentType === 'audio/mp4' || contentType === 'audio/x-m4a') return 'm4a';
+  if (contentType === 'audio/wav' || contentType === 'audio/x-wav') return 'wav';
+  if (contentType === 'audio/aac') return 'aac';
+  throw new BadRequestException('Format de ressource Studio non supporté');
 }
 
 @Injectable()
@@ -26,14 +38,15 @@ export class DesignStorageService {
   ) {
     const contentType = String(body.contentType ?? '').trim().toLowerCase();
     const byteSize = Number(body.byteSize ?? 0);
-    if (!ALLOWED_BACKGROUND_TYPES.has(contentType)) throw new BadRequestException('Format d’image de fond non supporté');
-    if (!Number.isInteger(byteSize) || byteSize <= 0 || byteSize > MAX_BACKGROUND_BYTES) {
-      throw new BadRequestException('L’image de fond doit faire moins de 12 Mo');
+    const kind = assetKind(contentType);
+    const maxBytes = kind === 'background' ? MAX_BACKGROUND_BYTES : MAX_MUSIC_BYTES;
+    if (!Number.isInteger(byteSize) || byteSize <= 0 || byteSize > maxBytes) {
+      throw new BadRequestException(kind === 'background' ? 'L’image de fond doit faire moins de 12 Mo' : 'La musique doit faire moins de 80 Mo');
     }
 
     await this.assertEventBelongsToStationClient(station, eventId);
     const extension = extensionFor(contentType);
-    const pathname = `organizations/${station.organizationId}/events/${eventId}/design/background-${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${extension}`;
+    const pathname = `organizations/${station.organizationId}/events/${eventId}/design/${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${extension}`;
     const expiresAtMs = Date.now() + UPLOAD_TTL_MS;
 
     try {
@@ -64,11 +77,12 @@ export class DesignStorageService {
   async backgroundDownload(station: AuthenticatedStation, body: Record<string, unknown>) {
     const pathname = String(body.pathname ?? '').trim();
     const prefix = `organizations/${station.organizationId}/events/${station.eventId}/design/`;
-    if (!pathname || !pathname.startsWith(prefix)) throw new ForbiddenException('Image de fond non autorisée pour cet événement');
+    if (!pathname || !pathname.startsWith(prefix)) throw new ForbiddenException('Ressource Studio non autorisée pour cet événement');
 
     try {
       const blob = await head(pathname);
-      if (!ALLOWED_BACKGROUND_TYPES.has(blob.contentType ?? '')) throw new BadRequestException('Image de fond cloud invalide');
+      const contentType = blob.contentType ?? '';
+      assetKind(contentType);
       const expiresAtMs = Date.now() + DOWNLOAD_TTL_MS;
       const token = await issueSignedToken({ pathname, operations: ['get'], validUntil: expiresAtMs });
       const { presignedUrl } = await presignUrl(token, {
@@ -77,7 +91,7 @@ export class DesignStorageService {
         operation: 'get',
         validUntil: expiresAtMs,
       });
-      return { pathname, downloadUrl: presignedUrl, expiresAt: new Date(expiresAtMs), contentType: blob.contentType, byteSize: blob.size };
+      return { pathname, downloadUrl: presignedUrl, expiresAt: new Date(expiresAtMs), contentType, byteSize: blob.size };
     } catch (error) {
       if (error instanceof BadRequestException || error instanceof ForbiddenException) throw error;
       const detail = error instanceof Error ? error.message : 'Blob access failed';
