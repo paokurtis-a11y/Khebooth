@@ -52,7 +52,7 @@ export function EventReadyScreen({api,store,station,stationToken,eventName,langu
   const runChecks=useCallback(async()=>{
     setRunning(true);setQrCheck(null);
     const next:ReadinessCheck[]=[];
-    let snapshotError=false;let pendingCount=0;
+    let pendingCount=0;
     try{
       await store.init();
       const snapshot=await store.snapshot(station.session.eventId);
@@ -60,7 +60,6 @@ export function EventReadyScreen({api,store,station,stationToken,eventName,langu
       next.push({id:'storage',title:c.storage,detail:c.ok,level:'PASS'});
       next.push({id:'sync',title:c.sync,detail:pendingCount===0?c.noPending:`${pendingCount} ${c.pending}`,level:pendingCount===0?'PASS':'WARN'});
     }catch{
-      snapshotError=true;
       next.push({id:'storage',title:c.storage,detail:c.storageDown,level:'BLOCK'});
       next.push({id:'sync',title:c.sync,detail:c.storageDown,level:'BLOCK'});
     }
@@ -89,7 +88,7 @@ export function EventReadyScreen({api,store,station,stationToken,eventName,langu
       const control=controlResult.value;
       const accepted=control.sharingConnectionStatus==='ACCEPTED';
       const fresh=isRecentHeartbeat(control.captureSeenAt);
-      const level:ReadinessLevel=accepted&&fresh?'PASS':control.sharingConnectionStatus==='PENDING'?'WARN':'WARN';
+      const level:ReadinessLevel=accepted&&fresh?'PASS':'WARN';
       const detail=accepted&&fresh?c.linkOk:control.sharingConnectionStatus==='PENDING'?c.linkPending:c.linkOff;
       next.push({id:'link',title:c.link,detail,level});
     }else{
@@ -111,9 +110,8 @@ export function EventReadyScreen({api,store,station,stationToken,eventName,langu
       }
     }
 
-    if(snapshotError&&pendingCount===0){/* keep the explicit storage failure visible */}
     setChecks(next);setLastCheckedAt(new Date());setRunning(false);
-  },[api,c, cameraPermission?.granted,eventName,keepAwakeEnabled,microphonePermission?.granted,station,stationToken,store]);
+  },[api,c,cameraPermission?.granted,eventName,keepAwakeEnabled,microphonePermission?.granted,station,stationToken,store]);
 
   useEffect(()=>{void runChecks();},[runChecks]);
 
@@ -154,5 +152,5 @@ export function EventReadyScreen({api,store,station,stationToken,eventName,langu
 }
 
 const styles=StyleSheet.create({
-  page:{flex:1,backgroundColor:'#0d0d0d'},content:{padding:18,paddingBottom:42,gap:14,maxWidth:760,width:'100%',alignSelf:'center'},hero:{backgroundColor:'#151515',borderRadius:24,borderWidth:1,borderColor:'#3a321e',padding:20,gap:8},eyebrow:{color:'#d7b24c',fontSize:11,fontWeight:'900',letterSpacing:2.2},title:{color:'#fff',fontSize:29,fontWeight:'900'},subtitle:{color:'#b8b8b8',lineHeight:19},stateBadge:{marginTop:8,borderRadius:14,paddingVertical:13,paddingHorizontal:15,alignSelf:'stretch'},ready:{backgroundColor:'#173622',borderWidth:1,borderColor:'#3f8754'},attention:{backgroundColor:'#493914',borderWidth:1,borderColor:'#8d7129'},blocked:{backgroundColor:'#4a1818',borderWidth:1,borderColor:'#873838'},stateText:{color:'#fff',fontWeight:'900',fontSize:15,textAlign:'center',letterSpacing:.5},summary:{color:'#d2d2d2',fontSize:12,textAlign:'center'},metaCard:{backgroundColor:'#181818',borderRadius:16,padding:14,borderWidth:1,borderColor:'#2b2b2b'},metaLabel:{color:'#d7b24c',fontWeight:'900',fontSize:11,letterSpacing:1.4},metaEvent:{color:'#fff',fontSize:19,fontWeight:'800',marginTop:4},metaId:{color:'#777',fontSize:10,marginTop:3},list:{gap:9},row:{flexDirection:'row',alignItems:'center',gap:12,backgroundColor:'#171717',borderWidth:1,borderColor:'#2c2c2c',borderRadius:15,padding:13},icon:{width:34,height:34,borderRadius:17,alignItems:'center',justifyContent:'center'},iconText:{fontSize:19,fontWeight:'900'},rowCopy:{flex:1,gap:2},rowTitle:{color:'#fff',fontWeight:'850',fontSize:14},rowDetail:{color:'#aaa',fontSize:11,lineHeight:16},qrButton:{backgroundColor:'#d7b24c',borderRadius:13,paddingVertical:14,alignItems:'center'},qrButtonText:{color:'#111',fontWeight:'950',letterSpacing:.7},refreshButton:{backgroundColor:'#fff',borderRadius:13,paddingVertical:14,alignItems:'center'},refreshText:{color:'#111',fontWeight:'900',letterSpacing:.7},checkedAt:{color:'#777',fontSize:10,textAlign:'center'},closeButton:{borderWidth:1,borderColor:'#4b4b4b',borderRadius:13,paddingVertical:12,alignItems:'center'},closeText:{color:'#d7b24c',fontWeight:'900',fontSize:11,letterSpacing:.7}
+  page:{flex:1,backgroundColor:'#0d0d0d'},content:{padding:18,paddingBottom:42,gap:14,maxWidth:760,width:'100%',alignSelf:'center'},hero:{backgroundColor:'#151515',borderRadius:24,borderWidth:1,borderColor:'#3a321e',padding:20,gap:8},eyebrow:{color:'#d7b24c',fontSize:11,fontWeight:'900',letterSpacing:2.2},title:{color:'#fff',fontSize:29,fontWeight:'900'},subtitle:{color:'#b8b8b8',lineHeight:19},stateBadge:{marginTop:8,borderRadius:14,paddingVertical:13,paddingHorizontal:15,alignSelf:'stretch'},ready:{backgroundColor:'#173622',borderWidth:1,borderColor:'#3f8754'},attention:{backgroundColor:'#493914',borderWidth:1,borderColor:'#8d7129'},blocked:{backgroundColor:'#4a1818',borderWidth:1,borderColor:'#873838'},stateText:{color:'#fff',fontWeight:'900',fontSize:15,textAlign:'center',letterSpacing:.5},summary:{color:'#d2d2d2',fontSize:12,textAlign:'center'},metaCard:{backgroundColor:'#181818',borderRadius:16,padding:14,borderWidth:1,borderColor:'#2b2b2b'},metaLabel:{color:'#d7b24c',fontWeight:'900',fontSize:11,letterSpacing:1.4},metaEvent:{color:'#fff',fontSize:19,fontWeight:'800',marginTop:4},metaId:{color:'#777',fontSize:10,marginTop:3},list:{gap:9},row:{flexDirection:'row',alignItems:'center',gap:12,backgroundColor:'#171717',borderWidth:1,borderColor:'#2c2c2c',borderRadius:15,padding:13},icon:{width:34,height:34,borderRadius:17,alignItems:'center',justifyContent:'center'},iconText:{fontSize:19,fontWeight:'900'},rowCopy:{flex:1,gap:2},rowTitle:{color:'#fff',fontWeight:'800',fontSize:14},rowDetail:{color:'#aaa',fontSize:11,lineHeight:16},qrButton:{backgroundColor:'#d7b24c',borderRadius:13,paddingVertical:14,alignItems:'center'},qrButtonText:{color:'#111',fontWeight:'900',letterSpacing:.7},refreshButton:{backgroundColor:'#fff',borderRadius:13,paddingVertical:14,alignItems:'center'},refreshText:{color:'#111',fontWeight:'900',letterSpacing:.7},checkedAt:{color:'#777',fontSize:10,textAlign:'center'},closeButton:{borderWidth:1,borderColor:'#4b4b4b',borderRadius:13,paddingVertical:12,alignItems:'center'},closeText:{color:'#d7b24c',fontWeight:'900',fontSize:11,letterSpacing:.7}
 });
