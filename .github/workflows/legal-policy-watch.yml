@@ -84,15 +84,13 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               state: 'open',
-              labels: 'legal-watch',
-              per_page: 20
+              per_page: 100
             });
             if (!data.some(issue => issue.title === 'KHE Booth — revue juridique requise')) {
               await github.rest.issues.create({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 title: 'KHE Booth — revue juridique requise',
-                body,
-                labels: ['legal-watch']
+                body
               });
             }
