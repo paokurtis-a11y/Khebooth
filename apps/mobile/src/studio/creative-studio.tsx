@@ -14,6 +14,8 @@ export interface MusicAsset {
   id: string;
   name: string;
   uri: string;
+  cloudPath?: string | null;
+  byteSize?: number;
   mimeType?: string;
   trimMode: 'FULL' | 'SEGMENT';
   startSeconds: number;
@@ -87,7 +89,9 @@ function normalizeMusic(asset: Partial<MusicAsset> & Pick<MusicAsset, 'id' | 'na
   return {
     id: asset.id,
     name: asset.name,
-    uri: asset.uri,
+    uri: typeof asset.uri === 'string' ? asset.uri : '',
+    cloudPath: typeof asset.cloudPath === 'string' ? asset.cloudPath : null,
+    byteSize: Number.isFinite(asset.byteSize) ? Math.max(0, Number(asset.byteSize)) : 0,
     mimeType: asset.mimeType,
     trimMode: asset.trimMode === 'SEGMENT' ? 'SEGMENT' : 'FULL',
     startSeconds: Number.isFinite(asset.startSeconds) ? Math.max(0, Number(asset.startSeconds)) : 0,
@@ -163,6 +167,7 @@ function MusicEditor({ asset, disabled, onChange, onRemove }: { asset: MusicAsse
       setPlaying(false);
       return;
     }
+    if (!asset.uri) return;
     const audio = player as unknown as { volume: number };
     audio.volume = Math.max(0, Math.min(1, asset.volume / 100));
     await player.seekTo(asset.trimMode === 'SEGMENT' ? asset.startSeconds : 0);
@@ -175,7 +180,7 @@ function MusicEditor({ asset, disabled, onChange, onRemove }: { asset: MusicAsse
       <View style={styles.musicHeader}>
         <View style={{ flex: 1 }}>
           <Text style={styles.musicName} numberOfLines={1}>{asset.name}</Text>
-          <Text style={styles.help}>Choisissez le passage et son niveau sonore.</Text>
+          <Text style={styles.help}>{asset.cloudPath ? 'Synchronisée avec CAPTURE • ' : ''}Choisissez le passage et son niveau sonore.</Text>
         </View>
         <Pressable style={styles.listenButton} onPress={() => void toggle()}><Text style={styles.listenText}>{playing ? 'Pause' : 'Écouter'}</Text></Pressable>
         {!disabled ? <Pressable style={styles.removeButton} onPress={onRemove}><Text style={styles.removeText}>×</Text></Pressable> : null}
@@ -243,7 +248,7 @@ export function CreativeStudio({ onClose, api, stationToken, eventId, onSaved }:
   }
 
   function patchMusic(id: string, value: Partial<MusicAsset>) {
-    patch({ music: plan.music.map((item) => item.id === id ? { ...item, ...value } : item) });
+    patch({ music: plan.music.map((item) => item.id === id ? { ...item, ...value, cloudPath: value.uri ? null : item.cloudPath } : item) });
   }
 
   function patchBackground(value: Partial<DesignBackgroundAsset>) {
@@ -263,11 +268,25 @@ export function CreativeStudio({ onClose, api, stationToken, eventId, onSaved }:
       Alert.alert('Maximum atteint', 'Vous pouvez sélectionner jusqu’à 3 musiques.');
       return;
     }
-    const result = await DocumentPicker.getDocumentAsync({ type: ['audio/mpeg', 'audio/mp4', 'audio/wav', 'audio/x-wav', 'audio/*'], multiple: true, copyToCacheDirectory: true });
+    const result = await DocumentPicker.getDocumentAsync({ type: ['audio/mpeg', 'audio/mp4', 'audio/wav', 'audio/x-wav', 'audio/aac', 'audio/*'], multiple: true, copyToCacheDirectory: true });
     if (result.canceled) return;
-    const remaining = 3 - plan.music.length;
-    const additions = result.assets.slice(0, remaining).map((asset, index) => normalizeMusic({ id: `music-${Date.now()}-${index}`, name: asset.name, uri: asset.uri, mimeType: asset.mimeType }));
-    patch({ music: [...plan.music, ...additions] });
+    try {
+      const remaining = 3 - plan.music.length;
+      const directory = new Directory(Paths.document, 'studio-music', eventId || 'draft');
+      directory.create({ idempotent: true, intermediates: true });
+      const additions: MusicAsset[] = [];
+      for (const [index, asset] of result.assets.slice(0, remaining).entries()) {
+        const source = new File(asset.uri);
+        if (!source.exists || source.size <= 0) continue;
+        const extension = asset.name?.split('.').pop()?.toLowerCase() || (asset.mimeType === 'audio/mpeg' ? 'mp3' : asset.mimeType === 'audio/wav' ? 'wav' : 'm4a');
+        const destination = new File(directory, `music-${Date.now()}-${index}.${extension}`);
+        source.copy(destination);
+        additions.push(normalizeMusic({ id: `music-${Date.now()}-${index}`, name: asset.name, uri: destination.uri, cloudPath: null, byteSize: destination.size, mimeType: asset.mimeType }));
+      }
+      patch({ music: [...plan.music, ...additions] });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Impossible de conserver la musique sur la tablette.');
+    }
   }
 
   async function importBackground() {
@@ -301,18 +320,45 @@ export function CreativeStudio({ onClose, api, stationToken, eventId, onSaved }:
     return { ...current, background: { ...background, cloudPath: ticket.pathname, byteSize: file.size } };
   }
 
+  async function uploadMusic(current: CreativePlan): Promise<CreativePlan> {
+    if (!api || !stationToken || !eventId || current.music.length === 0) return current;
+    const uploaded: MusicAsset[] = [];
+    for (const asset of current.music) {
+      if (asset.cloudPath) { uploaded.push(asset); continue; }
+      if (!asset.uri) throw new Error(`La musique « ${asset.name} » est introuvable localement.`);
+      const file = new File(asset.uri);
+      if (!file.exists || file.size <= 0) throw new Error(`La musique « ${asset.name} » est introuvable localement.`);
+      const contentType = asset.mimeType || 'audio/mpeg';
+      const ticket = await api.prepareDesignBackgroundUpload(stationToken, eventId, contentType, file.size);
+      const task = file.createUploadTask(ticket.uploadUrl, { httpMethod: 'PUT', mimeType: contentType, headers: { 'Content-Type': contentType } });
+      const result = await task.uploadAsync();
+      if (!result || result.status < 200 || result.status >= 300) throw new Error(`Envoi de « ${asset.name} » impossible (HTTP ${result?.status ?? '?'}).`);
+      uploaded.push({ ...asset, cloudPath: ticket.pathname, byteSize: file.size, mimeType: ticket.contentType });
+    }
+    return { ...current, music: uploaded };
+  }
+
   async function persist() {
     setSaving(true);
     setMessage('');
     try {
+      if (plan.audioMode === 'MUSIC_ONLY' && plan.music.length === 0) throw new Error('Ajoutez au moins une musique ou repassez le son en mode Micro.');
+      for (const asset of plan.music) {
+        if (asset.trimMode === 'SEGMENT' && asset.endSeconds !== null && asset.endSeconds <= asset.startSeconds) throw new Error(`La fin de « ${asset.name} » doit être après son début.`);
+      }
       const entitledPlan = canRemoveBranding ? plan : { ...plan, showKheBranding: true };
-      const uploaded = await uploadBackground(entitledPlan);
+      const withBackground = await uploadBackground(entitledPlan);
+      const uploaded = await uploadMusic(withBackground);
       await saveCreativePlan(uploaded);
       setPlan(uploaded);
-      const shared: CreativePlan = { ...uploaded, background: uploaded.background ? { ...uploaded.background, localUri: null } : null };
+      const shared: CreativePlan = {
+        ...uploaded,
+        background: uploaded.background ? { ...uploaded.background, localUri: null } : null,
+        music: uploaded.music.map((asset) => ({ ...asset, uri: '' })),
+      };
       if (onSaved) await onSaved(shared);
       setLocked(true);
-      setMessage(`✓ Design enregistré et activé${shared.showKheBranding ? ' avec la signature KHE BOOTH' : ' sans branding KHE'}. CAPTURE reçoit maintenant les changements automatiquement.`);
+      setMessage(`✓ Design enregistré, médias Studio synchronisés et rendu final activé${shared.showKheBranding ? ' avec la signature KHE BOOTH' : ' sans branding KHE'}.`);
       requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: 0, animated: true }));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Impossible d’enregistrer le design.');
@@ -322,9 +368,22 @@ export function CreativeStudio({ onClose, api, stationToken, eventId, onSaved }:
   }
 
   function deleteDesign() {
-    Alert.alert('Supprimer le design ?', 'Le prochain contenu sera capturé sans ce design.', [
+    Alert.alert('Supprimer le design ?', 'CAPTURE reviendra au rendu KHE standard pour cet événement.', [
       { text: 'Annuler', style: 'cancel' },
-      { text: 'Supprimer', style: 'destructive', onPress: () => void (async () => { await SecureStore.deleteItemAsync(STORAGE_KEY); setPlan(DEFAULT_CREATIVE_PLAN); setLocked(false); setMessage('Design supprimé.'); })() },
+      { text: 'Supprimer', style: 'destructive', onPress: () => void (async () => {
+        setSaving(true);
+        try {
+          const cleared = { ...DEFAULT_CREATIVE_PLAN, showKheBranding: true };
+          await SecureStore.deleteItemAsync(STORAGE_KEY);
+          await saveCreativePlan(cleared);
+          if (onSaved) await onSaved(cleared);
+          setPlan(cleared);
+          setLocked(false);
+          setMessage('Design supprimé localement et sur l’événement. CAPTURE reviendra au rendu KHE standard.');
+        } catch (error) {
+          setMessage(error instanceof Error ? error.message : 'Impossible de supprimer le design de l’événement.');
+        } finally { setSaving(false); }
+      }) },
     ]);
   }
 
@@ -338,7 +397,7 @@ export function CreativeStudio({ onClose, api, stationToken, eventId, onSaved }:
     <View style={styles.page}>
       <ScrollView ref={scrollRef} contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
-          <View style={{ flex: 1 }}><Text style={styles.brand}>KHE DESIGN</Text><Text style={styles.title}>Studio créatif</Text><Text style={styles.help}>Tout ce qui est enregistré ici apparaît dans l’aperçu CAPTURE et accompagne le rendu final.</Text></View>
+          <View style={{ flex: 1 }}><Text style={styles.brand}>KHE DESIGN</Text><Text style={styles.title}>Studio créatif</Text><Text style={styles.help}>Tout ce qui est enregistré ici apparaît dans l’aperçu CAPTURE et sera intégré au JPG/MP4 final avant synchronisation.</Text></View>
           <Pressable style={styles.close} onPress={onClose}><Text style={styles.closeText}>Fermer</Text></Pressable>
         </View>
 
@@ -388,10 +447,10 @@ export function CreativeStudio({ onClose, api, stationToken, eventId, onSaved }:
         <View style={styles.row}><Pressable disabled={locked} style={[styles.choice, plan.audioMode === 'MIC_ONLY' && styles.choiceActive]} onPress={() => patch({ audioMode: 'MIC_ONLY' })}><Text style={plan.audioMode === 'MIC_ONLY' ? styles.choiceTextActive : styles.choiceText}>Micro</Text></Pressable><Pressable disabled={locked} style={[styles.choice, plan.audioMode === 'MUSIC_ONLY' && styles.choiceActive]} onPress={() => patch({ audioMode: 'MUSIC_ONLY' })}><Text style={plan.audioMode === 'MUSIC_ONLY' ? styles.choiceTextActive : styles.choiceText}>Musique</Text></Pressable></View>
 
         <Text style={styles.section}>PLAYLIST • 3 MUSIQUES MAXIMUM</Text>
-        {!locked ? <Pressable style={styles.importButton} onPress={() => void importMusic()}><Text style={styles.importText}>＋ Ajouter MP3 / MP4 / WAV</Text></Pressable> : null}
+        {!locked ? <Pressable style={styles.importButton} onPress={() => void importMusic()}><Text style={styles.importText}>＋ Ajouter MP3 / MP4 / WAV / AAC</Text></Pressable> : null}
         {plan.music.map((asset) => <MusicEditor key={asset.id} asset={asset} disabled={locked} onChange={(value) => patchMusic(asset.id, value)} onRemove={() => patch({ music: plan.music.filter((item) => item.id !== asset.id) })} />)}
 
-        <View style={styles.renderNotice}><Text style={styles.renderTitle}>Aperçu + rendu</Text><Text style={styles.renderText}>L’image de fond, son recadrage, les textes, le cadre, les couleurs, la vitesse, l’audio et la préférence de branding sont conservés dans le plan de rendu. L’original caméra reste intact.</Text></View>
+        <View style={styles.renderNotice}><Text style={styles.renderTitle}>Rendu final professionnel</Text><Text style={styles.renderText}>Fond, cadrage, textes, cadre, couleurs, vitesse, boomerang, reverse, freeze-frame, audio et branding sont intégrés au JPG/MP4 final sur CAPTURE avant l’envoi Cloud. Le brut reste local si le rendu échoue.</Text></View>
         {!locked ? <Pressable disabled={saving} style={[styles.save, saving && styles.disabled]} onPress={() => void persist()}><Text style={styles.saveText}>{saving ? 'ENREGISTREMENT…' : 'ENREGISTRER ET ACTIVER LE DESIGN'}</Text></Pressable> : null}
         {message ? <Text style={styles.message}>{message}</Text> : null}
       </ScrollView>
