@@ -10,6 +10,7 @@ import type { LocalMediaRecord } from '../offline/types';
 import { SecureStoreCredentialVault } from '../security/secure-store-vault';
 import { shareMediaNatively } from '../sharing/native-share';
 import { StationLinkHealth } from '../station/station-link-health';
+import { rescheduleMediaNow } from '../sync/sync-rescue';
 
 interface MediaGalleryProps {
   eventId: string;
@@ -29,6 +30,13 @@ function SelectedVideo({ media }: { media: LocalMediaRecord }) {
   return <VideoView player={player} style={styles.viewerMedia} nativeControls contentFit="contain" surfaceType="textureView" />;
 }
 
+function syncLabel(media:LocalMediaRecord):string{
+  if(media.syncState==='SYNCED')return'Synchronisé';
+  if(media.syncState==='FAILED')return`Échec • tentative ${media.retryCount}`;
+  if(media.syncState==='UPLOADING')return'Transfert en cours';
+  return'En attente';
+}
+
 export function MediaGallery({ eventId, eventName, store, onClose }: MediaGalleryProps) {
   const { width } = useWindowDimensions();
   const landscape = width >= 760;
@@ -37,6 +45,7 @@ export function MediaGallery({ eventId, eventName, store, onClose }: MediaGaller
   const [loading, setLoading] = useState(true);
   const [printing, setPrinting] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [rescuing,setRescuing]=useState(false);
   const [media, setMedia] = useState<LocalMediaRecord[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<MediaFilter>('ALL');
@@ -44,21 +53,43 @@ export function MediaGallery({ eventId, eventName, store, onClose }: MediaGaller
   const [healthOpen,setHealthOpen]=useState(false);
   const [healthToken,setHealthToken]=useState<string|null>(null);
 
-  async function refresh(): Promise<void> {
-    setLoading(true);
-    try {
-      const items = await store.listMedia(eventId);
+  async function readMedia(showLoading=false,clearMessage=false):Promise<void>{
+    if(showLoading)setLoading(true);
+    try{
+      const items=await store.listMedia(eventId);
       setMedia(items);
-      setSelectedId((current) => current && items.some((item) => item.localId === current) ? current : items[0]?.localId ?? null);
-      setMessage('');
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Impossible d’ouvrir la galerie locale.');
-    } finally {
-      setLoading(false);
+      setSelectedId((current)=>current&&items.some((item)=>item.localId===current)?current:items[0]?.localId??null);
+      if(clearMessage)setMessage('');
+    }catch(error){
+      if(showLoading||clearMessage)setMessage(error instanceof Error?error.message:'Impossible d’ouvrir la galerie locale.');
+    }finally{
+      if(showLoading)setLoading(false);
     }
   }
 
-  useEffect(() => { void refresh(); }, [eventId]);
+  async function refresh():Promise<void>{await readMedia(true,true);}
+
+  useEffect(()=>{
+    let cancelled=false;
+    const update=async(showLoading=false,clearMessage=false)=>{
+      if(cancelled)return;
+      if(showLoading)setLoading(true);
+      try{
+        const items=await store.listMedia(eventId);
+        if(cancelled)return;
+        setMedia(items);
+        setSelectedId((current)=>current&&items.some((item)=>item.localId===current)?current:items[0]?.localId??null);
+        if(clearMessage)setMessage('');
+      }catch(error){
+        if(!cancelled&&(showLoading||clearMessage))setMessage(error instanceof Error?error.message:'Impossible d’ouvrir la galerie locale.');
+      }finally{
+        if(!cancelled&&showLoading)setLoading(false);
+      }
+    };
+    void update(true,true);
+    const timer=setInterval(()=>void update(false,false),2_000);
+    return()=>{cancelled=true;clearInterval(timer);};
+  },[eventId,store]);
 
   const filteredMedia = useMemo(
     () => media.filter((item) => filter === 'ALL' || (filter === 'PHOTO' ? isPhoto(item) : !isPhoto(item))),
@@ -68,6 +99,7 @@ export function MediaGallery({ eventId, eventName, store, onClose }: MediaGaller
   const photoCount = media.filter(isPhoto).length;
   const videoCount = media.length - photoCount;
   const pendingCount = media.filter((item) => item.syncState !== 'SYNCED').length;
+  const failedCount=media.filter((item)=>item.syncState==='FAILED').length;
 
   useEffect(() => {
     if (filteredMedia.length && !filteredMedia.some((item) => item.localId === selectedId)) {
@@ -91,6 +123,20 @@ export function MediaGallery({ eventId, eventName, store, onClose }: MediaGaller
     } finally {
       setSharing(false);
     }
+  }
+
+  async function retrySelected(item:LocalMediaRecord):Promise<void>{
+    if(item.syncState==='SYNCED')return;
+    setRescuing(true);
+    try{
+      const queued=await rescheduleMediaNow(store,eventId,item.localId);
+      if(!queued){setMessage('Ce moment n’a plus besoin d’être relancé.');await readMedia(false,false);return;}
+      setMessage(`Relance immédiate demandée pour ce moment${item.retryCount?` • tentative actuelle ${item.retryCount}`:''}. Le fichier local reste intact.`);
+      await new Promise((resolve)=>setTimeout(resolve,2_200));
+      await readMedia(false,false);
+    }catch(error){
+      setMessage(error instanceof Error?error.message:'Impossible de relancer la synchronisation.');
+    }finally{setRescuing(false);}
   }
 
   async function printPhoto(item: LocalMediaRecord): Promise<void> {
@@ -138,7 +184,7 @@ export function MediaGallery({ eventId, eventName, store, onClose }: MediaGaller
           <View style={{ flex: 1 }}>
             <Text style={styles.brand}>KHE BOOTH</Text>
             <Text style={styles.title}>Galerie CAPTURE</Text>
-            <Text style={styles.subtitle}>{eventName} • Galerie locale stable et offline-first</Text>
+            <Text style={styles.subtitle}>{eventName} • Galerie locale stable et offline-first • états actualisés automatiquement</Text>
           </View>
           <Pressable style={styles.closeButton} onPress={onClose}><Text style={styles.closeText}>Fermer</Text></Pressable>
         </View>
@@ -149,7 +195,7 @@ export function MediaGallery({ eventId, eventName, store, onClose }: MediaGaller
           <View style={styles.summaryCard}><Text style={styles.summaryNumber}>{media.length}</Text><Text style={styles.summaryLabel}>moments</Text></View>
           <View style={styles.summaryCard}><Text style={styles.summaryNumber}>{videoCount}</Text><Text style={styles.summaryLabel}>vidéos</Text></View>
           <View style={styles.summaryCard}><Text style={styles.summaryNumber}>{photoCount}</Text><Text style={styles.summaryLabel}>photos</Text></View>
-          <View style={styles.summaryCard}><Text style={styles.summaryNumber}>{pendingCount}</Text><Text style={styles.summaryLabel}>à synchroniser</Text></View>
+          <View style={[styles.summaryCard,failedCount>0&&styles.summaryCardWarning]}><Text style={styles.summaryNumber}>{pendingCount}</Text><Text style={styles.summaryLabel}>{failedCount>0?`${failedCount} échec(s) • à synchroniser`:'à synchroniser'}</Text></View>
         </View>
 
         <View style={styles.filters}>
@@ -176,11 +222,13 @@ export function MediaGallery({ eventId, eventName, store, onClose }: MediaGaller
               <View style={styles.viewerMeta}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.viewerTitle}>{isPhoto(selected) ? 'Photo' : 'Vidéo'} sélectionnée</Text>
-                  <Text style={styles.muted}>{new Date(selected.capturedAt).toLocaleString()} • {Math.max(1, Math.round(selected.byteSize / 1024 / 1024))} Mo</Text>
+                  <Text style={styles.viewerMuted}>{new Date(selected.capturedAt).toLocaleString()} • {Math.max(1, Math.round(selected.byteSize / 1024 / 1024))} Mo</Text>
                 </View>
-                <View style={[styles.state, selected.syncState === 'SYNCED' && styles.stateSynced]}><Text style={styles.stateText}>{selected.syncState}</Text></View>
+                <View style={[styles.state, selected.syncState === 'SYNCED' && styles.stateSynced,selected.syncState==='FAILED'&&styles.stateFailed]}><Text style={styles.stateText}>{selected.syncState}</Text></View>
               </View>
+              {selected.syncState==='FAILED'?<View style={styles.syncError}><Text style={styles.syncErrorTitle}>Synchronisation en échec • tentative {selected.retryCount}</Text><Text style={styles.syncErrorText}>{selected.lastError||'Erreur réseau ou serveur temporaire.'}</Text><Text style={styles.syncErrorHelp}>Le fichier est toujours conservé sur cette tablette.</Text></View>:null}
               <View style={styles.actions}>
+                {selected.syncState!=='SYNCED'?<Pressable disabled={rescuing} style={styles.retryButton} onPress={()=>void retrySelected(selected)}><Text style={styles.retryButtonText}>{rescuing?'RELANCE…':'↻ RELANCER LA SYNCHRO'}</Text></Pressable>:null}
                 <Pressable disabled={sharing} style={styles.primary} onPress={() => void shareSelected(selected)}><Text style={styles.primaryText}>{sharing ? 'Ouverture…' : 'Partager'}</Text></Pressable>
                 {isPhoto(selected) ? <Pressable disabled={printing} style={styles.secondary} onPress={() => void printPhoto(selected)}><Text style={styles.secondaryText}>{printing ? 'Préparation…' : 'Imprimer'}</Text></Pressable> : null}
                 <Pressable style={styles.danger} onPress={() => confirmDelete(selected)}><Text style={styles.dangerText}>Supprimer</Text></Pressable>
@@ -189,16 +237,16 @@ export function MediaGallery({ eventId, eventName, store, onClose }: MediaGaller
 
             <View style={styles.library}>
               <Text style={styles.sectionTitle}>Moments disponibles</Text>
-              <Text style={styles.muted}>Les vidéos ne démarrent plus automatiquement dans les vignettes : un seul lecteur est actif pour éviter les crashs Android.</Text>
+              <Text style={styles.muted}>Les états de synchronisation se mettent à jour toutes les 2 secondes. Les vidéos ne démarrent pas automatiquement dans les vignettes afin de préserver la stabilité Android.</Text>
               <View style={styles.cards}>
                 {filteredMedia.map((item, index) => (
-                  <Pressable key={item.localId} style={[styles.mediaCard, item.localId === selectedId && styles.mediaCardActive]} onPress={() => setSelectedId(item.localId)}>
+                  <Pressable key={item.localId} style={[styles.mediaCard, item.localId === selectedId && styles.mediaCardActive,item.syncState==='FAILED'&&styles.mediaCardFailed]} onPress={() => setSelectedId(item.localId)}>
                     {isPhoto(item)
                       ? <Image source={{ uri: item.localUri }} style={styles.thumb} resizeMode="cover" />
                       : <View style={styles.videoThumb}><Text style={styles.playIcon}>▶</Text><Text style={styles.videoLabel}>VIDÉO</Text></View>}
                     <View style={styles.cardCopy}>
                       <Text style={styles.cardTitle}>{isPhoto(item) ? 'Photo' : 'Vidéo'} {filteredMedia.length - index}</Text>
-                      <Text style={styles.cardMeta}>{new Date(item.capturedAt).toLocaleTimeString()} • {item.syncState === 'SYNCED' ? 'Synchronisé' : 'En attente'}</Text>
+                      <Text style={[styles.cardMeta,item.syncState==='FAILED'&&styles.cardMetaFailed]}>{new Date(item.capturedAt).toLocaleTimeString()} • {syncLabel(item)}</Text>
                     </View>
                   </Pressable>
                 ))}
@@ -230,6 +278,7 @@ const styles = StyleSheet.create({
   healthEyebrow:{color:KHE_GOLD,fontSize:9,fontWeight:'900',letterSpacing:1.5},healthTitle:{color:'#fff',fontSize:15,fontWeight:'900',marginTop:3},healthArrow:{color:KHE_GOLD,fontSize:28,fontWeight:'600'},
   summaryRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   summaryCard: { minWidth: 92, flexGrow: 1, backgroundColor: '#fff', borderRadius: 18, padding: 14, borderWidth: 1, borderColor: '#eadfce' },
+  summaryCardWarning:{borderColor:'#c6762a',backgroundColor:'#fff8ee'},
   summaryNumber: { fontSize: 24, fontWeight: '900', color: KHE_RED },
   summaryLabel: { color: '#6c6258', fontWeight: '700' },
   filters: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
@@ -250,10 +299,15 @@ const styles = StyleSheet.create({
   viewerMedia: { width: '100%', height: 340, borderRadius: 18, backgroundColor: '#000' },
   viewerMeta: { flexDirection: 'row', gap: 10, alignItems: 'center' },
   viewerTitle: { color: '#fff', fontWeight: '900', fontSize: 18 },
+  viewerMuted:{color:'#aaa',lineHeight:18},
   state: { backgroundColor: '#4a3a3a', paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999 },
   stateSynced: { backgroundColor: '#176b43' },
+  stateFailed:{backgroundColor:'#7f2525'},
   stateText: { color: '#fff', fontSize: 10, fontWeight: '900' },
+  syncError:{borderWidth:1,borderColor:'#6f3434',backgroundColor:'#271515',borderRadius:14,padding:12,gap:4},
+  syncErrorTitle:{color:'#ffc0c0',fontWeight:'900',fontSize:12},syncErrorText:{color:'#f1caca',fontSize:11,lineHeight:16},syncErrorHelp:{color:'#aaa',fontSize:10},
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  retryButton:{flexGrow:1,minWidth:180,backgroundColor:'#211d14',borderWidth:1,borderColor:KHE_GOLD,borderRadius:13,padding:13,alignItems:'center'},retryButtonText:{color:KHE_GOLD,fontWeight:'900'},
   primary: { flexGrow: 1, backgroundColor: KHE_RED, borderRadius: 13, padding: 13, alignItems: 'center' },
   primaryText: { color: '#fff', fontWeight: '900' },
   secondary: { flexGrow: 1, backgroundColor: KHE_GOLD, borderRadius: 13, padding: 13, alignItems: 'center' },
@@ -265,6 +319,7 @@ const styles = StyleSheet.create({
   cards: { gap: 9 },
   mediaCard: { flexDirection: 'row', backgroundColor: '#f4efe7', borderRadius: 16, padding: 8, gap: 10, alignItems: 'center', borderWidth: 2, borderColor: 'transparent' },
   mediaCardActive: { borderColor: KHE_GOLD, backgroundColor: '#fffaf0' },
+  mediaCardFailed:{borderColor:'#d68b8b'},
   thumb: { width: 86, height: 66, borderRadius: 12, backgroundColor: '#ddd' },
   videoThumb: { width: 86, height: 66, borderRadius: 12, backgroundColor: KHE_BLACK, alignItems: 'center', justifyContent: 'center' },
   playIcon: { color: KHE_GOLD, fontSize: 24 },
@@ -272,5 +327,6 @@ const styles = StyleSheet.create({
   cardCopy: { flex: 1 },
   cardTitle: { fontWeight: '900', fontSize: 15 },
   cardMeta: { color: '#766e64', fontSize: 11, marginTop: 3 },
+  cardMetaFailed:{color:'#a32828',fontWeight:'800'},
   message: { backgroundColor: '#fff', borderLeftWidth: 4, borderLeftColor: KHE_GOLD, borderRadius: 14, padding: 13, color: '#312b25' },
 });
