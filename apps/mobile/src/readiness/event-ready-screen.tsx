@@ -1,6 +1,6 @@
 import { useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { StationExperienceApi } from '../api/station-api';
 import type { AppLanguage } from '../experience/i18n';
 import type { LocalStore } from '../offline/local-store';
@@ -16,6 +16,7 @@ interface Props {
   eventName: string;
   language: AppLanguage;
   keepAwakeEnabled: boolean;
+  onEnableKeepAwake: () => void;
   onClose: () => void;
 }
 
@@ -24,24 +25,24 @@ type Copy = {
   event:string;api:string;storage:string;sync:string;camera:string;microphone:string;link:string;screen:string;gallery:string;qr:string;
   ok:string;eventMismatch:string;apiDown:string;storageDown:string;noPending:string;pending:string;cameraOk:string;cameraNo:string;micOk:string;micNo:string;
   linkOk:string;linkPending:string;linkOff:string;screenOk:string;screenWarn:string;galleryOk:string;qrWaiting:string;qrAvailable:string;qrTest:string;qrTesting:string;qrStable:string;qrFail:string;close:string;
-  allow:string;connect:string;accept:string;retry:string;fixAll:string;fixing:string;fixed:string;manualLink:string;permissionBlocked:string;
+  allow:string;connect:string;accept:string;retry:string;fixAll:string;fixing:string;fixed:string;manualLink:string;permissionBlocked:string;settings:string;keepScreen:string;
 };
 
 const fr:Copy={
-  eyebrow:'KHE EVENT READY',title:'Contrôle pré-événement',subtitle:'Vérification réelle de cette tablette avant l’arrivée des invités.',ready:'PRÊT POUR L’ÉVÉNEMENT',attention:'ATTENTION AVANT L’ÉVÉNEMENT',blocked:'ACTION REQUISE',refresh:'REVÉRIFIER',running:'VÉRIFICATION…',lastCheck:'Dernière vérification',event:'Événement',api:'Cloud & API',storage:'Stockage local',sync:'Synchronisation',camera:'Caméra',microphone:'Microphone',link:'Liaison CAPTURE ↔ SHARING',screen:'Écran événement',gallery:'Galerie SHARING',qr:'QR invité stable',ok:'Prêt',eventMismatch:'L’événement local et le serveur ne correspondent pas.',apiDown:'KHE Cloud est momentanément inaccessible.',storageDown:'Le stockage local n’est pas accessible.',noPending:'Aucun média en attente.',pending:'média(s) encore en attente ou en reprise.',cameraOk:'Permission caméra accordée.',cameraNo:'Autorisez la caméra avant la prestation.',micOk:'Permission microphone accordée pour la vidéo.',micNo:'Autorisez le microphone avant une capture vidéo.',linkOk:'Les deux tablettes se voient en temps réel.',linkPending:'La connexion est en cours ou attend une validation.',linkOff:'CAPTURE et SHARING ne sont pas encore reliées.',screenOk:'La tablette restera active pendant l’événement.',screenWarn:'La mise en veille est autorisée. Vérifiez que cela correspond à votre choix.',galleryOk:'La galerie Cloud répond correctement.',qrWaiting:'Le QR pourra être testé dès qu’un média synchronisé existe.',qrAvailable:'Un média synchronisé est disponible pour vérifier le QR stable.',qrTest:'TESTER LE QR STABLE',qrTesting:'TEST QR…',qrStable:'Même lien retourné deux fois : QR stable confirmé.',qrFail:'Le QR stable n’a pas pu être confirmé.',close:'RETOUR À L’ACCUEIL',allow:'AUTORISER',connect:'CONNECTER',accept:'ACCEPTER',retry:'RÉESSAYER',fixAll:'CORRIGER LES POINTS POSSIBLES',fixing:'CORRECTION…',fixed:'Correction appliquée. Nouveau contrôle en cours.',manualLink:'Démarrez la demande depuis SHARING.',permissionBlocked:'Autorisation bloquée : ouvrez les réglages système.'
+  eyebrow:'KHE EVENT READY',title:'Contrôle pré-événement',subtitle:'Vérification réelle de cette tablette avant l’arrivée des invités.',ready:'PRÊT POUR L’ÉVÉNEMENT',attention:'ATTENTION AVANT L’ÉVÉNEMENT',blocked:'ACTION REQUISE',refresh:'REVÉRIFIER',running:'VÉRIFICATION…',lastCheck:'Dernière vérification',event:'Événement',api:'Cloud & API',storage:'Stockage local',sync:'Synchronisation',camera:'Caméra',microphone:'Microphone',link:'Liaison CAPTURE ↔ SHARING',screen:'Écran événement',gallery:'Galerie SHARING',qr:'QR invité stable',ok:'Prêt',eventMismatch:'L’événement local et le serveur ne correspondent pas.',apiDown:'KHE Cloud est momentanément inaccessible.',storageDown:'Le stockage local n’est pas accessible.',noPending:'Aucun média en attente.',pending:'média(s) encore en attente ou en reprise.',cameraOk:'Permission caméra accordée.',cameraNo:'Autorisez la caméra avant la prestation.',micOk:'Permission microphone accordée pour la vidéo.',micNo:'Autorisez le microphone avant une capture vidéo.',linkOk:'Les deux tablettes se voient en temps réel.',linkPending:'La connexion est en cours ou attend une validation.',linkOff:'CAPTURE et SHARING ne sont pas encore reliées.',screenOk:'La tablette restera active pendant l’événement.',screenWarn:'La mise en veille est autorisée. Vérifiez que cela correspond à votre choix.',galleryOk:'La galerie Cloud répond correctement.',qrWaiting:'Le QR pourra être testé dès qu’un média synchronisé existe.',qrAvailable:'Un média synchronisé est disponible pour vérifier le QR stable.',qrTest:'TESTER LE QR STABLE',qrTesting:'TEST QR…',qrStable:'Même lien retourné deux fois : QR stable confirmé.',qrFail:'Le QR stable n’a pas pu être confirmé.',close:'RETOUR À L’ACCUEIL',allow:'AUTORISER',connect:'CONNECTER',accept:'ACCEPTER',retry:'RÉESSAYER',fixAll:'CORRIGER LES POINTS POSSIBLES',fixing:'CORRECTION…',fixed:'Correction appliquée. Nouveau contrôle en cours.',manualLink:'Démarrez la demande depuis SHARING.',permissionBlocked:'Autorisation bloquée : ouvrez les réglages système.',settings:'OUVRIR LES RÉGLAGES',keepScreen:'GARDER L’ÉCRAN ACTIF'
 };
 
 const en:Copy={
-  eyebrow:'KHE EVENT READY',title:'Pre-event check',subtitle:'Real checks on this tablet before guests arrive.',ready:'READY FOR THE EVENT',attention:'CHECK BEFORE EVENT',blocked:'ACTION REQUIRED',refresh:'CHECK AGAIN',running:'CHECKING…',lastCheck:'Last check',event:'Event',api:'Cloud & API',storage:'Local storage',sync:'Synchronization',camera:'Camera',microphone:'Microphone',link:'CAPTURE ↔ SHARING link',screen:'Event screen',gallery:'SHARING gallery',qr:'Stable guest QR',ok:'Ready',eventMismatch:'Local and server events do not match.',apiDown:'KHE Cloud is temporarily unreachable.',storageDown:'Local storage is unavailable.',noPending:'No media waiting to sync.',pending:'media item(s) still waiting or retrying.',cameraOk:'Camera permission granted.',cameraNo:'Allow camera access before the event.',micOk:'Microphone permission granted for video.',micNo:'Allow microphone access before recording video.',linkOk:'Both tablets see each other in real time.',linkPending:'Connection is pending or waiting for approval.',linkOff:'CAPTURE and SHARING are not linked yet.',screenOk:'The tablet will stay awake during the event.',screenWarn:'Sleep is allowed. Make sure this matches your choice.',galleryOk:'Cloud gallery responds correctly.',qrWaiting:'QR can be tested once one synchronized media exists.',qrAvailable:'A synchronized media item is available to test the stable QR.',qrTest:'TEST STABLE QR',qrTesting:'TESTING QR…',qrStable:'Same link returned twice: stable QR confirmed.',qrFail:'Stable QR could not be confirmed.',close:'BACK TO HOME',allow:'ALLOW',connect:'CONNECT',accept:'ACCEPT',retry:'RETRY',fixAll:'FIX AVAILABLE ISSUES',fixing:'FIXING…',fixed:'Correction applied. Running a fresh check.',manualLink:'Start the request from SHARING.',permissionBlocked:'Permission is blocked: open device settings.'
+  eyebrow:'KHE EVENT READY',title:'Pre-event check',subtitle:'Real checks on this tablet before guests arrive.',ready:'READY FOR THE EVENT',attention:'CHECK BEFORE EVENT',blocked:'ACTION REQUIRED',refresh:'CHECK AGAIN',running:'CHECKING…',lastCheck:'Last check',event:'Event',api:'Cloud & API',storage:'Local storage',sync:'Synchronization',camera:'Camera',microphone:'Microphone',link:'CAPTURE ↔ SHARING link',screen:'Event screen',gallery:'SHARING gallery',qr:'Stable guest QR',ok:'Ready',eventMismatch:'Local and server events do not match.',apiDown:'KHE Cloud is temporarily unreachable.',storageDown:'Local storage is unavailable.',noPending:'No media waiting to sync.',pending:'media item(s) still waiting or retrying.',cameraOk:'Camera permission granted.',cameraNo:'Allow camera access before the event.',micOk:'Microphone permission granted for video.',micNo:'Allow microphone access before recording video.',linkOk:'Both tablets see each other in real time.',linkPending:'Connection is pending or waiting for approval.',linkOff:'CAPTURE and SHARING are not linked yet.',screenOk:'The tablet will stay awake during the event.',screenWarn:'Sleep is allowed. Make sure this matches your choice.',galleryOk:'Cloud gallery responds correctly.',qrWaiting:'QR can be tested once one synchronized media exists.',qrAvailable:'A synchronized media item is available to test the stable QR.',qrTest:'TEST STABLE QR',qrTesting:'TESTING QR…',qrStable:'Same link returned twice: stable QR confirmed.',qrFail:'Stable QR could not be confirmed.',close:'BACK TO HOME',allow:'ALLOW',connect:'CONNECT',accept:'ACCEPT',retry:'RETRY',fixAll:'FIX AVAILABLE ISSUES',fixing:'FIXING…',fixed:'Correction applied. Running a fresh check.',manualLink:'Start the request from SHARING.',permissionBlocked:'Permission is blocked: open device settings.',settings:'OPEN SETTINGS',keepScreen:'KEEP SCREEN AWAKE'
 };
 
 const copy:Record<AppLanguage,Copy>={
   fr,
   en,
-  de:{...en,title:'Vorabprüfung',subtitle:'Echte Prüfung dieses Tablets vor dem Event.',ready:'BEREIT FÜR DAS EVENT',attention:'VOR DEM EVENT PRÜFEN',blocked:'AKTION ERFORDERLICH',refresh:'ERNEUT PRÜFEN',running:'PRÜFUNG…',lastCheck:'Letzte Prüfung',event:'Event',storage:'Lokaler Speicher',sync:'Synchronisierung',camera:'Kamera',microphone:'Mikrofon',link:'CAPTURE ↔ SHARING',screen:'Event-Bildschirm',gallery:'SHARING-Galerie',qr:'Stabiler Gäste-QR',allow:'ERLAUBEN',connect:'VERBINDEN',accept:'AKZEPTIEREN',retry:'ERNEUT',fixAll:'MÖGLICHE PUNKTE BEHEBEN',fixing:'KORREKTUR…',close:'ZURÜCK ZUM START'},
-  it:{...en,title:'Controllo pre-evento',subtitle:'Controllo reale del tablet prima degli ospiti.',ready:'PRONTO PER L’EVENTO',attention:'CONTROLLARE PRIMA DELL’EVENTO',blocked:'AZIONE RICHIESTA',refresh:'RICONTROLLA',running:'CONTROLLO…',lastCheck:'Ultimo controllo',event:'Evento',storage:'Memoria locale',sync:'Sincronizzazione',camera:'Fotocamera',microphone:'Microfono',link:'CAPTURE ↔ SHARING',screen:'Schermo evento',gallery:'Galleria SHARING',qr:'QR ospite stabile',allow:'AUTORIZZA',connect:'CONNETTI',accept:'ACCETTA',retry:'RIPROVA',fixAll:'CORREGGI I PUNTI POSSIBILI',fixing:'CORREZIONE…',close:'TORNA ALLA HOME'},
-  es:{...en,title:'Control previo al evento',subtitle:'Comprobación real de la tableta antes de los invitados.',ready:'LISTO PARA EL EVENTO',attention:'REVISAR ANTES DEL EVENTO',blocked:'ACCIÓN NECESARIA',refresh:'REVISAR DE NUEVO',running:'COMPROBANDO…',lastCheck:'Última comprobación',event:'Evento',storage:'Almacenamiento local',sync:'Sincronización',camera:'Cámara',microphone:'Micrófono',link:'CAPTURE ↔ SHARING',screen:'Pantalla del evento',gallery:'Galería SHARING',qr:'QR estable para invitados',allow:'AUTORIZAR',connect:'CONECTAR',accept:'ACEPTAR',retry:'REINTENTAR',fixAll:'CORREGIR PUNTOS POSIBLES',fixing:'CORRIGIENDO…',close:'VOLVER AL INICIO'},
-  pt:{...en,title:'Verificação pré-evento',subtitle:'Verificação real do tablet antes dos convidados.',ready:'PRONTO PARA O EVENTO',attention:'VERIFICAR ANTES DO EVENTO',blocked:'AÇÃO NECESSÁRIA',refresh:'VERIFICAR NOVAMENTE',running:'A VERIFICAR…',lastCheck:'Última verificação',event:'Evento',storage:'Armazenamento local',sync:'Sincronização',camera:'Câmara',microphone:'Microfone',link:'CAPTURE ↔ SHARING',screen:'Ecrã do evento',gallery:'Galeria SHARING',qr:'QR estável para convidados',allow:'AUTORIZAR',connect:'LIGAR',accept:'ACEITAR',retry:'TENTAR NOVAMENTE',fixAll:'CORRIGIR PONTOS POSSÍVEIS',fixing:'A CORRIGIR…',close:'VOLTAR AO INÍCIO'}
+  de:{...en,title:'Vorabprüfung',subtitle:'Echte Prüfung dieses Tablets vor dem Event.',ready:'BEREIT FÜR DAS EVENT',attention:'VOR DEM EVENT PRÜFEN',blocked:'AKTION ERFORDERLICH',refresh:'ERNEUT PRÜFEN',running:'PRÜFUNG…',lastCheck:'Letzte Prüfung',event:'Event',storage:'Lokaler Speicher',sync:'Synchronisierung',camera:'Kamera',microphone:'Mikrofon',link:'CAPTURE ↔ SHARING',screen:'Event-Bildschirm',gallery:'SHARING-Galerie',qr:'Stabiler Gäste-QR',allow:'ERLAUBEN',connect:'VERBINDEN',accept:'AKZEPTIEREN',retry:'ERNEUT',fixAll:'MÖGLICHE PUNKTE BEHEBEN',fixing:'KORREKTUR…',settings:'EINSTELLUNGEN ÖFFNEN',keepScreen:'BILDSCHIRM AKTIV HALTEN',close:'ZURÜCK ZUM START'},
+  it:{...en,title:'Controllo pre-evento',subtitle:'Controllo reale del tablet prima degli ospiti.',ready:'PRONTO PER L’EVENTO',attention:'CONTROLLARE PRIMA DELL’EVENTO',blocked:'AZIONE RICHIESTA',refresh:'RICONTROLLA',running:'CONTROLLO…',lastCheck:'Ultimo controllo',event:'Evento',storage:'Memoria locale',sync:'Sincronizzazione',camera:'Fotocamera',microphone:'Microfono',link:'CAPTURE ↔ SHARING',screen:'Schermo evento',gallery:'Galleria SHARING',qr:'QR ospite stabile',allow:'AUTORIZZA',connect:'CONNETTI',accept:'ACCETTA',retry:'RIPROVA',fixAll:'CORREGGI I PUNTI POSSIBILI',fixing:'CORREZIONE…',settings:'APRI IMPOSTAZIONI',keepScreen:'TIENI SCHERMO ATTIVO',close:'TORNA ALLA HOME'},
+  es:{...en,title:'Control previo al evento',subtitle:'Comprobación real de la tableta antes de los invitados.',ready:'LISTO PARA EL EVENTO',attention:'REVISAR ANTES DEL EVENTO',blocked:'ACCIÓN NECESARIA',refresh:'REVISAR DE NUEVO',running:'COMPROBANDO…',lastCheck:'Última comprobación',event:'Evento',storage:'Almacenamiento local',sync:'Sincronización',camera:'Cámara',microphone:'Micrófono',link:'CAPTURE ↔ SHARING',screen:'Pantalla del evento',gallery:'Galería SHARING',qr:'QR estable para invitados',allow:'AUTORIZAR',connect:'CONECTAR',accept:'ACEPTAR',retry:'REINTENTAR',fixAll:'CORREGIR PUNTOS POSIBLES',fixing:'CORRIGIENDO…',settings:'ABRIR AJUSTES',keepScreen:'MANTENER PANTALLA ACTIVA',close:'VOLVER AL INICIO'},
+  pt:{...en,title:'Verificação pré-evento',subtitle:'Verificação real do tablet antes dos convidados.',ready:'PRONTO PARA O EVENTO',attention:'VERIFICAR ANTES DO EVENTO',blocked:'AÇÃO NECESSÁRIA',refresh:'VERIFICAR NOVAMENTE',running:'A VERIFICAR…',lastCheck:'Última verificação',event:'Evento',storage:'Armazenamento local',sync:'Sincronização',camera:'Câmara',microphone:'Microfone',link:'CAPTURE ↔ SHARING',screen:'Ecrã do evento',gallery:'Galeria SHARING',qr:'QR estável para convidados',allow:'AUTORIZAR',connect:'LIGAR',accept:'ACEITAR',retry:'TENTAR NOVAMENTE',fixAll:'CORRIGIR PONTOS POSSÍVEIS',fixing:'A CORRIGIR…',settings:'ABRIR DEFINIÇÕES',keepScreen:'MANTER ECRÃ ATIVO',close:'VOLTAR AO INÍCIO'}
 };
 
 const tone:Record<ReadinessLevel,{symbol:string;color:string;background:string}>={
@@ -50,7 +51,7 @@ const tone:Record<ReadinessLevel,{symbol:string;color:string;background:string}>
 
 type LinkState={status:string;fresh:boolean};
 
-export function EventReadyScreen({api,store,station,stationToken,eventName,language,keepAwakeEnabled,onClose}:Props){
+export function EventReadyScreen({api,store,station,stationToken,eventName,language,keepAwakeEnabled,onEnableKeepAwake,onClose}:Props){
   const c=copy[language];
   const[cameraPermission,requestCameraPermission]=useCameraPermissions();
   const[microphonePermission,requestMicrophonePermission]=useMicrophonePermissions();
@@ -145,15 +146,22 @@ export function EventReadyScreen({api,store,station,stationToken,eventName,langu
     finally{setFixing(false);}
   }
 
+  async function openSettings(){
+    try{await Linking.openSettings();setActionMessage(c.permissionBlocked);}
+    catch(error){setActionMessage(error instanceof Error?error.message:String(error));}
+  }
+
   async function fixCamera(){
-    if(cameraPermission?.canAskAgain===false){setActionMessage(c.permissionBlocked);return;}
+    if(cameraPermission?.canAskAgain===false){await openSettings();return;}
     await afterAction(async()=>requestCameraPermission());
   }
 
   async function fixMicrophone(){
-    if(microphonePermission?.canAskAgain===false){setActionMessage(c.permissionBlocked);return;}
+    if(microphonePermission?.canAskAgain===false){await openSettings();return;}
     await afterAction(async()=>requestMicrophonePermission());
   }
+
+  function fixScreen(){onEnableKeepAwake();setActionMessage(c.fixed);}
 
   async function fixLink(){
     if(station.mode==='SHARING'){
@@ -182,6 +190,7 @@ export function EventReadyScreen({api,store,station,stationToken,eventName,langu
   async function fixAll(){
     setFixing(true);setActionMessage('');
     try{
+      if(!keepAwakeEnabled)onEnableKeepAwake();
       if(station.mode==='CAPTURE'){
         if(!cameraPermission?.granted&&cameraPermission?.canAskAgain!==false)await requestCameraPermission();
         if(!microphonePermission?.granted&&microphonePermission?.canAskAgain!==false)await requestMicrophonePermission();
@@ -215,8 +224,9 @@ export function EventReadyScreen({api,store,station,stationToken,eventName,langu
   function rowAction(check:ReadinessCheck):{label:string;run:()=>void}|null{
     if(check.level==='PASS'||check.level==='INFO')return null;
     if(check.id==='sync'&&station.mode==='CAPTURE')return{label:language==='fr'?'RELANCER MAINTENANT':'RETRY NOW',run:()=>void rescueSync()};
-    if(check.id==='camera'&&cameraPermission?.canAskAgain!==false)return{label:c.allow,run:()=>void fixCamera()};
-    if(check.id==='microphone'&&microphonePermission?.canAskAgain!==false)return{label:c.allow,run:()=>void fixMicrophone()};
+    if(check.id==='camera')return{label:cameraPermission?.canAskAgain===false?c.settings:c.allow,run:()=>void fixCamera()};
+    if(check.id==='microphone')return{label:microphonePermission?.canAskAgain===false?c.settings:c.allow,run:()=>void fixMicrophone()};
+    if(check.id==='screen')return{label:c.keepScreen,run:fixScreen};
     if(check.id==='link'){
       if(station.mode==='SHARING')return{label:c.connect,run:()=>void fixLink()};
       if(linkState.status==='PENDING')return{label:c.accept,run:()=>void fixLink()};
