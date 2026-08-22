@@ -1,28 +1,28 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
 import { countBlockingChecks, countWarnings, eventReadyState, isRecentHeartbeat, type ReadinessCheck } from '../src/readiness/event-ready-model';
 
 function check(level: ReadinessCheck['level']): ReadinessCheck {
   return { id: level, title: level, detail: level, level };
 }
 
-describe('KHE Event Ready', () => {
-  it('is READY when checks are passing or informational', () => {
-    expect(eventReadyState([check('PASS'), check('INFO'), check('PASS')])).toBe('READY');
-  });
+test('KHE Event Ready is READY when checks are passing or informational', () => {
+  assert.equal(eventReadyState([check('PASS'), check('INFO'), check('PASS')]), 'READY');
+});
 
-  it('is ATTENTION when at least one warning exists without a blocker', () => {
-    expect(eventReadyState([check('PASS'), check('WARN'), check('INFO')])).toBe('ATTENTION');
-    expect(countWarnings([check('WARN'), check('PASS'), check('WARN')])).toBe(2);
-  });
+test('KHE Event Ready is ATTENTION when at least one warning exists without a blocker', () => {
+  assert.equal(eventReadyState([check('PASS'), check('WARN'), check('INFO')]), 'ATTENTION');
+  assert.equal(countWarnings([check('WARN'), check('PASS'), check('WARN')]), 2);
+});
 
-  it('is BLOCKED when any blocking check fails', () => {
-    expect(eventReadyState([check('PASS'), check('WARN'), check('BLOCK')])).toBe('BLOCKED');
-    expect(countBlockingChecks([check('BLOCK'), check('PASS'), check('BLOCK')])).toBe(2);
-  });
+test('KHE Event Ready is BLOCKED when any blocking check fails', () => {
+  assert.equal(eventReadyState([check('PASS'), check('WARN'), check('BLOCK')]), 'BLOCKED');
+  assert.equal(countBlockingChecks([check('BLOCK'), check('PASS'), check('BLOCK')]), 2);
+});
 
-  it('only considers a recent CAPTURE heartbeat online', () => {
-    const now = Date.parse('2026-08-22T08:00:00.000Z');
-    expect(isRecentHeartbeat('2026-08-22T07:59:56.000Z', now)).toBe(true);
-    expect(isRecentHeartbeat('2026-08-22T07:59:50.000Z', now)).toBe(false);
-    expect(isRecentHeartbeat(null, now)).toBe(false);
-  });
+test('KHE Event Ready only considers a recent CAPTURE heartbeat online', () => {
+  const now = Date.parse('2026-08-22T08:00:00.000Z');
+  assert.equal(isRecentHeartbeat('2026-08-22T07:59:56.000Z', now), true);
+  assert.equal(isRecentHeartbeat('2026-08-22T07:59:50.000Z', now), false);
+  assert.equal(isRecentHeartbeat(null, now), false);
 });
