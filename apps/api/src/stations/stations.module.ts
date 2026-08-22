@@ -6,6 +6,8 @@ import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { ClientEventSelectionController } from './client-event-selection.controller';
 import { ClientEventWorkspaceService } from './client-event-workspace.service';
 import { DesignStorageService } from './design-storage.service';
+import { EventSharingController } from './event-sharing.controller';
+import { EventSharingService } from './event-sharing.service';
 import { MediaCatalogService } from './media-catalog.service';
 import { MediaSharingService } from './media-sharing.service';
 import { MediaStorageService } from './media-storage.service';
@@ -13,6 +15,7 @@ import { MediaTrashService } from './media-trash.service';
 import { MetaBusinessCallbackService } from './meta-business-callback.service';
 import { MetaBusinessOAuthService } from './meta-business-oauth.service';
 import { ProfileStorageService } from './profile-storage.service';
+import { PublicEventController } from './public-event.controller';
 import { PublicMediaController } from './public-media.controller';
 import { PublicSocialController } from './public-social.controller';
 import { SharingBusinessService } from './sharing-business.service';
@@ -33,9 +36,5 @@ import { StationRenewalService } from './station-renewal.service';
 import { StationsController } from './stations.controller';
 import { StationsService } from './stations.service';
 
-@Module({
-  imports: [AuthModule, EventsModule, CommerceModule, SubscriptionsModule],
-  controllers: [StationsController, StationBillingController, ClientEventSelectionController, StationControlPreferencesController, PublicMediaController, PublicSocialController, SocialProviderReadinessController, SocialDeveloperCredentialController],
-  providers: [StationsService, StationRenewalService, StationProfileService, StationNotificationsService, StationBillingService, ClientEventWorkspaceService, DesignStorageService, ProfileStorageService, MediaStorageService, MediaCatalogService, MediaSharingService, MediaTrashService, SharingBusinessService, StationConnectionService, StationControlPreferencesService, StationAuthGuard, SocialCredentialCipher, SocialDeveloperCredentialService, SocialProviderConnectionV2Service, MetaBusinessOAuthService, MetaBusinessCallbackService],
-})
-export class StationsModule {}
+@Module({imports:[AuthModule,EventsModule,CommerceModule,SubscriptionsModule],controllers:[StationsController,StationBillingController,ClientEventSelectionController,StationControlPreferencesController,EventSharingController,PublicEventController,PublicMediaController,PublicSocialController,SocialProviderReadinessController,SocialDeveloperCredentialController],providers:[StationsService,StationRenewalService,StationProfileService,StationNotificationsService,StationBillingService,ClientEventWorkspaceService,DesignStorageService,ProfileStorageService,MediaStorageService,MediaCatalogService,MediaSharingService,MediaTrashService,EventSharingService,SharingBusinessService,StationConnectionService,StationControlPreferencesService,StationAuthGuard,SocialCredentialCipher,SocialDeveloperCredentialService,SocialProviderConnectionV2Service,MetaBusinessOAuthService,MetaBusinessCallbackService]})
+export class StationsModule{}
