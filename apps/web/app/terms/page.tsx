@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
-import { legalProfileForCountry } from '@/lib/legal-policies';
+import { legalProfileForLocation } from '@/lib/legal-policies';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,14 +27,14 @@ const card={maxWidth:900,margin:'0 auto',background:'#11151b',border:'1px solid 
 
 export default async function TermsPage(){
   const requestHeaders=await headers();
-  const profile=legalProfileForCountry(requestHeaders.get('x-vercel-ip-country')||requestHeaders.get('cf-ipcountry'));
+  const profile=legalProfileForLocation(requestHeaders.get('x-vercel-ip-country')||requestHeaders.get('cf-ipcountry'),requestHeaders.get('x-vercel-ip-country-region'));
   return <main style={shell}><article style={card}>
     <div style={{color:'#d8b85b',fontWeight:800,letterSpacing:2,fontSize:12}}>KHE BOOTH · LÉGAL</div>
     <h1 style={{fontSize:'clamp(28px,5vw,44px)',margin:'10px 0 4px'}}>Conditions générales d’utilisation</h1>
-    <p style={{color:'#9da8b5',marginTop:0}}>Version locale : {profile.label} · Révision {profile.revision} · Revue le {profile.lastReviewed}</p>
-    <aside style={{margin:'20px 0',padding:16,border:'1px solid #5c4d23',borderRadius:12,background:'#17140d'}}><strong style={{color:'#f0d47d'}}>Cadre local détecté</strong><p style={{color:'#c7cfd9',lineHeight:1.6,margin:'8px 0 0'}}>Cette version est automatiquement sélectionnée à partir du pays de connexion lorsque cette information est disponible. Cadres pris en compte : {profile.frameworks.join(' · ')}. La localisation réseau ne remplace pas la détermination juridique du pays de résidence ou d’établissement.</p></aside>
+    <p style={{color:'#9da8b5',marginTop:0}}>Juridiction détectée : {profile.jurisdictionLabel} · Révision {profile.revision} · Revue le {profile.lastReviewed}</p>
+    <aside style={{margin:'20px 0',padding:16,border:'1px solid #5c4d23',borderRadius:12,background:'#17140d'}}><strong style={{color:'#f0d47d'}}>Version adaptée à l’ouverture</strong><p style={{color:'#c7cfd9',lineHeight:1.6,margin:'8px 0 0'}}>À chaque ouverture, KHE Booth sélectionne automatiquement le profil juridique à partir du pays et, lorsque disponible, de la région ou de l’État de connexion. Cadres pris en compte : {profile.frameworks.join(' · ')}. La localisation réseau aide à sélectionner le bon texte mais ne remplace pas les règles impératives liées à la résidence, à l’établissement ou au lieu réel de la prestation.</p></aside>
     {sections.map(([title,body])=><section key={title} style={{borderTop:'1px solid #29313d',paddingTop:20,marginTop:20}}><h2 style={{fontSize:18,color:'#f0d47d',margin:'0 0 8px'}}>{title}</h2><p style={{lineHeight:1.7,color:'#c7cfd9',margin:0}}>{body}</p></section>)}
-    <section style={{borderTop:'1px solid #29313d',paddingTop:20,marginTop:20}}><h2 style={{fontSize:18,color:'#f0d47d',margin:'0 0 8px'}}>Dispositions locales — {profile.label}</h2>{profile.termsAddendum.map((body)=><p key={body} style={{lineHeight:1.7,color:'#c7cfd9'}}>{body}</p>)}</section>
+    <section style={{borderTop:'1px solid #29313d',paddingTop:20,marginTop:20}}><h2 style={{fontSize:18,color:'#f0d47d',margin:'0 0 8px'}}>Dispositions locales — {profile.jurisdictionLabel}</h2>{profile.termsAddendum.map((body)=><p key={body} style={{lineHeight:1.7,color:'#c7cfd9'}}>{body}</p>)}</section>
     <section style={{borderTop:'1px solid #29313d',paddingTop:20,marginTop:24}}><h2 style={{fontSize:18,color:'#f0d47d'}}>Contact</h2><p style={{lineHeight:1.7,color:'#c7cfd9'}}>Pour toute question relative à ces conditions : <a href="mailto:khebooth@gmail.com" style={{color:'#f0d47d'}}>khebooth@gmail.com</a>.</p><p style={{marginBottom:0}}><a href="/privacy" style={{color:'#f0d47d'}}>Politique de confidentialité</a> · <a href="/data-deletion" style={{color:'#f0d47d'}}>Suppression des données</a></p></section>
   </article></main>;
 }
