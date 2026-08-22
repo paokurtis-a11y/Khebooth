@@ -3,25 +3,28 @@ import type { CreativePlan, MusicAsset } from './creative-studio';
 import { loadCreativePlan } from './creative-studio';
 
 export interface CaptureRenderJob {
-  version: 1;
+  version: 2;
+  eventId: string;
   captureIndex: number;
   createdAt: string;
   sourceUri: string;
   outputUri: string | null;
+  encoder: string | null;
   state: 'PLANNED' | 'RENDERING' | 'READY' | 'FAILED';
   plan: CreativePlan;
   selectedMusic: MusicAsset | null;
   error: string | null;
 }
 
-const CAPTURE_INDEX_KEY = 'khe.creative.capture-index.v1';
-const RENDER_JOB_PREFIX = 'khe.creative.render-job.v1.';
+const CAPTURE_INDEX_PREFIX = 'khe.creative.capture-index.v2.';
+const RENDER_JOB_PREFIX = 'khe.creative.render-job.v2.';
 
-async function nextCaptureIndex(): Promise<number> {
-  const raw = await SecureStore.getItemAsync(CAPTURE_INDEX_KEY);
+async function nextCaptureIndex(eventId: string): Promise<number> {
+  const key = `${CAPTURE_INDEX_PREFIX}${eventId}`;
+  const raw = await SecureStore.getItemAsync(key);
   const current = Number.parseInt(raw ?? '0', 10);
   const next = Number.isFinite(current) ? current + 1 : 1;
-  await SecureStore.setItemAsync(CAPTURE_INDEX_KEY, String(next));
+  await SecureStore.setItemAsync(key, String(next));
   return next;
 }
 
@@ -32,15 +35,17 @@ export function selectMusicForCapture(plan: CreativePlan, captureIndex: number):
   return plan.music[musicIndex] ?? null;
 }
 
-export async function planCaptureRender(localId: string, sourceUri: string): Promise<CaptureRenderJob> {
-  const plan = await loadCreativePlan();
-  const captureIndex = await nextCaptureIndex();
+export async function planCaptureRender(eventId: string, localId: string, sourceUri: string, providedPlan?: CreativePlan): Promise<CaptureRenderJob> {
+  const plan = providedPlan ?? await loadCreativePlan();
+  const captureIndex = await nextCaptureIndex(eventId);
   const job: CaptureRenderJob = {
-    version: 1,
+    version: 2,
+    eventId,
     captureIndex,
     createdAt: new Date().toISOString(),
     sourceUri,
     outputUri: null,
+    encoder: null,
     state: 'PLANNED',
     plan,
     selectedMusic: selectMusicForCapture(plan, captureIndex),
@@ -70,7 +75,8 @@ export function renderSummary(job: CaptureRenderJob): string {
   if (job.plan.freezeFrame) effects.push('Freeze');
   if (job.plan.colorEffect !== 'NONE') effects.push(job.plan.colorEffect);
   if (job.plan.frameStyle !== 'NONE') effects.push(`Cadre ${job.plan.frameStyle}`);
-  if (job.plan.title.trim()) effects.push('Texte');
+  if (job.plan.title.trim() || job.plan.subtitle.trim()) effects.push('Texte');
+  if (job.plan.showKheBranding) effects.push('Signature KHE');
   effects.push(job.selectedMusic ? `Musique: ${job.selectedMusic.name}` : 'Micro');
   return effects.join(' • ');
 }

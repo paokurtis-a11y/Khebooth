@@ -17,6 +17,7 @@
     "@livekit/react-native": "2.12.0",
     "@livekit/react-native-expo-plugin": "1.0.2",
     "@livekit/react-native-webrtc": "144.1.2",
+    "@nikhil-cephei/ffmpeg-kit-react-native": "6.0.12",
     "expo": "~56.0.12",
     "expo-audio": "~56.0.13",
     "expo-battery": "~56.0.4",

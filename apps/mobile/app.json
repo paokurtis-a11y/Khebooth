@@ -61,6 +61,12 @@
           "cameraPermission": "Autoriser KHE Booth à utiliser la caméra pour les captures événementielles.",
           "microphonePermission": "Autoriser KHE Booth à utiliser le microphone pour enregistrer le son des vidéos."
         }
+      ],
+      [
+        "@nikhil-cephei/ffmpeg-kit-react-native",
+        {
+          "subspec": "full"
+        }
       ]
     ]
   }
