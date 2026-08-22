@@ -1,62 +1,50 @@
-name: KHE Booth Android APK
+name: KHE Booth EAS Status Automation
 
 on:
-  workflow_dispatch:
   push:
     branches:
-      - main
+      - automation/eas-status-20260822
     paths:
-      - apps/mobile/.eas-build-trigger
+      - .github/workflows/eas-android-preview.yml
 
 permissions:
-  contents: read
-
-concurrency:
-  group: khe-booth-android-preview
-  cancel-in-progress: false
+  contents: write
 
 jobs:
-  build-android-preview:
-    name: Build Android preview APK
+  probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: automation/eas-status-20260822
+      - uses: pnpm/action-setup@v4
         with:
           version: 10.6.2
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
-
-      - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
-
-      - name: Validate Expo configuration
-        working-directory: apps/mobile
-        run: pnpm exec expo config --json
-
-      - name: Setup Expo and EAS
-        uses: expo/expo-github-action@v8
+      - uses: expo/expo-github-action@v8
         with:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
-
-      - name: Link existing Expo project
+      - name: Read Android builds and persist safe status
         working-directory: apps/mobile
-        env:
-          EXPO_DEBUG: '1'
-        run: eas init --account kurtis-hypnotic-event --non-interactive --force
-
-      - name: Validate EAS project
-        working-directory: apps/mobile
-        run: eas project:info
-
-      - name: Start Android preview APK build
-        working-directory: apps/mobile
-        run: eas build --platform android --profile preview --non-interactive --no-wait
+        shell: bash
+        run: |
+          set -euo pipefail
+          eas init --account kurtis-hypnotic-event --non-interactive --force >/dev/null
+          eas build:list --platform android --limit 20 --json --non-interactive > /tmp/eas-list.json
+          node - <<'NODE'
+          const fs=require('fs');
+          const builds=JSON.parse(fs.readFileSync('/tmp/eas-list.json','utf8'));
+          const safe=(Array.isArray(builds)?builds:[]).map(b=>({id:b.id,status:b.status,buildProfile:b.buildProfile,gitCommitHash:b.gitCommitHash,createdAt:b.createdAt,completedAt:b.completedAt,error:b.error?{errorCode:b.error.errorCode||b.error.code||null,message:b.error.message||null}:null,buildUrl:b.artifacts?.buildUrl||null,applicationArchiveUrl:b.artifacts?.applicationArchiveUrl||null,project:{slug:b.project?.slug||null,owner:b.project?.ownerAccount?.name||null}}));
+          fs.mkdirSync('../../.automation',{recursive:true});
+          fs.writeFileSync('../../.automation/eas-status.json',JSON.stringify({generatedAt:new Date().toISOString(),builds:safe},null,2)+'\n');
+          NODE
+          cd ../..
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .automation/eas-status.json
+          git commit -m "chore(automation): record EAS status" || exit 0
+          git push origin HEAD:automation/eas-status-20260822
