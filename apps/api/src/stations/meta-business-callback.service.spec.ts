@@ -47,9 +47,23 @@ describe('MetaBusinessCallbackService',()=>{
     expect(String(fetchMock.mock.calls[0][0])).toContain('/v26.0/oauth/access_token?');
     expect(String(fetchMock.mock.calls[0][0])).toContain('code=oauth-code');
     expect(String(fetchMock.mock.calls[1][0])).toContain('grant_type=fb_exchange_token');
-    expect(String(fetchMock.mock.calls[2][0])).toContain('/v26.0/me/accounts');
+    const pageLookup=String(fetchMock.mock.calls[2][0]);
+    expect(pageLookup).toContain('/v26.0/me/accounts');
+    expect(pageLookup).not.toContain('instagram_business_account');
     expect(cipher.encrypt).toHaveBeenCalledWith('page-token');
     expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
     expect(result).toEqual({provider:'FACEBOOK',status:'CONNECTED',externalAccountId:'page-khe',externalAccountName:'KHE Booth'});
+  });
+
+  it('requests the linked Instagram account only for the Instagram flow',async()=>{
+    const {subject}=setup();
+    const fetchMock=jest.fn()
+      .mockResolvedValueOnce(response({data:[]}))
+      .mockResolvedValueOnce(response({data:[]}));
+    global.fetch=fetchMock as unknown as typeof fetch;
+
+    await (subject as never as {metaPages:(token:string,provider:'INSTAGRAM')=>Promise<unknown>}).metaPages('instagram-user-token','INSTAGRAM');
+
+    expect(String(fetchMock.mock.calls[0][0])).toContain('instagram_business_account');
   });
 });

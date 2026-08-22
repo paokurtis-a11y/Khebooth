@@ -68,9 +68,10 @@ export class MetaBusinessCallbackService {
     return{provider,status:'CONNECTED',externalAccountId:externalId,externalAccountName:externalName};
   }
 
-  private async metaPages(token:string){
+  private async metaPages(token:string,provider:MetaProvider){
     const version=this.graphVersion();
-    const pages=await this.fetchMeta<{data?:MetaPage[]}>(`https://graph.facebook.com/${version}/me/accounts?fields=id,name,access_token,tasks,instagram_business_account&access_token=${encodeURIComponent(token)}`,'lecture des Pages');
+    const fields=provider==='FACEBOOK'?'id,name,access_token,tasks':'id,name,access_token,tasks,instagram_business_account';
+    const pages=await this.fetchMeta<{data?:MetaPage[]}>(`https://graph.facebook.com/${version}/me/accounts?fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(token)}`,'lecture des Pages');
     const permissions=await this.fetchMeta<{data?:Array<{permission:string;status:string}>}>(`https://graph.facebook.com/${version}/me/permissions?access_token=${encodeURIComponent(token)}`,'lecture des permissions');
     return{pages:pages.data??[],scopes:(permissions.data??[]).filter(item=>item.status==='granted').map(item=>item.permission)};
   }
@@ -86,7 +87,7 @@ export class MetaBusinessCallbackService {
     const longParams=new URLSearchParams({grant_type:'fb_exchange_token',client_id:appId,client_secret:appSecret,fb_exchange_token:shortToken.access_token});
     const longToken=await this.fetchMeta<{access_token?:string;expires_in?:number}>(`https://graph.facebook.com/${this.graphVersion()}/oauth/access_token?${longParams}`,'échange du jeton longue durée');
     if(!longToken.access_token)throw new BadRequestException('Meta n’a pas fourni de jeton longue durée');
-    const data=await this.metaPages(longToken.access_token);
+    const data=await this.metaPages(longToken.access_token,provider);
     const eligible=provider==='INSTAGRAM'?data.pages.filter(page=>page.instagram_business_account?.id):data.pages;
     if(!eligible.length)throw new BadRequestException(provider==='INSTAGRAM'?'Aucun compte Instagram professionnel partagé avec KHE Booth':'Aucune Page Facebook partagée avec KHE Booth');
     if(eligible.length===1)return this.saveConnected(organizationId,provider,eligible[0],data.scopes);
