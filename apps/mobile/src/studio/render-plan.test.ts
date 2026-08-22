@@ -36,11 +36,13 @@ const microphonePlan: CreativePlan = { ...basePlan, audioMode: 'MIC_ONLY' };
 assert.equal(selectMusicForCapture(microphonePlan, 1), null);
 
 const job: CaptureRenderJob = {
-  version: 1,
+  version: 2,
+  eventId: 'event-test',
   captureIndex: 1,
   createdAt: new Date(0).toISOString(),
   sourceUri: 'file:///source.mp4',
   outputUri: null,
+  encoder: null,
   state: 'PLANNED',
   plan: basePlan,
   selectedMusic: basePlan.music[0] ?? null,
@@ -49,6 +51,7 @@ const job: CaptureRenderJob = {
 const summary = renderSummary(job);
 assert.match(summary, /Cadre GOLD/);
 assert.match(summary, /Texte/);
+assert.match(summary, /Signature KHE/);
 assert.match(summary, /Musique: A\.mp3/);
 assert.equal(job.plan.showKheBranding, true);
 assert.equal(job.selectedMusic?.startSeconds, 12);
