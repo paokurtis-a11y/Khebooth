@@ -1,15 +1,16 @@
 import * as SecureStore from 'expo-secure-store';
 import type { ReactNode } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { StartupIntro } from '../branding/startup-intro';
 import { API_BASE_URL } from '../config';
 
 export const APP_VERSION = '0.3.0';
-export const LEGAL_CONTENT_REVISION = '2026-08-16.2';
-const TERMS_ACCEPTED_KEY = 'khe.terms.accepted.revision.v2';
+export const LEGAL_CONTENT_REVISION = '2026-08-22.location.1';
+const TERMS_ACCEPTED_KEY = 'khe.terms.accepted.revision.v3';
 const PUBLIC_APP_CONFIG_URL = 'https://raw.githubusercontent.com/paokurtis-a11y/Khebooth/main/apps/mobile/app.json';
 const EXPO_BUILDS_URL = 'https://expo.dev/accounts/kurtis-hypnotic-event/projects/kurtis-hypnotic-events/builds';
+const LEGAL_POLICY_URL = 'https://khebooth.vercel.app/api/legal/policy';
 
 const EU_EEA_REGIONS = new Set(['AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GR', 'HU', 'IE', 'IS', 'IT', 'LI', 'LT', 'LU', 'LV', 'MT', 'NL', 'NO', 'PL', 'PT', 'RO', 'SE', 'SI', 'SK']);
 
@@ -20,33 +21,105 @@ export interface ReleaseInfo {
   installUrl?: string;
 }
 
+export interface LegalPolicyProfile {
+  region: 'CH' | 'EEA' | 'UK' | 'US' | 'GLOBAL';
+  label: string;
+  jurisdictionLabel: string;
+  countryCode: string;
+  subdivisionCode: string | null;
+  frameworks: string[];
+  termsAddendum: string[];
+  revision: string;
+  lastReviewed: string;
+  exactNationalProfile: boolean;
+  detectedBy: 'network' | 'device-fallback';
+}
+
 function deviceRegion(): string {
   const locale = Intl.DateTimeFormat().resolvedOptions().locale || 'fr-CH';
   const region = locale.replace('_', '-').split('-').find((part) => /^[A-Z]{2}$/.test(part));
   return region ?? 'GLOBAL';
 }
 
-function currentTermsRevision(): string {
-  return `khe-terms-${LEGAL_CONTENT_REVISION}-${deviceRegion()}`;
-}
-
-function jurisdictionNotice(region: string): { title: string; body: string } {
-  if (region === 'CH') {
+function fallbackLegalProfile(): LegalPolicyProfile {
+  const countryCode = deviceRegion();
+  if (countryCode === 'CH') {
     return {
-      title: 'Avis régional — Suisse',
-      body: 'Pour une utilisation en Suisse, l’utilisateur et l’organisateur doivent notamment tenir compte de la Loi fédérale sur la protection des données (LPD) et des autres règles applicables au droit à l’image, à la personnalité, aux contrats et aux événements. KHE ne remplace pas un conseil juridique adapté à votre activité.',
+      region: 'CH', label: 'Suisse', jurisdictionLabel: 'Suisse', countryCode, subdivisionCode: null,
+      frameworks: ['LPD suisse (nLPD) et règles locales applicables'],
+      termsAddendum: ['En mode hors ligne, KHE Booth applique ce profil suisse de secours. Les dispositions impératives réellement applicables restent prioritaires.'],
+      revision: `2026-08-22.FALLBACK.CH.1`, lastReviewed: '2026-08-22', exactNationalProfile: true, detectedBy: 'device-fallback',
     };
   }
-  if (EU_EEA_REGIONS.has(region)) {
+  if (EU_EEA_REGIONS.has(countryCode)) {
     return {
-      title: 'Avis régional — Union européenne / EEE',
-      body: 'Pour une utilisation dans l’Union européenne ou l’EEE, l’utilisateur et l’organisateur doivent notamment tenir compte du RGPD et des règles nationales applicables au droit à l’image, aux communications électroniques, aux contrats et aux événements. KHE ne remplace pas un conseil juridique adapté à votre activité.',
+      region: 'EEA', label: 'Union européenne / EEE', jurisdictionLabel: countryCode, countryCode, subdivisionCode: null,
+      frameworks: ['RGPD (UE) 2016/679', 'règles nationales complémentaires applicables'],
+      termsAddendum: ['En mode hors ligne, KHE Booth applique ce profil EEE de secours. Les droits impératifs du pays concerné restent applicables.'],
+      revision: `2026-08-22.FALLBACK.EEA.1`, lastReviewed: '2026-08-22', exactNationalProfile: true, detectedBy: 'device-fallback',
+    };
+  }
+  if (countryCode === 'GB') {
+    return {
+      region: 'UK', label: 'Royaume-Uni', jurisdictionLabel: 'Royaume-Uni', countryCode, subdivisionCode: null,
+      frameworks: ['UK GDPR', 'Data Protection Act 2018'],
+      termsAddendum: ['En mode hors ligne, KHE Booth applique ce profil britannique de secours. Les droits impératifs applicables restent prioritaires.'],
+      revision: `2026-08-22.FALLBACK.UK.1`, lastReviewed: '2026-08-22', exactNationalProfile: true, detectedBy: 'device-fallback',
+    };
+  }
+  if (countryCode === 'US') {
+    return {
+      region: 'US', label: 'États-Unis', jurisdictionLabel: 'États-Unis', countryCode, subdivisionCode: null,
+      frameworks: ['lois fédérales applicables', 'lois étatiques applicables selon le contexte'],
+      termsAddendum: ['En mode hors ligne, KHE Booth ne peut pas déterminer l’État réseau. Les droits impératifs de l’État réellement applicable restent prioritaires.'],
+      revision: `2026-08-22.FALLBACK.US.1`, lastReviewed: '2026-08-22', exactNationalProfile: true, detectedBy: 'device-fallback',
     };
   }
   return {
-    title: 'Avis régional — règles locales',
-    body: 'Les règles applicables à la captation, au stockage, au partage et à l’impression de contenus varient selon le pays et le contexte. L’utilisateur doit vérifier les obligations locales et obtenir les autorisations nécessaires. KHE ne remplace pas un conseil juridique local.',
+    region: 'GLOBAL', label: 'Version internationale', jurisdictionLabel: countryCode === 'GLOBAL' ? 'Localisation non déterminée' : countryCode, countryCode, subdivisionCode: null,
+    frameworks: ['lois impératives applicables dans le pays de l’utilisateur ou de l’organisation'],
+    termsAddendum: ['En l’absence de localisation réseau disponible, les règles impératives de la juridiction réellement applicable restent prioritaires.'],
+    revision: `2026-08-22.FALLBACK.GLOBAL.1`, lastReviewed: '2026-08-22', exactNationalProfile: false, detectedBy: 'device-fallback',
   };
+}
+
+function validLegalProfile(value: unknown): value is Omit<LegalPolicyProfile, 'detectedBy'> & { detectedBy?: string } {
+  if (!value || typeof value !== 'object') return false;
+  const profile = value as Record<string, unknown>;
+  return typeof profile.region === 'string'
+    && typeof profile.label === 'string'
+    && typeof profile.jurisdictionLabel === 'string'
+    && typeof profile.countryCode === 'string'
+    && Array.isArray(profile.frameworks)
+    && Array.isArray(profile.termsAddendum)
+    && typeof profile.revision === 'string'
+    && typeof profile.lastReviewed === 'string';
+}
+
+export async function fetchLegalPolicyProfile(): Promise<LegalPolicyProfile> {
+  try {
+    const response = await fetch(LEGAL_POLICY_URL, { headers: { Accept: 'application/json' } });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const payload = await response.json() as unknown;
+    if (!validLegalProfile(payload)) throw new Error('Profil juridique distant invalide');
+    return { ...payload, detectedBy: 'network' } as LegalPolicyProfile;
+  } catch {
+    return fallbackLegalProfile();
+  }
+}
+
+function currentTermsRevision(profile: LegalPolicyProfile): string {
+  return `khe-terms-${profile.revision}-${profile.countryCode}-${profile.subdivisionCode ?? 'all'}`;
+}
+
+export async function hasAcceptedCurrentTerms(profile: LegalPolicyProfile): Promise<boolean> {
+  return (await SecureStore.getItemAsync(TERMS_ACCEPTED_KEY)) === currentTermsRevision(profile);
+}
+
+export async function acceptCurrentTerms(profile: LegalPolicyProfile): Promise<void> {
+  await SecureStore.setItemAsync(TERMS_ACCEPTED_KEY, currentTermsRevision(profile), {
+    keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+  });
 }
 
 function compareVersions(a: string, b: string): number {
@@ -58,16 +131,6 @@ function compareVersions(a: string, b: string): number {
     if (diff !== 0) return diff;
   }
   return 0;
-}
-
-export async function hasAcceptedCurrentTerms(): Promise<boolean> {
-  return (await SecureStore.getItemAsync(TERMS_ACCEPTED_KEY)) === currentTermsRevision();
-}
-
-export async function acceptCurrentTerms(): Promise<void> {
-  await SecureStore.setItemAsync(TERMS_ACCEPTED_KEY, currentTermsRevision(), {
-    keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
-  });
 }
 
 async function fetchReleaseInfoFromGithub(): Promise<ReleaseInfo> {
@@ -100,17 +163,16 @@ export async function fetchReleaseInfo(): Promise<ReleaseInfo> {
   }
 }
 
-export function TermsContent() {
-  const region = useMemo(() => deviceRegion(), []);
-  const regional = useMemo(() => jurisdictionNotice(region), [region]);
+export function TermsContent({ profile }: { profile: LegalPolicyProfile }) {
   return (
     <View style={styles.termsBody}>
       <Text style={styles.heading}>Conditions générales d’utilisation — KHE Booth</Text>
-      <Text style={styles.revision}>Version de l’application : {APP_VERSION} • Révision juridique : {LEGAL_CONTENT_REVISION} • Région : {region}</Text>
+      <Text style={styles.revision}>Version de l’application : {APP_VERSION} • Révision juridique : {profile.revision} • Juridiction : {profile.jurisdictionLabel}</Text>
 
       <View style={styles.regionCard}>
-        <Text style={styles.regionTitle}>{regional.title}</Text>
-        <Text style={styles.regionBody}>{regional.body}</Text>
+        <Text style={styles.regionTitle}>Cadre local — {profile.jurisdictionLabel}</Text>
+        <Text style={styles.regionBody}>Cadres pris en compte : {profile.frameworks.join(' · ')}.</Text>
+        <Text style={styles.regionBody}>{profile.detectedBy === 'network' ? 'Version sélectionnée automatiquement selon le pays et, lorsque disponible, la région ou l’État de la connexion.' : 'Mode hors ligne : profil de secours basé sur la région de l’appareil. La version réseau sera resynchronisée dès que possible.'}</Text>
       </View>
 
       <Text style={styles.subheading}>1. Objet</Text>
@@ -138,13 +200,16 @@ export function TermsContent() {
       <Text style={styles.paragraph}>Les options d’anti-veille, mot de passe KHE, biométrie ou verrouillage système sont proposées comme fonctions de confort et de sécurité. Sauf nécessité particulière indiquée dans l’application, elles sont facultatives et leur refus ne doit pas empêcher la capture normale des médias.</Text>
 
       <Text style={styles.subheading}>9. Langue, région et localisation</Text>
-      <Text style={styles.paragraph}>KHE peut proposer une langue et un avis juridique régional à partir des réglages de langue/région de la tablette. Toute localisation plus précise doit rester facultative et soumise à permission. L’utilisateur peut modifier sa langue dans le menu.</Text>
+      <Text style={styles.paragraph}>Lorsque le réseau est disponible, KHE Booth sélectionne le profil juridique à partir du pays et, lorsque le fournisseur d’hébergement le permet, de la région ou de l’État associés à la connexion. Aucun accès GPS précis n’est nécessaire pour cette sélection juridique. La localisation réseau reste indicative et ne remplace pas la détermination du domicile, de la résidence ou de l’établissement juridiquement pertinent.</Text>
 
       <Text style={styles.subheading}>10. Mises à jour juridiques et fonctionnelles</Text>
-      <Text style={styles.paragraph}>KHE peut faire évoluer l’application, le mode d’emploi et les présentes conditions. Lorsqu’une révision juridique, une nouvelle version ou un changement de région modifie la version applicable des conditions, l’application peut demander une nouvelle acceptation. Les textes régionaux disponibles doivent être maintenus à jour ; KHE ne garantit pas qu’un texte automatisé couvre toutes les obligations particulières d’un utilisateur professionnel.</Text>
+      <Text style={styles.paragraph}>Les profils juridiques sont versionnés côté serveur et peuvent être mis à jour indépendamment d’une nouvelle version de l’application. Si la révision applicable change, KHE Booth peut demander une nouvelle acceptation. Les changements réglementaires détectés font l’objet d’une revue avant publication afin d’éviter qu’une interprétation automatisée incorrecte ne devienne immédiatement contractuelle.</Text>
 
-      <Text style={styles.subheading}>11. Acceptation</Text>
-      <Text style={styles.paragraph}>En appuyant sur « J’accepte », l’utilisateur confirme avoir lu et compris les conditions affichées pour la région détectée et accepter de les respecter.</Text>
+      <Text style={styles.subheading}>11. Dispositions locales — {profile.jurisdictionLabel}</Text>
+      {profile.termsAddendum.map((body) => <Text key={body} style={styles.paragraph}>{body}</Text>)}
+
+      <Text style={styles.subheading}>12. Acceptation</Text>
+      <Text style={styles.paragraph}>En appuyant sur « J’accepte », l’utilisateur confirme avoir lu et compris les conditions affichées pour la juridiction détectée et accepter de les respecter.</Text>
     </View>
   );
 }
@@ -153,18 +218,20 @@ export function TermsGate({ children }: { children: ReactNode }) {
   const [introDone,setIntroDone]=useState(false);
   const [checking, setChecking] = useState(true);
   const [accepted, setAccepted] = useState(false);
+  const [profile, setProfile] = useState<LegalPolicyProfile | null>(null);
 
   useEffect(() => {
-    void hasAcceptedCurrentTerms().then((value) => {
-      setAccepted(value);
+    void fetchLegalPolicyProfile().then(async (resolvedProfile) => {
+      setProfile(resolvedProfile);
+      setAccepted(await hasAcceptedCurrentTerms(resolvedProfile));
       setChecking(false);
     });
   }, []);
 
   if(!introDone)return <StartupIntro onDone={()=>setIntroDone(true)}/>;
 
-  if (checking) {
-    return <View style={styles.center}><ActivityIndicator /><Text>Vérification des conditions d’utilisation…</Text></View>;
+  if (checking || !profile) {
+    return <View style={styles.center}><ActivityIndicator /><Text>Synchronisation des conditions applicables…</Text></View>;
   }
 
   if (!accepted) {
@@ -173,11 +240,11 @@ export function TermsGate({ children }: { children: ReactNode }) {
         <ScrollView contentContainerStyle={styles.scroll}>
           <Text style={styles.brand}>KHE</Text>
           <Text style={styles.slogan}>Votre événement, notre expertise !</Text>
-          <TermsContent />
-          <Pressable style={styles.acceptButton} onPress={() => void acceptCurrentTerms().then(() => setAccepted(true))}>
+          <TermsContent profile={profile} />
+          <Pressable style={styles.acceptButton} onPress={() => void acceptCurrentTerms(profile).then(() => setAccepted(true))}>
             <Text style={styles.acceptText}>J’ACCEPTE ET JE CONTINUE</Text>
           </Pressable>
-          <Text style={styles.required}>L’acceptation de la version affichée des conditions est nécessaire pour utiliser KHE Booth.</Text>
+          <Text style={styles.required}>L’acceptation de la révision juridique affichée est nécessaire pour utiliser KHE Booth.</Text>
         </ScrollView>
       </View>
     );
@@ -188,7 +255,11 @@ export function TermsGate({ children }: { children: ReactNode }) {
 
 export function AboutAndTerms({ onClose }: { onClose: () => void }) {
   const [release, setRelease] = useState<ReleaseInfo>({ latestVersion: APP_VERSION, updateAvailable: false });
-  useEffect(() => { void fetchReleaseInfo().then(setRelease); }, []);
+  const [profile, setProfile] = useState<LegalPolicyProfile>(() => fallbackLegalProfile());
+  useEffect(() => {
+    void fetchReleaseInfo().then(setRelease);
+    void fetchLegalPolicyProfile().then(setProfile);
+  }, []);
 
   return (
     <View style={styles.page}>
@@ -201,10 +272,11 @@ export function AboutAndTerms({ onClose }: { onClose: () => void }) {
           <Text style={styles.versionTitle}>Version installée</Text>
           <Text style={styles.versionNumber}>{APP_VERSION}</Text>
           <Text style={styles.versionStatus}>{release.updateAvailable ? `Nouvelle version disponible : ${release.latestVersion}` : 'Application à jour'}</Text>
-          <Text style={styles.releaseNotes}>Révision juridique intégrée : {LEGAL_CONTENT_REVISION}</Text>
+          <Text style={styles.releaseNotes}>Révision juridique active : {profile.revision}</Text>
+          <Text style={styles.releaseNotes}>Juridiction détectée : {profile.jurisdictionLabel}</Text>
           {release.releaseNotes ? <Text style={styles.releaseNotes}>{release.releaseNotes}</Text> : null}
         </View>
-        <TermsContent />
+        <TermsContent profile={profile} />
       </ScrollView>
     </View>
   );
