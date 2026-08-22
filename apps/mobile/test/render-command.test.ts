@@ -34,7 +34,9 @@ test('video graph applies reverse, boomerang, speed and freeze frame before deco
 
 test('Studio music replaces microphone audio with selected trimmed playlist track', () => {
   const command = buildRenderCommand({ sourcePath: '/raw.mp4', outputPath: '/final.mp4', mimeType: 'video/mp4', aspectRatio: '9:16', plan: plan({ audioMode: 'MUSIC_ONLY', music: [music] }), selectedMusic: music, backgroundPath: null, musicPath: '/music.mp3', hasSourceAudio: false, videoEncoder: 'mpeg4' });
-  assert.deepEqual(command.args.slice(4, 7), ['-stream_loop', '-1', '-i']);
+  const loopAt = command.args.indexOf('-stream_loop');
+  assert.ok(loopAt >= 0);
+  assert.deepEqual(command.args.slice(loopAt, loopAt + 4), ['-stream_loop', '-1', '-i', '/music.mp3']);
   const graph = command.args[command.args.indexOf('-filter_complex') + 1];
   assert.match(graph, /atrim=start=4,atrim=end=12/);assert.match(graph, /volume=0.75/);assert.equal(command.args.includes('[khemusic]'), true);
 });
