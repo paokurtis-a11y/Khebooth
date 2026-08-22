@@ -94,10 +94,12 @@ jobs:
           if gh release view android-latest >/dev/null 2>&1; then
             gh release upload android-latest "$APK_RELEASE" --clobber
             gh release edit android-latest \
+              --prerelease \
               --title "KHE Booth Android — bêta" \
               --notes "APK Android de test généré automatiquement depuis la branche main. Ce canal reste stable pendant que la signature de production est préparée."
           else
             gh release create android-latest "$APK_RELEASE" \
+              --prerelease \
               --target "$GITHUB_SHA" \
               --title "KHE Booth Android — bêta" \
               --notes "APK Android de test généré automatiquement depuis la branche main. Ce canal reste stable pendant que la signature de production est préparée."
