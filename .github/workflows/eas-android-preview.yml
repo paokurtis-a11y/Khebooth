@@ -63,13 +63,7 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Link existing Expo project
-        working-directory: apps/mobile
-        env:
-          EXPO_DEBUG: '1'
-        run: eas init --account kurtis-hypnotic-event --non-interactive --force
-
-      - name: Validate EAS project
+      - name: Validate pinned EAS project
         working-directory: apps/mobile
         run: eas project:info
 

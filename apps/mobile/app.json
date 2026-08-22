@@ -6,6 +6,11 @@
     "version": "0.3.0",
     "orientation": "default",
     "userInterfaceStyle": "automatic",
+    "extra": {
+      "eas": {
+        "projectId": "c5ec1da0-355b-4ed4-8cc0-2d3af61bfa10"
+      }
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.kurtishypnotic.khebooth",
@@ -65,7 +70,7 @@
       [
         "@nikhil-cephei/ffmpeg-kit-react-native",
         {
-          "subspec": "full"
+          "subspec": "full-gpl"
         }
       ]
     ]
