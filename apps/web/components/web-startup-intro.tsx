@@ -1,18 +1,26 @@
 'use client';
 
+import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 export function WebStartupIntro() {
-  const [visible, setVisible] = useState(true);
+  const pathname = usePathname();
+  const guestShare = pathname?.startsWith('/m/');
+  const [visible, setVisible] = useState(!guestShare);
   const [canSkip, setCanSkip] = useState(false);
 
   useEffect(() => {
+    if (guestShare) {
+      setVisible(false);
+      return;
+    }
+    setVisible(true);
     const skip = window.setTimeout(() => setCanSkip(true), 900);
     const done = window.setTimeout(() => setVisible(false), 4400);
     return () => { window.clearTimeout(skip); window.clearTimeout(done); };
-  }, []);
+  }, [guestShare]);
 
-  if (!visible) return null;
+  if (guestShare || !visible) return null;
 
   return (
     <div className="khe-startup" role="presentation">
