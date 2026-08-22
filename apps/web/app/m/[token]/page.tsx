@@ -1,4 +1,12 @@
 import type { CSSProperties } from 'react';
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'Votre Moment KHE Booth',
+  description: 'Accès privé à un Moment KHE Booth partagé par QR.',
+  robots: { index: false, follow: false, nocache: true },
+  referrer: 'no-referrer',
+};
 
 interface PublicMediaPayload {
   shareId: string;
