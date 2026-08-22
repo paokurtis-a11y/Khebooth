@@ -6,7 +6,7 @@ import { SocialCredentialCipher } from './social-credential-cipher';
 export type SocialDeveloperProvider='META'|'WHATSAPP'|'TIKTOK'|'X'|'TELEGRAM'|'YOUTUBE';
 type CredentialRow={provider:SocialDeveloperProvider;credentialsCiphertext:string;configuredFields:string[];configuredByUserId:string|null;status:string;updatedAt:Date};
 export const SOCIAL_DEVELOPER_DEFINITIONS:Record<SocialDeveloperProvider,{label:string;fields:string[];env:Record<string,string>;callbacks?:string[]}>= {
-  META:{label:'Meta / Facebook / Instagram',fields:['appId','appSecret'],env:{appId:'META_APP_ID',appSecret:'META_APP_SECRET'},callbacks:['facebook','instagram']},
+  META:{label:'Meta / Facebook / Instagram',fields:['appId','appSecret','configId'],env:{appId:'META_APP_ID',appSecret:'META_APP_SECRET',configId:'META_BUSINESS_LOGIN_CONFIG_ID'},callbacks:['facebook','instagram']},
   WHATSAPP:{label:'WhatsApp Cloud API',fields:['accessToken','phoneNumberId'],env:{accessToken:'META_WHATSAPP_ACCESS_TOKEN',phoneNumberId:'META_WHATSAPP_PHONE_NUMBER_ID'}},
   TIKTOK:{label:'TikTok',fields:['clientKey','clientSecret'],env:{clientKey:'TIKTOK_CLIENT_KEY',clientSecret:'TIKTOK_CLIENT_SECRET'},callbacks:['tiktok']},
   X:{label:'X',fields:['clientId','clientSecret'],env:{clientId:'X_CLIENT_ID',clientSecret:'X_CLIENT_SECRET'},callbacks:['x']},
