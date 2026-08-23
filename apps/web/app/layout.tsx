@@ -6,6 +6,7 @@ import './responsive-fixes.css';
 import './site-editor.css';
 import './portal-polish.css';
 import './portal-navigation.css';
+import './portal-menu-enhancements.css';
 
 export const metadata: Metadata = {
   title: {
