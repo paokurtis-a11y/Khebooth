@@ -23,12 +23,18 @@ export class ProfileStorageService {
   }
 
   private async mirrorAvatar(station:AuthenticatedStation,pathname:string){
-    const target=await this.targetClient(station);if(!target)return;
-    const profiles=await this.prisma.$queryRaw<any[]>(Prisma.sql`SELECT * FROM "OrganizationProfile" WHERE "organizationId"=${station.organizationId}::uuid LIMIT 1`);const p=profiles[0]??{};
-    await this.prisma.$executeRaw(Prisma.sql`
-      INSERT INTO "ClientProfileSnapshot" ("clientId","organizationId","sourceOrganizationId",source,"firstName","lastName","displayName",company,role,email,phone,address,"birthDate","avatarPath",city,country,bio,"syncedAt","updatedAt")
-      VALUES (${target.clientId}::uuid,${target.rootOrganizationId}::uuid,${station.organizationId}::uuid,${station.mode},${String(p.firstName??'')},${String(p.lastName??'')},${String(p.displayName??'')},${String(p.company??'')},${String(p.role??'')},${String(p.email??'')},${String(p.phone??'')},${String(p.address??'')},${p.birthDate??null},${pathname},${String(p.city??'')},${String(p.country??'')},${String(p.bio??'')},CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
-      ON CONFLICT ("clientId") DO UPDATE SET "sourceOrganizationId"=EXCLUDED."sourceOrganizationId",source=EXCLUDED.source,"avatarPath"=EXCLUDED."avatarPath","syncedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP`);
+    try{
+      const target=await this.targetClient(station);if(!target)return;
+      const profiles=await this.prisma.$queryRaw<any[]>(Prisma.sql`SELECT * FROM "OrganizationProfile" WHERE "organizationId"=${station.organizationId}::uuid LIMIT 1`);const p=profiles[0]??{};
+      await this.prisma.$executeRaw(Prisma.sql`
+        INSERT INTO "ClientProfileSnapshot" ("clientId","organizationId","sourceOrganizationId",source,"firstName","lastName","displayName",company,role,email,phone,address,"buildingNumber","postalCode","birthDate","avatarPath",city,country,bio,"syncedAt","updatedAt")
+        VALUES (${target.clientId}::uuid,${target.rootOrganizationId}::uuid,${station.organizationId}::uuid,${station.mode},${String(p.firstName??'')},${String(p.lastName??'')},${String(p.displayName??'')},${String(p.company??'')},${String(p.role??'')},${String(p.email??'')},${String(p.phone??'')},${String(p.address??'')},${String(p.buildingNumber??'')},${String(p.postalCode??'')},${p.birthDate??null},${pathname},${String(p.city??'')},${String(p.country??'')},${String(p.bio??'')},CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+        ON CONFLICT ("clientId") DO UPDATE SET "sourceOrganizationId"=EXCLUDED."sourceOrganizationId",source=EXCLUDED.source,"avatarPath"=EXCLUDED."avatarPath","syncedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP`);
+    }catch(error){
+      const detail=error instanceof Error?error.message:String(error);
+      console.error('[profile][avatar-snapshot] mirror failed:',detail);
+      await this.prisma.auditLog.create({data:{organizationId:station.organizationId,action:'PROFILE_AVATAR_SNAPSHOT_SYNC_FAILED',entityType:'OrganizationProfile',entityId:station.organizationId,metadata:{eventId:station.eventId,detail:detail.slice(0,500)}}}).catch(()=>undefined);
+    }
   }
 
   async prepareAvatarUpload(station: AuthenticatedStation, body: Record<string, unknown>) {
