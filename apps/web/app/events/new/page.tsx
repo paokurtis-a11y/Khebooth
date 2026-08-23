@@ -5,78 +5,18 @@ import { useRouter } from 'next/navigation';
 import { PortalShell } from '@/components/portal-shell';
 import { apiRequest } from '@/lib/api';
 
-type ClientItem = { id: string; name: string };
-type PresetItem = { id: string; name: string; aspectRatio: string };
-
-export default function NewEventPage() {
-  const router = useRouter();
-  const [clients, setClients] = useState<ClientItem[]>([]);
-  const [presets, setPresets] = useState<PresetItem[]>([]);
-  const [name, setName] = useState('');
-  const [startsAt, setStartsAt] = useState('');
-  const [endsAt, setEndsAt] = useState('');
-  const [clientId, setClientId] = useState('');
-  const [presetId, setPresetId] = useState('');
-  const [venueName, setVenueName] = useState('');
-  const [venueAddress, setVenueAddress] = useState('');
-  const [description, setDescription] = useState('');
-  const [error, setError] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-
-  useEffect(() => {
-    Promise.all([apiRequest<ClientItem[]>('/clients'), apiRequest<PresetItem[]>('/presets')])
-      .then(([clientItems, presetItems]) => {
-        setClients(clientItems);
-        setPresets(presetItems);
-      })
-      .catch((caught) => setError(caught instanceof Error ? caught.message : 'Chargement impossible'));
-  }, []);
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSubmitting(true);
-    setError('');
-    try {
-      await apiRequest('/events', {
-        method: 'POST',
-        body: JSON.stringify({
-          name,
-          startsAt: new Date(startsAt).toISOString(),
-          ...(endsAt ? { endsAt: new Date(endsAt).toISOString() } : {}),
-          ...(clientId ? { clientId } : {}),
-          ...(presetId ? { presetId } : {}),
-          ...(venueName ? { venueName } : {}),
-          ...(venueAddress ? { venueAddress } : {}),
-          ...(description ? { description } : {}),
-        }),
-      });
-      router.push('/events');
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Création impossible');
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <PortalShell>
-      <div className="header"><div><div className="eyebrow">NOUVEL ÉVÉNEMENT</div><h1>Créer un événement</h1><p>Configuration initiale de l’expérience photobooth.</p></div></div>
-      {error ? <div className="portal-error-state" style={{marginBottom:16}}><strong>Création impossible</strong><p>{error}</p></div> : null}
-      <section className="card">
-        <form className="form" onSubmit={submit}>
-          <div className="field"><label htmlFor="name">Nom de l’événement</label><input id="name" required maxLength={180} value={name} onChange={(e) => setName(e.target.value)} /></div>
-          <div className="field"><label htmlFor="client">Client</label><select id="client" value={clientId} onChange={(e) => setClientId(e.target.value)}><option value="">Aucun client</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select></div>
-          <div className="field"><label htmlFor="preset">Preset</label><select id="preset" value={presetId} onChange={(e) => setPresetId(e.target.value)}><option value="">Aucun preset</option>{presets.map((preset) => <option key={preset.id} value={preset.id}>{preset.name} — {preset.aspectRatio}</option>)}</select></div>
-          <div className="grid two">
-            <div className="field"><label htmlFor="startsAt">Début</label><input id="startsAt" type="datetime-local" required value={startsAt} onChange={(e) => setStartsAt(e.target.value)} /></div>
-            <div className="field"><label htmlFor="endsAt">Fin</label><input id="endsAt" type="datetime-local" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} /></div>
-          </div>
-          <div className="field"><label htmlFor="venueName">Lieu</label><input id="venueName" maxLength={180} value={venueName} onChange={(e) => setVenueName(e.target.value)} /></div>
-          <div className="field"><label htmlFor="venueAddress">Adresse</label><input id="venueAddress" maxLength={300} value={venueAddress} onChange={(e) => setVenueAddress(e.target.value)} /></div>
-          <div className="field"><label htmlFor="description">Description</label><textarea id="description" rows={4} maxLength={4000} value={description} onChange={(e) => setDescription(e.target.value)} /></div>
-          <div className="toolbar"><button className="button" disabled={submitting}>{submitting ? 'Création…' : 'Créer l’événement'}</button><button type="button" className="button secondary" onClick={() => router.push('/events')}>Annuler</button></div>
-        </form>
-      </section>
-    </PortalShell>
-  );
+type Language='fr'|'en'|'de'|'it'|'es'|'pt';type ClientItem={id:string;name:string};type PresetItem={id:string;name:string;aspectRatio:string};
+const TEXT:Record<Language,Record<string,string>>={
+fr:{eyebrow:'NOUVEL ÉVÉNEMENT',title:'Créer un événement',subtitle:'Configuration initiale de l’expérience photobooth.',load:'Chargement impossible',createError:'Création impossible',eventName:'Nom de l’événement',client:'Client',noClient:'Aucun client',preset:'Preset',noPreset:'Aucun preset',start:'Début',end:'Fin',venue:'Lieu',address:'Adresse',description:'Description',creating:'Création…',create:'Créer l’événement',cancel:'Annuler'},
+en:{eyebrow:'NEW EVENT',title:'Create an event',subtitle:'Initial photobooth experience setup.',load:'Unable to load',createError:'Unable to create',eventName:'Event name',client:'Client',noClient:'No client',preset:'Preset',noPreset:'No preset',start:'Start',end:'End',venue:'Venue',address:'Address',description:'Description',creating:'Creating…',create:'Create event',cancel:'Cancel'},
+de:{eyebrow:'NEUES EVENT',title:'Event erstellen',subtitle:'Ersteinrichtung des Photobooth-Erlebnisses.',load:'Laden nicht möglich',createError:'Erstellung nicht möglich',eventName:'Eventname',client:'Kunde',noClient:'Kein Kunde',preset:'Preset',noPreset:'Kein Preset',start:'Beginn',end:'Ende',venue:'Ort',address:'Adresse',description:'Beschreibung',creating:'Wird erstellt…',create:'Event erstellen',cancel:'Abbrechen'},
+it:{eyebrow:'NUOVO EVENTO',title:'Crea un evento',subtitle:'Configurazione iniziale dell’esperienza photobooth.',load:'Caricamento impossibile',createError:'Creazione impossibile',eventName:'Nome evento',client:'Cliente',noClient:'Nessun cliente',preset:'Preset',noPreset:'Nessun preset',start:'Inizio',end:'Fine',venue:'Luogo',address:'Indirizzo',description:'Descrizione',creating:'Creazione…',create:'Crea evento',cancel:'Annulla'},
+es:{eyebrow:'NUEVO EVENTO',title:'Crear un evento',subtitle:'Configuración inicial de la experiencia photobooth.',load:'No se pudo cargar',createError:'No se pudo crear',eventName:'Nombre del evento',client:'Cliente',noClient:'Sin cliente',preset:'Preset',noPreset:'Sin preset',start:'Inicio',end:'Fin',venue:'Lugar',address:'Dirección',description:'Descripción',creating:'Creando…',create:'Crear evento',cancel:'Cancelar'},
+pt:{eyebrow:'NOVO EVENTO',title:'Criar um evento',subtitle:'Configuração inicial da experiência photobooth.',load:'Não foi possível carregar',createError:'Não foi possível criar',eventName:'Nome do evento',client:'Cliente',noClient:'Sem cliente',preset:'Preset',noPreset:'Sem preset',start:'Início',end:'Fim',venue:'Local',address:'Morada',description:'Descrição',creating:'A criar…',create:'Criar evento',cancel:'Cancelar'},
+};
+function readLanguage():Language{if(typeof window==='undefined')return'fr';const value=window.localStorage.getItem('khe.web.language');return value&&value in TEXT?value as Language:'fr';}
+export default function NewEventPage(){const router=useRouter();const[language,setLanguage]=useState<Language>('fr');const[clients,setClients]=useState<ClientItem[]>([]);const[presets,setPresets]=useState<PresetItem[]>([]);const[name,setName]=useState('');const[startsAt,setStartsAt]=useState('');const[endsAt,setEndsAt]=useState('');const[clientId,setClientId]=useState('');const[presetId,setPresetId]=useState('');const[venueName,setVenueName]=useState('');const[venueAddress,setVenueAddress]=useState('');const[description,setDescription]=useState('');const[error,setError]=useState('');const[submitting,setSubmitting]=useState(false);const t=TEXT[language];
+useEffect(()=>{setLanguage(readLanguage());const handler=(event:Event)=>{const detail=(event as CustomEvent<string>).detail;if(detail&&detail in TEXT)setLanguage(detail as Language);};window.addEventListener('khe-language-changed',handler);Promise.all([apiRequest<ClientItem[]>('/clients'),apiRequest<PresetItem[]>('/presets')]).then(([clientItems,presetItems])=>{setClients(clientItems);setPresets(presetItems);}).catch(caught=>setError(caught instanceof Error?caught.message:TEXT[readLanguage()].load));return()=>window.removeEventListener('khe-language-changed',handler);},[]);
+async function submit(event:FormEvent<HTMLFormElement>){event.preventDefault();setSubmitting(true);setError('');try{await apiRequest('/events',{method:'POST',body:JSON.stringify({name,startsAt:new Date(startsAt).toISOString(),...(endsAt?{endsAt:new Date(endsAt).toISOString()}:{}),...(clientId?{clientId}:{}),...(presetId?{presetId}:{}),...(venueName?{venueName}:{}),...(venueAddress?{venueAddress}:{}),...(description?{description}:{})})});router.push('/events');}catch(caught){setError(caught instanceof Error?caught.message:t.createError);}finally{setSubmitting(false);}}
+return <PortalShell><div className="header"><div><div className="eyebrow">{t.eyebrow}</div><h1>{t.title}</h1><p>{t.subtitle}</p></div></div>{error?<div className="portal-error-state" style={{marginBottom:16}}><strong>{t.createError}</strong><p>{error}</p></div>:null}<section className="card"><form className="form" onSubmit={submit}><div className="field"><label htmlFor="name">{t.eventName}</label><input id="name" required maxLength={180} value={name} onChange={e=>setName(e.target.value)}/></div><div className="field"><label htmlFor="client">{t.client}</label><select id="client" value={clientId} onChange={e=>setClientId(e.target.value)}><option value="">{t.noClient}</option>{clients.map(client=><option key={client.id} value={client.id}>{client.name}</option>)}</select></div><div className="field"><label htmlFor="preset">{t.preset}</label><select id="preset" value={presetId} onChange={e=>setPresetId(e.target.value)}><option value="">{t.noPreset}</option>{presets.map(preset=><option key={preset.id} value={preset.id}>{preset.name} — {preset.aspectRatio}</option>)}</select></div><div className="grid two"><div className="field"><label htmlFor="startsAt">{t.start}</label><input id="startsAt" type="datetime-local" required value={startsAt} onChange={e=>setStartsAt(e.target.value)}/></div><div className="field"><label htmlFor="endsAt">{t.end}</label><input id="endsAt" type="datetime-local" value={endsAt} onChange={e=>setEndsAt(e.target.value)}/></div></div><div className="field"><label htmlFor="venueName">{t.venue}</label><input id="venueName" maxLength={180} value={venueName} onChange={e=>setVenueName(e.target.value)}/></div><div className="field"><label htmlFor="venueAddress">{t.address}</label><input id="venueAddress" maxLength={300} value={venueAddress} onChange={e=>setVenueAddress(e.target.value)}/></div><div className="field"><label htmlFor="description">{t.description}</label><textarea id="description" rows={4} maxLength={4000} value={description} onChange={e=>setDescription(e.target.value)}/></div><div className="toolbar"><button className="button" disabled={submitting}>{submitting?t.creating:t.create}</button><button type="button" className="button secondary" onClick={()=>router.push('/events')}>{t.cancel}</button></div></form></section></PortalShell>;
 }
