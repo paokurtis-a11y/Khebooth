@@ -54,6 +54,12 @@ export class StationAuthGuard implements CanActivate {
     });
     if (!session) throw new UnauthorizedException('Station session expired or revoked');
 
+    const seenAt = new Date();
+    await this.prisma.$transaction([
+      this.prisma.stationSession.update({ where: { id: payload.sessionId }, data: { lastSeenAt: seenAt } }),
+      this.prisma.device.update({ where: { id: payload.deviceId }, data: { lastSeenAt: seenAt } }),
+    ]);
+
     request.station = {
       sessionId: payload.sessionId,
       organizationId: payload.organizationId,
