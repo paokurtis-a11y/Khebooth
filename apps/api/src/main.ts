@@ -2,6 +2,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 
+// Deployment marker: retrigger production after Vercel build-rate-limit recovery.
 const TRUSTED_WEB_ORIGINS = new Set([
   'https://khebooth-rdvo.vercel.app',
   'https://khebooth.vercel.app',
