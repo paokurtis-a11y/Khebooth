@@ -9,6 +9,8 @@ export class UpdateStationProfileDto {
   @IsOptional() @IsEmail() @MaxLength(240) email?: string;
   @IsOptional() @IsString() @MaxLength(80) phone?: string;
   @IsOptional() @IsString() @MaxLength(320) address?: string;
+  @IsOptional() @IsString() @MaxLength(40) buildingNumber?: string;
+  @IsOptional() @IsString() @MaxLength(40) postalCode?: string;
   @IsOptional() @IsDateString() birthDate?: string | null;
   @IsOptional() @IsString() @MaxLength(160) city?: string;
   @IsOptional() @IsString() @MaxLength(160) country?: string;
