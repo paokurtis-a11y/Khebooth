@@ -159,6 +159,17 @@ function normalize(value: string) {
   return value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
+function escapeRegex(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function matchesTerm(question: string, term: string) {
+  const normalizedTerm = normalize(term).trim();
+  if (!normalizedTerm) return false;
+  if (normalizedTerm.includes(' ')) return question.includes(normalizedTerm);
+  return new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegex(normalizedTerm)}(?=$|[^\\p{L}\\p{N}])`, 'u').test(question);
+}
+
 export function detectSupportLanguage(question: string): SupportLanguage {
   const raw = question.toLowerCase();
   const q = normalize(question);
@@ -175,7 +186,7 @@ export function detectSupportLanguage(question: string): SupportLanguage {
 
 export function wantsHumanAgent(question: string) {
   const q = normalize(question);
-  return TOPIC_WORDS.agent.some((word) => q.includes(normalize(word)));
+  return TOPIC_WORDS.agent.some((word) => matchesTerm(q, word));
 }
 
 export function kheSupportAnswer(question: string): { answer: string; confident: boolean; language: SupportLanguage } {
@@ -183,7 +194,7 @@ export function kheSupportAnswer(question: string): { answer: string; confident:
   const q = normalize(question);
   let best: { topic: Topic; score: number } | null = null;
   for (const topic of Object.keys(TOPIC_WORDS) as Topic[]) {
-    const score = TOPIC_WORDS[topic].reduce((total, word) => total + (q.includes(normalize(word)) ? 1 : 0), 0);
+    const score = TOPIC_WORDS[topic].reduce((total, word) => total + (matchesTerm(q, word) ? 1 : 0), 0);
     if (score > 0 && (!best || score > best.score)) best = { topic, score };
   }
   if (best) return { answer: ANSWERS[language][best.topic], confident: true, language };
