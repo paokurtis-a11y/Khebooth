@@ -1,4 +1,4 @@
-name: KHE Booth Android ARM64 Share
+name: KHE Booth Android ARM64 Standalone
 
 on:
   pull_request:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  build-arm64-apk:
+  build-arm64-standalone-apk:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -44,6 +44,7 @@ jobs:
         working-directory: apps/mobile
         env:
           CI: '1'
+          NODE_ENV: production
           KHE_ANDROID_CHANNEL: beta
         run: pnpm exec expo prebuild --platform android --clean --no-install
 
@@ -73,15 +74,45 @@ jobs:
           props.write_text(ptext)
           PY
 
-      - name: Compile ARM64 debug APK
+      - name: Compile standalone ARM64 release APK
         working-directory: apps/mobile/android
-        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace -PreactNativeArchitectures=arm64-v8a
+        env:
+          NODE_ENV: production
+        run: ./gradlew :app:assembleRelease --no-daemon --stacktrace -PreactNativeArchitectures=arm64-v8a
 
-      - name: Verify APK contains ARM64 only
+      - name: Prepare installable standalone APK
         working-directory: apps/mobile
         run: |
           set -euo pipefail
-          APK='android/app/build/outputs/apk/debug/app-debug.apk'
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          APKSIGNER="$BUILD_TOOLS/apksigner"
+          ZIPALIGN="$BUILD_TOOLS/zipalign"
+          SOURCE_APK="$(find android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -n 1)"
+          test -n "$SOURCE_APK"
+          OUTPUT_APK='KHE-Booth-Android-ARM64-Standalone.apk'
+
+          if "$APKSIGNER" verify "$SOURCE_APK" >/dev/null 2>&1; then
+            cp "$SOURCE_APK" "$OUTPUT_APK"
+          else
+            test -f android/app/debug.keystore
+            "$ZIPALIGN" -f 4 "$SOURCE_APK" /tmp/khe-aligned.apk
+            "$APKSIGNER" sign \
+              --ks android/app/debug.keystore \
+              --ks-key-alias androiddebugkey \
+              --ks-pass pass:android \
+              --key-pass pass:android \
+              --out "$OUTPUT_APK" \
+              /tmp/khe-aligned.apk
+          fi
+
+          "$APKSIGNER" verify --verbose "$OUTPUT_APK"
+
+      - name: Verify standalone bundle and ARM64 architecture
+        working-directory: apps/mobile
+        run: |
+          set -euo pipefail
+          APK='KHE-Booth-Android-ARM64-Standalone.apk'
+          unzip -l "$APK" | grep -E 'assets/(index\.android\.bundle|.*\.bundle)' >/dev/null
           unzip -l "$APK" | grep 'lib/arm64-v8a/' >/dev/null
           if unzip -l "$APK" | grep -Eq 'lib/(armeabi-v7a|x86|x86_64)/'; then
             echo 'Unexpected non-ARM64 native libraries found.' >&2
@@ -90,10 +121,10 @@ jobs:
           ls -lh "$APK"
           sha256sum "$APK"
 
-      - name: Upload shareable ARM64 APK
+      - name: Upload standalone ARM64 APK
         uses: actions/upload-artifact@v4
         with:
-          name: KHE-Booth-Android-ARM64
-          path: apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          name: KHE-Booth-Android-ARM64-Standalone
+          path: apps/mobile/KHE-Booth-Android-ARM64-Standalone.apk
           if-no-files-found: error
           retention-days: 7
