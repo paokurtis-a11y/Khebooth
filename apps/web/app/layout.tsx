@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { WebDisplayPreferenceBootstrap } from '@/components/web-display-preferences';
+import { WebI18nBridge } from '@/components/web-i18n-bridge';
 import { WebStartupIntro } from '@/components/web-startup-intro';
 import './globals.css';
 import './responsive-fixes.css';
@@ -20,7 +21,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="fr">
-      <body><WebDisplayPreferenceBootstrap /><WebStartupIntro />{children}</body>
+      <body><WebDisplayPreferenceBootstrap /><WebI18nBridge /><WebStartupIntro />{children}</body>
     </html>
   );
 }
