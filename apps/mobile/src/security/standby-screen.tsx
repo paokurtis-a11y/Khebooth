@@ -1,118 +1,25 @@
 import * as LocalAuthentication from 'expo-local-authentication';
-import { useEffect, useState } from 'react';
-import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Linking, Pressable, SafeAreaView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { API_BASE_URL } from '../config';
 import { SecurePasswordField } from './secure-password-field';
+import { SecureStoreCredentialVault } from './secure-store-vault';
 
-interface StandbyScreenProps {
-  verifyPassword: (password: string) => Promise<boolean>;
-  onUnlocked: () => Promise<void> | void;
+interface StandbyScreenProps {verifyPassword:(password:string)=>Promise<boolean>;onUnlocked:()=>Promise<void>|void;}
+function tokenFromUrl(url:string|null){if(!url)return'';try{const parsed=new URL(url);if(parsed.protocol!=='khebooth:'||parsed.hostname!=='lock-recovery')return'';return parsed.searchParams.get('token')??'';}catch{return'';}}
+
+export function StandbyScreen({verifyPassword,onUnlocked}:StandbyScreenProps){
+  const vault=useMemo(()=>new SecureStoreCredentialVault(),[]);const[password,setPassword]=useState('');const[message,setMessage]=useState('Touchez Déverrouiller pour reprendre la régie.');const[busy,setBusy]=useState(false);const[authLabel,setAuthLabel]=useState('Empreinte / visage / verrouillage tablette');const[recovery,setRecovery]=useState(false);const[code,setCode]=useState('');const[magicToken,setMagicToken]=useState('');const[newPassword,setNewPassword]=useState('');const[confirmPassword,setConfirmPassword]=useState('');
+
+  useEffect(()=>{let cancelled=false;void(async()=>{try{const types=await LocalAuthentication.supportedAuthenticationTypesAsync();if(cancelled)return;const labels:string[]=[];if(types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT))labels.push('empreinte');if(types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION))labels.push('visage');if(types.includes(LocalAuthentication.AuthenticationType.IRIS))labels.push('iris');const securityLevel=await LocalAuthentication.getEnrolledLevelAsync();if(securityLevel>=LocalAuthentication.SecurityLevel.SECRET)labels.push('PIN / schéma système');if(labels.length)setAuthLabel(labels.join(' • '));}catch{/* mot de passe KHE reste disponible */}})();return()=>{cancelled=true;};},[]);
+  useEffect(()=>{const apply=(url:string|null)=>{const token=tokenFromUrl(url);if(token){setMagicToken(token);setRecovery(true);setMessage('✓ Lien KHE reconnu. Choisissez maintenant un nouveau mot de passe de régie.');}};void Linking.getInitialURL().then(apply);const sub=Linking.addEventListener('url',event=>apply(event.url));return()=>sub.remove();},[]);
+
+  async function unlockWithDevice(){setBusy(true);setMessage('Authentification en cours…');try{const result=await LocalAuthentication.authenticateAsync({promptMessage:'Déverrouiller KHE Booth',promptSubtitle:'Votre événement, notre expertise !',promptDescription:'Utilisez la sécurité configurée sur cette tablette.',disableDeviceFallback:false,cancelLabel:'Utiliser le mot de passe KHE'});if(result.success){await onUnlocked();return;}setMessage('Authentification non validée. Vous pouvez utiliser le mot de passe KHE ci-dessous.');}catch{setMessage('Authentification système indisponible. Utilisez le mot de passe KHE.');}finally{setBusy(false);}}
+  async function unlockWithPassword(){if(!password)return;setBusy(true);try{if(await verifyPassword(password)){setPassword('');await onUnlocked();return;}setMessage('Mot de passe KHE incorrect.');}finally{setBusy(false);}}
+  async function requestRecovery(){setBusy(true);setMessage('Envoi du lien de récupération KHE…');try{const stationToken=await vault.getStationToken();if(!stationToken)throw new Error('Session SHARING introuvable.');const response=await fetch(`${API_BASE_URL.replace(/\/$/,'')}/stations/security/lock-recovery/request`,{method:'POST',headers:{Authorization:`Bearer ${stationToken}`,Accept:'application/json'}});const body=await response.json().catch(()=>({})) as {maskedEmail?:string;message?:string};if(!response.ok)throw new Error(body.message||`HTTP ${response.status}`);setRecovery(true);setMessage(`Un lien et un code KHE ont été envoyés à ${body.maskedEmail||'l’adresse e-mail du profil'}. Le code expire dans 10 minutes.`);}catch(error){setMessage(error instanceof Error?error.message:'Impossible d’envoyer la récupération.');}finally{setBusy(false);}}
+  async function completeRecovery(){const next=newPassword.trim();if(next.length<6){setMessage('Le nouveau mot de passe KHE doit contenir au moins 6 caractères.');return;}if(next!==confirmPassword.trim()){setMessage('Les deux nouveaux mots de passe ne correspondent pas.');return;}if(!magicToken&&!/^\d{6}$/.test(code.trim())){setMessage('Saisissez le code à 6 chiffres reçu par e-mail ou ouvrez le lien KHE reçu.');return;}setBusy(true);setMessage('Vérification de la récupération…');try{const stationToken=await vault.getStationToken();if(!stationToken)throw new Error('Session SHARING introuvable.');const response=await fetch(`${API_BASE_URL.replace(/\/$/,'')}/stations/security/lock-recovery/verify`,{method:'POST',headers:{Authorization:`Bearer ${stationToken}`,'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify(magicToken?{token:magicToken}:{code:code.trim()})});const body=await response.json().catch(()=>({})) as {approved?:boolean;message?:string};if(!response.ok||!body.approved)throw new Error(body.message||'Récupération non validée.');await vault.saveEventLockPassword(next);setPassword('');setCode('');setMagicToken('');setNewPassword('');setConfirmPassword('');setMessage('✓ Nouveau mot de passe KHE enregistré. Régie déverrouillée.');await onUnlocked();}catch(error){setMessage(error instanceof Error?error.message:'Impossible de créer le nouveau mot de passe.');}finally{setBusy(false);}}
+
+  return <SafeAreaView style={styles.page}><View style={styles.brandBlock}><Text style={styles.brand}>KHE</Text><Text style={styles.slogan}>Votre événement, notre expertise !</Text><Text style={styles.standby}>MODE VEILLE SÉCURISÉ</Text></View><View style={styles.unlockCard}><Text style={styles.unlockTitle}>{recovery?'Récupérer la régie':'Revenir à l’écran actif'}</Text>{!recovery?<><Text style={styles.authMethods}>{authLabel}</Text><Pressable disabled={busy} onPress={()=>void unlockWithDevice()} style={styles.primaryButton}><Text style={styles.primaryText}>{busy?'Vérification…':'Déverrouiller'}</Text></Pressable><Text style={styles.or}>ou avec le mot de passe KHE</Text><SecurePasswordField value={password} onChangeText={setPassword} placeholder="Mot de passe KHE" onSubmitEditing={()=>void unlockWithPassword()}/><Pressable disabled={busy||!password} onPress={()=>void unlockWithPassword()} style={styles.secondaryButton}><Text style={styles.secondaryText}>VALIDER LE MOT DE PASSE</Text></Pressable><Pressable disabled={busy} onPress={()=>void requestRecovery()} style={styles.forgotButton}><Text style={styles.forgotText}>Mot de passe oublié ?</Text></Pressable></>:<><Text style={styles.recoveryHelp}>Utilisez le lien reçu par e-mail ou saisissez le code à 6 chiffres. Choisissez ensuite un nouveau mot de passe de régie.</Text>{!magicToken?<TextInput value={code} onChangeText={setCode} keyboardType="number-pad" maxLength={6} placeholder="Code KHE à 6 chiffres" placeholderTextColor="#888" style={styles.codeInput}/>:<View style={styles.magicOk}><Text style={styles.magicOkText}>✓ LIEN DE RÉCUPÉRATION RECONNU</Text></View>}<SecurePasswordField value={newPassword} onChangeText={setNewPassword} placeholder="Nouveau mot de passe KHE"/><SecurePasswordField value={confirmPassword} onChangeText={setConfirmPassword} placeholder="Confirmer le nouveau mot de passe" onSubmitEditing={()=>void completeRecovery()}/><Pressable disabled={busy} onPress={()=>void completeRecovery()} style={styles.primaryButton}><Text style={styles.primaryText}>{busy?'Vérification…':'CRÉER LE NOUVEAU MOT DE PASSE'}</Text></Pressable><Pressable disabled={busy} onPress={()=>{setRecovery(false);setMagicToken('');setCode('');}} style={styles.forgotButton}><Text style={styles.forgotText}>Retour au déverrouillage</Text></Pressable></>}<Text style={styles.message}>{message}</Text></View></SafeAreaView>;
 }
 
-export function StandbyScreen({ verifyPassword, onUnlocked }: StandbyScreenProps) {
-  const [password, setPassword] = useState('');
-  const [message, setMessage] = useState('Touchez Déverrouiller pour reprendre la régie.');
-  const [busy, setBusy] = useState(false);
-  const [authLabel, setAuthLabel] = useState('Empreinte / visage / verrouillage tablette');
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const types = await LocalAuthentication.supportedAuthenticationTypesAsync();
-        if (cancelled) return;
-        const labels: string[] = [];
-        if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) labels.push('empreinte');
-        if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) labels.push('visage');
-        if (types.includes(LocalAuthentication.AuthenticationType.IRIS)) labels.push('iris');
-        const securityLevel = await LocalAuthentication.getEnrolledLevelAsync();
-        if (securityLevel >= LocalAuthentication.SecurityLevel.SECRET) labels.push('PIN / schéma système');
-        if (labels.length) setAuthLabel(labels.join(' • '));
-      } catch {
-        // The KHE password remains available as a deterministic fallback.
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  async function unlockWithDevice(): Promise<void> {
-    setBusy(true);
-    setMessage('Authentification en cours…');
-    try {
-      const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: 'Déverrouiller KHE Booth',
-        promptSubtitle: 'Votre événement, notre expertise !',
-        promptDescription: 'Utilisez la sécurité configurée sur cette tablette.',
-        disableDeviceFallback: false,
-        cancelLabel: 'Utiliser le mot de passe KHE',
-      });
-      if (result.success) {
-        await onUnlocked();
-        return;
-      }
-      setMessage('Authentification non validée. Vous pouvez utiliser le mot de passe KHE ci-dessous.');
-    } catch {
-      setMessage('Authentification système indisponible. Utilisez le mot de passe KHE.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function unlockWithPassword(): Promise<void> {
-    if (!password) return;
-    setBusy(true);
-    try {
-      if (await verifyPassword(password)) {
-        setPassword('');
-        await onUnlocked();
-        return;
-      }
-      setMessage('Mot de passe KHE incorrect.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <SafeAreaView style={styles.page}>
-      <View style={styles.brandBlock}>
-        <Text style={styles.brand}>KHE</Text>
-        <Text style={styles.slogan}>Votre événement, notre expertise !</Text>
-        <Text style={styles.standby}>MODE VEILLE SÉCURISÉ</Text>
-      </View>
-
-      <View style={styles.unlockCard}>
-        <Text style={styles.unlockTitle}>Revenir à l’écran actif</Text>
-        <Text style={styles.authMethods}>{authLabel}</Text>
-        <Pressable disabled={busy} onPress={() => void unlockWithDevice()} style={styles.primaryButton}>
-          <Text style={styles.primaryText}>{busy ? 'Vérification…' : 'Déverrouiller'}</Text>
-        </Pressable>
-
-        <Text style={styles.or}>ou avec le mot de passe KHE</Text>
-        <SecurePasswordField value={password} onChangeText={setPassword} placeholder="Mot de passe KHE" onSubmitEditing={() => void unlockWithPassword()} />
-        <Pressable disabled={busy || !password} onPress={() => void unlockWithPassword()} style={styles.secondaryButton}>
-          <Text style={styles.secondaryText}>VALIDER LE MOT DE PASSE</Text>
-        </Pressable>
-        <Text style={styles.message}>{message}</Text>
-      </View>
-    </SafeAreaView>
-  );
-}
-
-const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#090909', padding: 28, justifyContent: 'space-between' },
-  brandBlock: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  brand: { color: '#ffffff', fontSize: 86, lineHeight: 96, fontWeight: '900', letterSpacing: 6 },
-  slogan: { color: '#ffffff', fontSize: 18, fontWeight: '700', textAlign: 'center', marginTop: 8 },
-  standby: { color: '#a8a8a8', fontSize: 11, fontWeight: '900', letterSpacing: 2.4, marginTop: 18 },
-  unlockCard: { backgroundColor: '#ffffff', borderRadius: 22, padding: 20, gap: 11 },
-  unlockTitle: { fontSize: 20, fontWeight: '900' },
-  authMethods: { fontSize: 11, lineHeight: 16, opacity: 0.6 },
-  primaryButton: { backgroundColor: '#111111', borderRadius: 13, padding: 15, alignItems: 'center' },
-  primaryText: { color: '#ffffff', fontWeight: '900' },
-  or: { textAlign: 'center', fontSize: 11, opacity: 0.55, marginTop: 2 },
-  secondaryButton: { borderWidth: 1, borderColor: '#111111', borderRadius: 12, padding: 13, alignItems: 'center' },
-  secondaryText: { fontWeight: '900', fontSize: 11 },
-  message: { fontSize: 11, lineHeight: 16, opacity: 0.65 },
-});
+const styles=StyleSheet.create({page:{flex:1,backgroundColor:'#090909',padding:28,justifyContent:'space-between'},brandBlock:{flex:1,alignItems:'center',justifyContent:'center'},brand:{color:'#fff',fontSize:86,lineHeight:96,fontWeight:'900',letterSpacing:6},slogan:{color:'#fff',fontSize:18,fontWeight:'700',textAlign:'center',marginTop:8},standby:{color:'#a8a8a8',fontSize:11,fontWeight:'900',letterSpacing:2.4,marginTop:18},unlockCard:{backgroundColor:'#fff',borderRadius:22,padding:20,gap:11},unlockTitle:{fontSize:20,fontWeight:'900'},authMethods:{fontSize:11,lineHeight:16,opacity:.6},primaryButton:{backgroundColor:'#111',borderRadius:13,padding:15,alignItems:'center'},primaryText:{color:'#fff',fontWeight:'900'},or:{textAlign:'center',fontSize:11,opacity:.55,marginTop:2},secondaryButton:{borderWidth:1,borderColor:'#111',borderRadius:12,padding:13,alignItems:'center'},secondaryText:{fontWeight:'900',fontSize:11},forgotButton:{paddingVertical:8,alignItems:'center'},forgotText:{color:'#b31520',fontWeight:'900',fontSize:11,textDecorationLine:'underline'},recoveryHelp:{fontSize:12,lineHeight:18,color:'#5e5750'},codeInput:{borderWidth:1,borderColor:'#d4c8b9',backgroundColor:'#faf8f4',borderRadius:12,padding:14,fontSize:20,fontWeight:'900',letterSpacing:5,textAlign:'center',color:'#111'},magicOk:{backgroundColor:'#e8f6ed',borderRadius:12,padding:12,alignItems:'center'},magicOkText:{color:'#1f6a3b',fontWeight:'900',fontSize:10},message:{fontSize:11,lineHeight:16,opacity:.7}});
