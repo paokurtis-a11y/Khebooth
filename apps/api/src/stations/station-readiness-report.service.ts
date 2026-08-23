@@ -13,6 +13,14 @@ export interface StationReadinessReportInput {
   internetReachable?: boolean|null;
   printerConfirmed?: boolean|null;
   printerTestedAt?: string|null;
+  cameraPermission?: 'GRANTED'|'DENIED'|'BLOCKED'|null;
+  microphonePermission?: 'GRANTED'|'DENIED'|'BLOCKED'|null;
+  photoTestPassed?: boolean|null;
+  photoTestedAt?: string|null;
+  videoTestPassed?: boolean|null;
+  videoTestedAt?: string|null;
+  guestQrConfirmed?: boolean|null;
+  guestQrTestedAt?: string|null;
 }
 
 @Injectable()
@@ -21,6 +29,8 @@ export class StationReadinessReportService {
 
   async report(station: AuthenticatedStation, input: StationReadinessReportInput) {
     const numberOrNull=(value:unknown,min:number,max:number)=>typeof value==='number'&&Number.isFinite(value)?Math.min(max,Math.max(min,value)):null;
+    const enumOrNull=(value:unknown,values:readonly string[])=>typeof value==='string'&&values.includes(value)?value:null;
+    const dateOrNull=(value:unknown)=>typeof value==='string'&&value.length<=40&&Number.isFinite(Date.parse(value))?value:null;
     const batteryPercent=input.batteryPercent==null?null:numberOrNull(input.batteryPercent,0,100);
     const freeDiskBytes=numberOrNull(input.freeDiskBytes,0,Number.MAX_SAFE_INTEGER);
     const totalDiskBytes=numberOrNull(input.totalDiskBytes,0,Number.MAX_SAFE_INTEGER);
@@ -39,7 +49,15 @@ export class StationReadinessReportService {
       networkConnected:typeof input.networkConnected==='boolean'?input.networkConnected:null,
       internetReachable:typeof input.internetReachable==='boolean'?input.internetReachable:null,
       printerConfirmed:typeof input.printerConfirmed==='boolean'?input.printerConfirmed:null,
-      printerTestedAt:typeof input.printerTestedAt==='string'?input.printerTestedAt.slice(0,40):null,
+      printerTestedAt:dateOrNull(input.printerTestedAt),
+      cameraPermission:enumOrNull(input.cameraPermission,['GRANTED','DENIED','BLOCKED']),
+      microphonePermission:enumOrNull(input.microphonePermission,['GRANTED','DENIED','BLOCKED']),
+      photoTestPassed:typeof input.photoTestPassed==='boolean'?input.photoTestPassed:null,
+      photoTestedAt:dateOrNull(input.photoTestedAt),
+      videoTestPassed:typeof input.videoTestPassed==='boolean'?input.videoTestPassed:null,
+      videoTestedAt:dateOrNull(input.videoTestedAt),
+      guestQrConfirmed:typeof input.guestQrConfirmed==='boolean'?input.guestQrConfirmed:null,
+      guestQrTestedAt:dateOrNull(input.guestQrTestedAt),
       reportedAt:reportedAt.toISOString(),
     };
     await this.prisma.auditLog.create({data:{organizationId:station.organizationId,action:'STATION_READINESS_REPORT',entityType:'StationSession',entityId:station.sessionId,metadata}});
