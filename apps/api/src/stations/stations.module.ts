@@ -32,9 +32,11 @@ import { StationControlPreferencesController } from './station-control-preferenc
 import { StationControlPreferencesService } from './station-control-preferences.service';
 import { StationNotificationsService } from './station-notifications.service';
 import { StationProfileService } from './station-profile.service';
+import { StationReadinessReportController } from './station-readiness-report.controller';
+import { StationReadinessReportService } from './station-readiness-report.service';
 import { StationRenewalService } from './station-renewal.service';
 import { StationsController } from './stations.controller';
 import { StationsService } from './stations.service';
 
-@Module({imports:[AuthModule,EventsModule,CommerceModule,SubscriptionsModule],controllers:[StationsController,StationBillingController,ClientEventSelectionController,StationControlPreferencesController,EventSharingController,PublicEventController,PublicMediaController,PublicSocialController,SocialProviderReadinessController,SocialDeveloperCredentialController],providers:[StationsService,StationRenewalService,StationProfileService,StationNotificationsService,StationBillingService,ClientEventWorkspaceService,DesignStorageService,ProfileStorageService,MediaStorageService,MediaCatalogService,MediaSharingService,MediaTrashService,EventSharingService,SharingBusinessService,StationConnectionService,StationControlPreferencesService,StationAuthGuard,SocialCredentialCipher,SocialDeveloperCredentialService,SocialProviderConnectionV2Service,MetaBusinessOAuthService,MetaBusinessCallbackService]})
+@Module({imports:[AuthModule,EventsModule,CommerceModule,SubscriptionsModule],controllers:[StationsController,StationReadinessReportController,StationBillingController,ClientEventSelectionController,StationControlPreferencesController,EventSharingController,PublicEventController,PublicMediaController,PublicSocialController,SocialProviderReadinessController,SocialDeveloperCredentialController],providers:[StationsService,StationReadinessReportService,StationRenewalService,StationProfileService,StationNotificationsService,StationBillingService,ClientEventWorkspaceService,DesignStorageService,ProfileStorageService,MediaStorageService,MediaCatalogService,MediaSharingService,MediaTrashService,EventSharingService,SharingBusinessService,StationConnectionService,StationControlPreferencesService,StationAuthGuard,SocialCredentialCipher,SocialDeveloperCredentialService,SocialProviderConnectionV2Service,MetaBusinessOAuthService,MetaBusinessCallbackService]})
 export class StationsModule{}
