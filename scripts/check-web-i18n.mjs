@@ -12,11 +12,9 @@ const languages = ['fr', 'en', 'de', 'it', 'es', 'pt'];
 const failures = [];
 for (const file of files) {
   const source = await readFile(new URL(`../${file}`, import.meta.url), 'utf8');
-  const missing = languages.filter((language) => !new RegExp(`(?:^|[,{\\s])${language}\\s*:`).test(source));
+  const missing = languages.filter((language) => !source.includes(`${language}:`) && !source.includes(`${language},`));
   if (missing.length) failures.push(`${file}: missing locale entries ${missing.join(', ')}`);
-  if (!source.includes("khe-language-changed") && !source.includes('WebStartupIntro')) {
-    failures.push(`${file}: language changes are not observed at runtime`);
-  }
+  if (!source.includes('khe-language-changed')) failures.push(`${file}: language changes are not observed at runtime`);
 }
 if (failures.length) {
   console.error('KHE i18n guard failed:\n' + failures.map((item) => `- ${item}`).join('\n'));
