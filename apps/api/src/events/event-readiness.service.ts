@@ -7,9 +7,9 @@ const STALE_WINDOW_MS = 3 * 60_000;
 const TELEMETRY_STALE_MS = 10 * 60_000;
 const GIB = 1024 * 1024 * 1024;
 
-type CheckLevel = 'PASS' | 'WARN' | 'BLOCK' | 'INFO';
-interface ReadinessCheck { id: string; level: CheckLevel; detail: string; }
-interface Telemetry {
+export type CheckLevel = 'PASS' | 'WARN' | 'BLOCK' | 'INFO';
+export interface ReadinessCheck { id: string; level: CheckLevel; detail: string; }
+export interface Telemetry {
   batteryPercent?: number|null; charging?: boolean|null; lowPowerMode?: boolean|null;
   freeDiskBytes?: number|null; totalDiskBytes?: number|null; networkType?: string|null;
   networkConnected?: boolean|null; internetReachable?: boolean|null; printerConfirmed?: boolean|null;
