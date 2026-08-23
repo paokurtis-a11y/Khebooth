@@ -28,6 +28,14 @@ export class OperationsController{
 
   @Get('presence/me') presence(@CurrentUser() user:AuthenticatedUser){return this.operations.presenceMe(user);}
 
+  @Get('geo/me') currentGeo(@CurrentUser() user:AuthenticatedUser,@Req() request:Request){
+    const current=geo(request);
+    return{
+      isOwner:user.role===UserRole.OWNER,
+      countryCode:current.countryCode?.toUpperCase()??null,
+    };
+  }
+
   @Post('presence/heartbeat') heartbeat(@CurrentUser() user:AuthenticatedUser,@Body() body:Record<string,unknown>,@Req() request:Request,@Headers('user-agent') userAgent?:string){
     return this.operations.heartbeat(user,body,geo(request),userAgent??null);
   }

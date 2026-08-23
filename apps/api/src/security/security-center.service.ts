@@ -1,5 +1,9 @@
-import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { NotificationKind, SupportConversationStatus, SupportMessageAuthor } from '@prisma/client';
+import type { AuthenticatedUser } from '../auth/auth.types';
 import { PrismaService } from '../prisma/prisma.service';
+
+const MANAGER_ROLES = ['OWNER','ADMIN'];
 
 @Injectable()
 export class SecurityCenterService{
@@ -12,6 +16,8 @@ export class SecurityCenterService{
     if(!rows[0])throw new BadRequestException('Organization not found');
     return rows[0];
   }
+
+  private requireManager(role:string){if(!MANAGER_ROLES.includes(role))throw new ForbiddenException('Owner or administrator access required');}
 
   private async ensureConfig(organizationId:string){
     await this.prisma.$executeRaw`INSERT INTO "SecurityAutomationConfig" ("organizationId") VALUES (${organizationId}::uuid) ON CONFLICT ("organizationId") DO NOTHING`;
@@ -52,6 +58,95 @@ export class SecurityCenterService{
       WHERE "organizationId"=${organizationId}::uuid ORDER BY "createdAt" DESC LIMIT 100
     `;
     return{...(await this.status(organizationId)),config,incidents,authEvents,audit,safeAutomaticActions:['LOCK_ACCOUNT_AFTER_FAILED_LOGINS','REVOKE_COMPROMISED_SESSION','BLOCK_SUSPICIOUS_AUTH_FLOW','RATE_LIMIT_REPEATED_FAILURES','NOTIFY_OWNER'],ownerApprovalRequiredFor:['DELETE_DATA','DISABLE_PRODUCTION_SERVICE','ROTATE_EXTERNAL_PROVIDER_CREDENTIALS','PAID_SECURITY_SERVICE','IRREVERSIBLE_CONFIGURATION_CHANGE']};
+  }
+
+  async devices(organizationId:string,userRole:string){
+    this.requireManager(userRole);
+    const now=new Date();
+    const devices=await this.prisma.device.findMany({
+      where:{organizationId},
+      include:{sessions:{orderBy:{lastSeenAt:'desc'},take:8,include:{event:{select:{id:true,name:true,status:true}}}}},
+      orderBy:{lastSeenAt:'desc'},
+    });
+    return devices.map(device=>({
+      id:device.id,
+      installationId:device.installationId,
+      name:device.name,
+      platform:device.platform,
+      lastSeenAt:device.lastSeenAt,
+      revokedAt:device.revokedAt,
+      active:!device.revokedAt,
+      sessions:device.sessions.map(session=>({id:session.id,event:session.event,mode:session.mode,lastSeenAt:session.lastSeenAt,expiresAt:session.expiresAt,revokedAt:session.revokedAt,online:!session.revokedAt&&session.expiresAt>now&&now.getTime()-session.lastSeenAt.getTime()<30_000})),
+    }));
+  }
+
+  async revokeDevice(user:AuthenticatedUser,deviceId:string){
+    this.requireManager(user.role);
+    const device=await this.prisma.device.findFirst({where:{id:deviceId,organizationId:user.organizationId},select:{id:true,name:true,installationId:true,revokedAt:true}});
+    if(!device)throw new NotFoundException('Device not found');
+    const now=new Date();
+    await this.prisma.$transaction([
+      this.prisma.device.update({where:{id:device.id},data:{revokedAt:now}}),
+      this.prisma.stationSession.updateMany({where:{organizationId:user.organizationId,deviceId:device.id,revokedAt:null},data:{revokedAt:now}}),
+      this.prisma.auditLog.create({data:{organizationId:user.organizationId,userId:user.id,action:'DEVICE_REVOKED',entityType:'Device',entityId:device.id,metadata:{name:device.name,installationId:device.installationId}}}),
+    ]);
+    return{revoked:true,id:device.id,revokedAt:now};
+  }
+
+  async reactivateDevice(user:AuthenticatedUser,deviceId:string){
+    this.requireManager(user.role);
+    const device=await this.prisma.device.findFirst({where:{id:deviceId,organizationId:user.organizationId},select:{id:true,name:true,installationId:true}});
+    if(!device)throw new NotFoundException('Device not found');
+    await this.prisma.$transaction([
+      this.prisma.device.update({where:{id:device.id},data:{revokedAt:null}}),
+      this.prisma.auditLog.create({data:{organizationId:user.organizationId,userId:user.id,action:'DEVICE_REACTIVATED',entityType:'Device',entityId:device.id,metadata:{name:device.name,installationId:device.installationId}}}),
+    ]);
+    return{reactivated:true,id:device.id};
+  }
+
+  async revokeMyWebSessions(user:AuthenticatedUser){
+    const rows=await this.prisma.$queryRaw<Array<{authVersion:number}>>`
+      UPDATE "User" SET "authVersion"="authVersion"+1,"updatedAt"=CURRENT_TIMESTAMP
+      WHERE id=${user.id}::uuid AND "organizationId"=${user.organizationId}::uuid
+      RETURNING "authVersion"
+    `;
+    if(!rows[0])throw new NotFoundException('User not found');
+    await this.prisma.auditLog.create({data:{organizationId:user.organizationId,userId:user.id,action:'WEB_SESSIONS_REVOKED',entityType:'User',entityId:user.id,metadata:{authVersion:rows[0].authVersion}}});
+    return{revoked:true,authVersion:rows[0].authVersion};
+  }
+
+  async audit(organizationId:string,userRole:string){
+    this.requireManager(userRole);
+    return this.prisma.auditLog.findMany({where:{organizationId},orderBy:{createdAt:'desc'},take:200});
+  }
+
+  async privacyExport(user:AuthenticatedUser){
+    const accountRows=await this.prisma.$queryRaw<Array<Record<string,unknown>>>`
+      SELECT id,email,"firstName","lastName",role,"isActive","notificationsEnabled","productUpdatesEnabled","supportNotificationsEnabled","createdAt","updatedAt"
+      FROM "User" WHERE id=${user.id}::uuid AND "organizationId"=${user.organizationId}::uuid LIMIT 1
+    `;
+    if(!accountRows[0])throw new NotFoundException('User not found');
+    const [organization,conversations,audit]=await Promise.all([
+      this.prisma.organization.findUnique({where:{id:user.organizationId},select:{id:true,name:true,createdAt:true,updatedAt:true}}),
+      this.prisma.supportConversation.findMany({where:{organizationId:user.organizationId,requesterUserId:user.id},include:{messages:{orderBy:{createdAt:'asc'}}},orderBy:{createdAt:'asc'}}),
+      this.prisma.auditLog.findMany({where:{organizationId:user.organizationId,userId:user.id},orderBy:{createdAt:'asc'}}),
+    ]);
+    await this.prisma.auditLog.create({data:{organizationId:user.organizationId,userId:user.id,action:'PRIVACY_EXPORT_GENERATED',entityType:'User',entityId:user.id}});
+    return{format:'KHE_PRIVACY_EXPORT_V1',generatedAt:new Date(),account:accountRows[0],organization,supportConversations:conversations,audit};
+  }
+
+  async requestDeletion(user:AuthenticatedUser){
+    const existing=await this.prisma.auditLog.findFirst({where:{organizationId:user.organizationId,userId:user.id,action:'DATA_DELETION_REQUESTED'},orderBy:{createdAt:'desc'}});
+    if(existing&&Date.now()-existing.createdAt.getTime()<24*60*60*1000)return{requested:true,requestedAt:existing.createdAt,duplicate:true};
+    const created=await this.prisma.supportConversation.create({
+      data:{organizationId:user.organizationId,requesterUserId:user.id,subject:'Demande sécurisée de suppression des données',status:SupportConversationStatus.HANDOFF_REQUESTED,messages:{create:[{author:SupportMessageAuthor.USER,body:'Je demande la suppression de mes données KHE Booth. Merci de vérifier mon identité et les obligations de conservation applicables avant toute suppression.'},{author:SupportMessageAuthor.SYSTEM,body:'Demande créée depuis le centre de confidentialité authentifié. Aucune donnée n’est supprimée automatiquement avant vérification.'}]}},
+    });
+    const now=new Date();
+    await this.prisma.$transaction([
+      this.prisma.auditLog.create({data:{organizationId:user.organizationId,userId:user.id,action:'DATA_DELETION_REQUESTED',entityType:'User',entityId:user.id,metadata:{conversationId:created.id}}}),
+      this.prisma.appNotification.create({data:{organizationId:user.organizationId,kind:NotificationKind.SUPPORT,title:'Demande de suppression à vérifier',body:'Une demande authentifiée de suppression des données nécessite une vérification humaine.',actionUrl:`/help?agentConversation=${created.id}`}}),
+    ]);
+    return{requested:true,requestedAt:now,conversationId:created.id,automaticDeletion:false};
   }
 
   async updateConfig(organizationId:string,userRole:string,payload:Record<string,unknown>){

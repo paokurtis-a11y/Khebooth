@@ -27,6 +27,8 @@ export interface MediaShareContract {
 export type SocialProvider = 'WHATSAPP' | 'TIKTOK' | 'FACEBOOK' | 'INSTAGRAM' | 'X' | 'TELEGRAM' | 'YOUTUBE';
 export type SharingGalleryLayout = 'MASONRY' | 'GRID' | 'COMPACT';
 export type SharingMediaFit = 'COVER' | 'CONTAIN';
+export type StationNotificationMailboxState = 'ACTIVE' | 'ARCHIVED' | 'TRASHED';
+export type StationNotificationMailboxAction = 'READ' | 'KEEP' | 'ARCHIVE' | 'TRASH' | 'RESTORE';
 
 export interface SharingBusinessSettingsContract {
   socialLinks: Partial<Record<SocialProvider, string>>;
@@ -58,6 +60,11 @@ export interface StationNotificationContract {
   body: string;
   actionUrl: string | null;
   publishedAt: string | Date;
+  mailboxState?: StationNotificationMailboxState;
+  readAt?: string | Date | null;
+  archivedAt?: string | Date | null;
+  trashedAt?: string | Date | null;
+  purgeAt?: string | Date | null;
 }
 
 export interface BillingDocumentContract {
@@ -222,6 +229,8 @@ export interface StationExperienceApi extends StationApi {
   notificationPreferences(stationToken: string): Promise<NotificationPreferencesContract>;
   updateNotificationPreferences(stationToken: string, preferences: NotificationPreferencesContract): Promise<NotificationPreferencesContract>;
   stationNotifications(stationToken: string): Promise<StationNotificationContract[]>;
+  stationNotificationMailbox(stationToken: string): Promise<StationNotificationContract[]>;
+  updateStationNotification(stationToken: string, notificationId: string, action: StationNotificationMailboxAction): Promise<StationNotificationContract>;
   stationBilling(stationToken:string):Promise<StationBillingContract>;
   clientWorkspace(stationToken: string): Promise<ClientWorkspaceContract>;
   createClientEvent(stationToken: string, event: CreateClientEventRequest): Promise<CreateClientEventResponse>;
@@ -333,6 +342,8 @@ export class HttpStationApi implements StationExperienceApi {
   notificationPreferences(token: string) { return this.stationRequest<NotificationPreferencesContract>('/stations/notification-preferences', token); }
   updateNotificationPreferences(token: string, preferences: NotificationPreferencesContract) { return this.stationRequest<NotificationPreferencesContract>('/stations/notification-preferences', token, { method: 'PATCH', body: JSON.stringify(preferences) }); }
   stationNotifications(token: string) { return this.stationRequest<StationNotificationContract[]>('/stations/notifications', token); }
+  stationNotificationMailbox(token: string) { return this.stationRequest<StationNotificationContract[]>('/stations/notification-mailbox', token); }
+  updateStationNotification(token: string, id: string, action: StationNotificationMailboxAction) { return this.stationRequest<StationNotificationContract>(`/stations/notification-mailbox/${encodeURIComponent(id)}`, token, { method: 'PATCH', body: JSON.stringify({ action }) }); }
   stationBilling(token:string){return this.stationRequest<StationBillingContract>('/stations/billing',token);}
   clientWorkspace(token: string) { return this.stationRequest<ClientWorkspaceContract>('/stations/client-workspace', token); }
   createClientEvent(token: string, event: CreateClientEventRequest) { return this.stationRequest<CreateClientEventResponse>('/stations/client-events', token, { method: 'POST', body: JSON.stringify(event) }); }

@@ -9,12 +9,16 @@ import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
+import { EventReadinessService } from './event-readiness.service';
 import { EventsService } from './events.service';
 
 @UseGuards(AuthGuard('jwt'), RolesGuard, PermissionsGuard)
 @Controller('events')
 export class EventsController {
-  constructor(private readonly events: EventsService) {}
+  constructor(
+    private readonly events: EventsService,
+    private readonly readiness: EventReadinessService,
+  ) {}
 
   @Permissions('events.view')
   @Get()
@@ -23,6 +27,12 @@ export class EventsController {
   @Permissions('events.view')
   @Get(':id')
   get(@CurrentUser() user: AuthenticatedUser, @Param('id', new ParseUUIDPipe()) id: string) { return this.events.get(user.organizationId, id); }
+
+  @Permissions('events.view')
+  @Get(':id/readiness')
+  eventReadiness(@CurrentUser() user: AuthenticatedUser, @Param('id', new ParseUUIDPipe()) id: string) {
+    return this.readiness.snapshot(user.organizationId, id);
+  }
 
   @Permissions('events.manage')
   @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.OPERATOR)
