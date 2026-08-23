@@ -4,58 +4,18 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { PortalShell } from '@/components/portal-shell';
 import { apiRequest } from '@/lib/api';
-
-type EventItem = {
-  id: string;
-  name: string;
-  startsAt: string;
-  endsAt?: string | null;
-  venueName?: string | null;
-  status: string;
-  client?: { id: string; name: string } | null;
+type Language='fr'|'en'|'de'|'it'|'es'|'pt';
+type EventItem={id:string;name:string;startsAt:string;endsAt?:string|null;venueName?:string|null;status:string;client?:{id:string;name:string}|null};
+const TEXT:Record<Language,Record<string,string>>={
+fr:{title:'Événements',subtitle:'Chaque événement possède un numéro d’identification KHE stable, associé à son client.',new:'Nouvel événement',load:'Chargement impossible',empty:'Aucun événement enregistré.',event:'Événement',client:'Client',date:'Date',venue:'Lieu',status:'Statut',noClient:'Aucun client associé',open:'Ouvrir',draft:'Brouillon',published:'Publié',active:'Actif',completed:'Terminé',cancelled:'Annulé'},
+en:{title:'Events',subtitle:'Each event has a stable KHE identification number associated with its client.',new:'New event',load:'Unable to load',empty:'No events recorded.',event:'Event',client:'Client',date:'Date',venue:'Venue',status:'Status',noClient:'No client associated',open:'Open',draft:'Draft',published:'Published',active:'Active',completed:'Completed',cancelled:'Cancelled'},
+de:{title:'Events',subtitle:'Jedes Event besitzt eine stabile KHE-Identifikationsnummer, die seinem Kunden zugeordnet ist.',new:'Neues Event',load:'Laden nicht möglich',empty:'Keine Events gespeichert.',event:'Event',client:'Kunde',date:'Datum',venue:'Ort',status:'Status',noClient:'Kein Kunde zugeordnet',open:'Öffnen',draft:'Entwurf',published:'Veröffentlicht',active:'Aktiv',completed:'Abgeschlossen',cancelled:'Storniert'},
+it:{title:'Eventi',subtitle:'Ogni evento ha un numero identificativo KHE stabile associato al cliente.',new:'Nuovo evento',load:'Caricamento impossibile',empty:'Nessun evento registrato.',event:'Evento',client:'Cliente',date:'Data',venue:'Luogo',status:'Stato',noClient:'Nessun cliente associato',open:'Apri',draft:'Bozza',published:'Pubblicato',active:'Attivo',completed:'Completato',cancelled:'Annullato'},
+es:{title:'Eventos',subtitle:'Cada evento tiene un número de identificación KHE estable asociado a su cliente.',new:'Nuevo evento',load:'No se pudo cargar',empty:'No hay eventos registrados.',event:'Evento',client:'Cliente',date:'Fecha',venue:'Lugar',status:'Estado',noClient:'Sin cliente asociado',open:'Abrir',draft:'Borrador',published:'Publicado',active:'Activo',completed:'Finalizado',cancelled:'Cancelado'},
+pt:{title:'Eventos',subtitle:'Cada evento tem um número de identificação KHE estável associado ao respetivo cliente.',new:'Novo evento',load:'Não foi possível carregar',empty:'Não existem eventos registados.',event:'Evento',client:'Cliente',date:'Data',venue:'Local',status:'Estado',noClient:'Sem cliente associado',open:'Abrir',draft:'Rascunho',published:'Publicado',active:'Ativo',completed:'Concluído',cancelled:'Cancelado'},
 };
-
-function kheEventNumber(eventId: string): string {
-  return `KHE-EVT-${eventId.replace(/-/g, '').slice(0, 8).toUpperCase()}`;
-}
-
-export default function EventsPage() {
-  const [events, setEvents] = useState<EventItem[]>([]);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    apiRequest<EventItem[]>('/events')
-      .then(setEvents)
-      .catch((caught) => setError(caught instanceof Error ? caught.message : 'Chargement impossible'));
-  }, []);
-
-  return (
-    <PortalShell>
-      <div className="header">
-        <div><h1>Événements</h1><p>Chaque événement possède un numéro d’identification KHE stable, aligné avec son client.</p></div>
-        <Link className="button" href="/events/new">Nouvel événement</Link>
-      </div>
-      {error ? <p className="error">{error}</p> : null}
-      <section className="card">
-        {events.length === 0 ? <div className="empty">Aucun événement enregistré.</div> : (
-          <table className="table">
-            <thead><tr><th>N° KHE</th><th>Événement</th><th>Client</th><th>Date</th><th>Lieu</th><th>Statut</th><th></th></tr></thead>
-            <tbody>
-              {events.map((event) => (
-                <tr key={event.id}>
-                  <td><strong style={{ whiteSpace: 'nowrap' }}>{kheEventNumber(event.id)}</strong></td>
-                  <td><Link className="table-link" href={`/events/${event.id}`}>{event.name}</Link></td>
-                  <td>{event.client?.name ?? 'Aucun client associé'}</td>
-                  <td>{new Date(event.startsAt).toLocaleString('fr-CH')}</td>
-                  <td>{event.venueName ?? '—'}</td>
-                  <td><span className="status-badge">{event.status}</span></td>
-                  <td><Link className="muted" href={`/events/${event.id}`}>Ouvrir →</Link></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
-    </PortalShell>
-  );
+function kheEventNumber(id:string){return`KHE-EVT-${id.replace(/-/g,'').slice(0,8).toUpperCase()}`;}function readLanguage():Language{if(typeof window==='undefined')return'fr';const v=window.localStorage.getItem('khe.web.language');return v&&v in TEXT?v as Language:'fr';}
+export default function EventsPage(){const[language,setLanguage]=useState<Language>('fr');const[events,setEvents]=useState<EventItem[]>([]);const[error,setError]=useState('');const t=TEXT[language];const locale=language==='fr'?'fr-CH':language;
+ useEffect(()=>{setLanguage(readLanguage());const handler=(event:Event)=>{const detail=(event as CustomEvent<string>).detail;if(detail&&detail in TEXT)setLanguage(detail as Language);};window.addEventListener('khe-language-changed',handler);apiRequest<EventItem[]>('/events').then(setEvents).catch(caught=>setError(caught instanceof Error?caught.message:t.load));return()=>window.removeEventListener('khe-language-changed',handler);},[t.load]);const status=(value:string)=>t[value.toLowerCase()]||value;
+ return <PortalShell><div className="header"><div><h1>{t.title}</h1><p>{t.subtitle}</p></div><Link className="button" href="/events/new">{t.new}</Link></div>{error?<p className="error">{error}</p>:null}<section className="card">{events.length===0?<div className="empty">{t.empty}</div>:<table className="table"><thead><tr><th>N° KHE</th><th>{t.event}</th><th>{t.client}</th><th>{t.date}</th><th>{t.venue}</th><th>{t.status}</th><th></th></tr></thead><tbody>{events.map(event=><tr key={event.id}><td><strong style={{whiteSpace:'nowrap'}}>{kheEventNumber(event.id)}</strong></td><td><Link className="table-link" href={`/events/${event.id}`}>{event.name}</Link></td><td>{event.client?.name??t.noClient}</td><td>{new Date(event.startsAt).toLocaleString(locale)}</td><td>{event.venueName??'—'}</td><td><span className="status-badge">{status(event.status)}</span></td><td><Link className="muted" href={`/events/${event.id}`}>{t.open} →</Link></td></tr>)}</tbody></table>}</section></PortalShell>;
 }

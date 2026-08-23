@@ -4,67 +4,20 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { PortalShell } from '@/components/portal-shell';
 import { apiRequest } from '@/lib/api';
-
-type Client = { id: string; name: string };
-type EventItem = { id: string; name: string; startsAt: string; status: string; venueName?: string | null };
-
-function EventTable({ items, emptyMessage }: Readonly<{ items: EventItem[]; emptyMessage: string }>) {
-  if (items.length === 0) return <div className="empty">{emptyMessage}</div>;
-  return (
-    <table className="table">
-      <thead><tr><th>Événement</th><th>Date</th><th>Lieu</th><th>Statut</th></tr></thead>
-      <tbody>
-        {items.slice(0, 5).map((event) => (
-          <tr key={event.id}>
-            <td>{event.name}</td>
-            <td>{new Date(event.startsAt).toLocaleString('fr-CH')}</td>
-            <td>{event.venueName ?? '—'}</td>
-            <td>{event.status}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
-
-export default function DashboardPage() {
-  const [clients, setClients] = useState<Client[]>([]);
-  const [events, setEvents] = useState<EventItem[]>([]);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    Promise.all([apiRequest<Client[]>('/clients'), apiRequest<EventItem[]>('/events')])
-      .then(([clientItems, eventItems]) => {
-        setClients(clientItems);
-        setEvents(eventItems);
-      })
-      .catch((caught) => setError(caught instanceof Error ? caught.message : 'Chargement impossible'));
-  }, []);
-
-  const now = Date.now();
-  const upcoming = events.filter((event) => new Date(event.startsAt).getTime() >= now);
-  const recent = events.filter((event) => new Date(event.startsAt).getTime() < now);
-
-  return (
-    <PortalShell>
-      <div className="header">
-        <div><h1>Tableau de bord</h1><p>Vue d’ensemble de l’activité KHE Booth.</p></div>
-        <Link className="button" href="/events/new">Créer un événement</Link>
-      </div>
-      {error ? <p className="error">{error}</p> : null}
-      <section className="grid">
-        <article className="card"><div className="muted">Clients</div><div className="metric">{clients.length}</div></article>
-        <article className="card"><div className="muted">Événements à venir</div><div className="metric">{upcoming.length}</div></article>
-        <article className="card"><div className="muted">Événements enregistrés</div><div className="metric">{events.length}</div></article>
-      </section>
-      <section className="card" style={{ marginTop: 20 }}>
-        <div className="header" style={{ marginBottom: 12 }}><div><h1 style={{ fontSize: 20 }}>Prochains événements</h1></div><Link href="/events" className="muted">Tout voir</Link></div>
-        <EventTable items={upcoming} emptyMessage="Aucun événement à venir." />
-      </section>
-      <section className="card" style={{ marginTop: 20 }}>
-        <div className="header" style={{ marginBottom: 12 }}><div><h1 style={{ fontSize: 20 }}>Événements récents</h1></div><Link href="/events" className="muted">Tout voir</Link></div>
-        <EventTable items={recent} emptyMessage="Aucun événement récent." />
-      </section>
-    </PortalShell>
-  );
+type Language='fr'|'en'|'de'|'it'|'es'|'pt';
+type Client={id:string;name:string};type EventItem={id:string;name:string;startsAt:string;status:string;venueName?:string|null};
+const TEXT:Record<Language,Record<string,string>>={
+fr:{event:'Événement',date:'Date',venue:'Lieu',status:'Statut',load:'Chargement impossible',title:'Tableau de bord',subtitle:'Vue d’ensemble de l’activité KHE Booth.',create:'Créer un événement',clients:'Clients',upcoming:'Événements à venir',saved:'Événements enregistrés',next:'Prochains événements',recent:'Événements récents',all:'Tout voir',noneUpcoming:'Aucun événement à venir.',noneRecent:'Aucun événement récent.',draft:'Brouillon',published:'Publié',active:'Actif',completed:'Terminé',cancelled:'Annulé'},
+en:{event:'Event',date:'Date',venue:'Venue',status:'Status',load:'Unable to load',title:'Dashboard',subtitle:'Overview of KHE Booth activity.',create:'Create event',clients:'Clients',upcoming:'Upcoming events',saved:'Saved events',next:'Next events',recent:'Recent events',all:'View all',noneUpcoming:'No upcoming events.',noneRecent:'No recent events.',draft:'Draft',published:'Published',active:'Active',completed:'Completed',cancelled:'Cancelled'},
+de:{event:'Event',date:'Datum',venue:'Ort',status:'Status',load:'Laden nicht möglich',title:'Dashboard',subtitle:'Übersicht der KHE-Booth-Aktivität.',create:'Event erstellen',clients:'Kunden',upcoming:'Bevorstehende Events',saved:'Gespeicherte Events',next:'Nächste Events',recent:'Letzte Events',all:'Alle anzeigen',noneUpcoming:'Keine bevorstehenden Events.',noneRecent:'Keine kürzlich vergangenen Events.',draft:'Entwurf',published:'Veröffentlicht',active:'Aktiv',completed:'Abgeschlossen',cancelled:'Storniert'},
+it:{event:'Evento',date:'Data',venue:'Luogo',status:'Stato',load:'Caricamento impossibile',title:'Dashboard',subtitle:'Panoramica dell’attività KHE Booth.',create:'Crea evento',clients:'Clienti',upcoming:'Eventi in arrivo',saved:'Eventi salvati',next:'Prossimi eventi',recent:'Eventi recenti',all:'Vedi tutto',noneUpcoming:'Nessun evento in arrivo.',noneRecent:'Nessun evento recente.',draft:'Bozza',published:'Pubblicato',active:'Attivo',completed:'Completato',cancelled:'Annullato'},
+es:{event:'Evento',date:'Fecha',venue:'Lugar',status:'Estado',load:'No se pudo cargar',title:'Panel',subtitle:'Resumen de la actividad de KHE Booth.',create:'Crear evento',clients:'Clientes',upcoming:'Próximos eventos',saved:'Eventos guardados',next:'Próximos eventos',recent:'Eventos recientes',all:'Ver todo',noneUpcoming:'No hay próximos eventos.',noneRecent:'No hay eventos recientes.',draft:'Borrador',published:'Publicado',active:'Activo',completed:'Finalizado',cancelled:'Cancelado'},
+pt:{event:'Evento',date:'Data',venue:'Local',status:'Estado',load:'Não foi possível carregar',title:'Painel',subtitle:'Visão geral da atividade KHE Booth.',create:'Criar evento',clients:'Clientes',upcoming:'Próximos eventos',saved:'Eventos guardados',next:'Próximos eventos',recent:'Eventos recentes',all:'Ver tudo',noneUpcoming:'Não existem próximos eventos.',noneRecent:'Não existem eventos recentes.',draft:'Rascunho',published:'Publicado',active:'Ativo',completed:'Concluído',cancelled:'Cancelado'},
+};
+function readLanguage():Language{if(typeof window==='undefined')return'fr';const value=window.localStorage.getItem('khe.web.language');return value&&value in TEXT?value as Language:'fr';}
+function EventTable({items,emptyMessage,t,locale}:Readonly<{items:EventItem[];emptyMessage:string;t:Record<string,string>;locale:string}>){if(!items.length)return <div className="empty">{emptyMessage}</div>;const status=(value:string)=>{const key=value.toLowerCase();return t[key]||value;};return <table className="table"><thead><tr><th>{t.event}</th><th>{t.date}</th><th>{t.venue}</th><th>{t.status}</th></tr></thead><tbody>{items.slice(0,5).map(event=><tr key={event.id}><td>{event.name}</td><td>{new Date(event.startsAt).toLocaleString(locale)}</td><td>{event.venueName??'—'}</td><td>{status(event.status)}</td></tr>)}</tbody></table>;}
+export default function DashboardPage(){const[language,setLanguage]=useState<Language>('fr');const[clients,setClients]=useState<Client[]>([]);const[events,setEvents]=useState<EventItem[]>([]);const[error,setError]=useState('');const t=TEXT[language];const locale=language==='fr'?'fr-CH':language;
+ useEffect(()=>{setLanguage(readLanguage());const languageHandler=(event:Event)=>{const detail=(event as CustomEvent<string>).detail;if(detail&&detail in TEXT)setLanguage(detail as Language);};window.addEventListener('khe-language-changed',languageHandler);Promise.all([apiRequest<Client[]>('/clients'),apiRequest<EventItem[]>('/events')]).then(([clientItems,eventItems])=>{setClients(clientItems);setEvents(eventItems);}).catch(caught=>setError(caught instanceof Error?caught.message:t.load));return()=>window.removeEventListener('khe-language-changed',languageHandler);},[t.load]);
+ const now=Date.now();const upcoming=events.filter(event=>new Date(event.startsAt).getTime()>=now);const recent=events.filter(event=>new Date(event.startsAt).getTime()<now);
+ return <PortalShell><div className="header"><div><h1>{t.title}</h1><p>{t.subtitle}</p></div><Link className="button" href="/events/new">{t.create}</Link></div>{error?<p className="error">{error}</p>:null}<section className="grid"><article className="card"><div className="muted">{t.clients}</div><div className="metric">{clients.length}</div></article><article className="card"><div className="muted">{t.upcoming}</div><div className="metric">{upcoming.length}</div></article><article className="card"><div className="muted">{t.saved}</div><div className="metric">{events.length}</div></article></section><section className="card" style={{marginTop:20}}><div className="header" style={{marginBottom:12}}><div><h1 style={{fontSize:20}}>{t.next}</h1></div><Link href="/events" className="muted">{t.all}</Link></div><EventTable items={upcoming} emptyMessage={t.noneUpcoming} t={t} locale={locale}/></section><section className="card" style={{marginTop:20}}><div className="header" style={{marginBottom:12}}><div><h1 style={{fontSize:20}}>{t.recent}</h1></div><Link href="/events" className="muted">{t.all}</Link></div><EventTable items={recent} emptyMessage={t.noneRecent} t={t} locale={locale}/></section></PortalShell>;
 }

@@ -1,223 +1,27 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, useCallback, useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import { PortalShell } from '@/components/portal-shell';
-import { apiRequest, getSessionUser } from '@/lib/api';
-
-type ClientItem = { id: string; name: string };
-type PresetItem = { id: string; name: string; aspectRatio: string };
-type EventItem = {
-  id: string;
-  name: string;
-  description?: string | null;
-  startsAt: string;
-  endsAt?: string | null;
-  venueName?: string | null;
-  venueAddress?: string | null;
-  status: string;
-  clientId?: string | null;
-  presetId?: string | null;
-  client?: ClientItem | null;
-  preset?: PresetItem | null;
+import {FormEvent,useCallback,useEffect,useState} from 'react';
+import {useParams,useRouter} from 'next/navigation';
+import {PortalShell} from '@/components/portal-shell';
+import {apiRequest,getSessionUser} from '@/lib/api';
+type Language='fr'|'en'|'de'|'it'|'es'|'pt';type ClientItem={id:string;name:string};type PresetItem={id:string;name:string;aspectRatio:string};type EventItem={id:string;name:string;description?:string|null;startsAt:string;endsAt?:string|null;venueName?:string|null;venueAddress?:string|null;status:string;clientId?:string|null;presetId?:string|null;client?:ClientItem|null;preset?:PresetItem|null};type Activation={code:string;expiresAt:string};type Manifest={version:number;event:Record<string,unknown>;preset:Record<string,unknown>|null;organization:{id:string;name:string}|null;capabilities:{capture:boolean;sharing:boolean;formats:string[]}};
+const TEXT:Record<Language,Record<string,string>>={
+fr:{load:'Chargement impossible',updated:'Événement mis à jour.',updateError:'Mise à jour impossible',activated:'Événement activé. Le code ci-dessous est temporaire.',activationError:'Activation impossible',manifestError:'Manifest indisponible',confirmDelete:'Supprimer définitivement cet événement ?',deleteError:'Suppression impossible',back:'← Retour aux événements',event:'Événement',subtitle:'Configuration, activation et manifest de la station.',manifest:'Manifest',activate:'Activer',tempCode:'Code d’activation temporaire',expires:'Expire le',warning:'Copiez ce code maintenant. Une nouvelle activation révoquera le code actif précédent.',name:'Nom',description:'Description',start:'Début',end:'Fin',venue:'Lieu',address:'Adresse',client:'Client',preset:'Preset',none:'Aucun',status:'Statut',saving:'Enregistrement…',save:'Enregistrer',delete:'Supprimer',stationManifest:'Manifest station',manifestEmpty:'Chargez le manifest pour vérifier la configuration qui sera transmise à la station.',draft:'Brouillon',ready:'Prêt',active:'Actif',completed:'Terminé',archived:'Archivé'},
+en:{load:'Unable to load',updated:'Event updated.',updateError:'Unable to update',activated:'Event activated. The code below is temporary.',activationError:'Unable to activate',manifestError:'Manifest unavailable',confirmDelete:'Permanently delete this event?',deleteError:'Unable to delete',back:'← Back to events',event:'Event',subtitle:'Station configuration, activation and manifest.',manifest:'Manifest',activate:'Activate',tempCode:'Temporary activation code',expires:'Expires',warning:'Copy this code now. A new activation will revoke the previous active code.',name:'Name',description:'Description',start:'Start',end:'End',venue:'Venue',address:'Address',client:'Client',preset:'Preset',none:'None',status:'Status',saving:'Saving…',save:'Save',delete:'Delete',stationManifest:'Station manifest',manifestEmpty:'Load the manifest to verify the configuration that will be sent to the station.',draft:'Draft',ready:'Ready',active:'Active',completed:'Completed',archived:'Archived'},
+de:{load:'Laden nicht möglich',updated:'Event aktualisiert.',updateError:'Aktualisierung nicht möglich',activated:'Event aktiviert. Der folgende Code ist temporär.',activationError:'Aktivierung nicht möglich',manifestError:'Manifest nicht verfügbar',confirmDelete:'Dieses Event dauerhaft löschen?',deleteError:'Löschen nicht möglich',back:'← Zurück zu Events',event:'Event',subtitle:'Konfiguration, Aktivierung und Manifest der Station.',manifest:'Manifest',activate:'Aktivieren',tempCode:'Temporärer Aktivierungscode',expires:'Läuft ab',warning:'Kopiere diesen Code jetzt. Eine neue Aktivierung widerruft den vorherigen aktiven Code.',name:'Name',description:'Beschreibung',start:'Beginn',end:'Ende',venue:'Ort',address:'Adresse',client:'Kunde',preset:'Preset',none:'Keines',status:'Status',saving:'Speichern…',save:'Speichern',delete:'Löschen',stationManifest:'Stationsmanifest',manifestEmpty:'Lade das Manifest, um die Konfiguration zu prüfen, die an die Station übertragen wird.',draft:'Entwurf',ready:'Bereit',active:'Aktiv',completed:'Abgeschlossen',archived:'Archiviert'},
+it:{load:'Caricamento impossibile',updated:'Evento aggiornato.',updateError:'Aggiornamento impossibile',activated:'Evento attivato. Il codice seguente è temporaneo.',activationError:'Attivazione impossibile',manifestError:'Manifest non disponibile',confirmDelete:'Eliminare definitivamente questo evento?',deleteError:'Eliminazione impossibile',back:'← Torna agli eventi',event:'Evento',subtitle:'Configurazione, attivazione e manifest della stazione.',manifest:'Manifest',activate:'Attiva',tempCode:'Codice di attivazione temporaneo',expires:'Scade il',warning:'Copia subito questo codice. Una nuova attivazione revocherà il codice attivo precedente.',name:'Nome',description:'Descrizione',start:'Inizio',end:'Fine',venue:'Luogo',address:'Indirizzo',client:'Cliente',preset:'Preset',none:'Nessuno',status:'Stato',saving:'Salvataggio…',save:'Salva',delete:'Elimina',stationManifest:'Manifest stazione',manifestEmpty:'Carica il manifest per verificare la configurazione che verrà trasmessa alla stazione.',draft:'Bozza',ready:'Pronto',active:'Attivo',completed:'Completato',archived:'Archiviato'},
+es:{load:'No se pudo cargar',updated:'Evento actualizado.',updateError:'No se pudo actualizar',activated:'Evento activado. El código siguiente es temporal.',activationError:'No se pudo activar',manifestError:'Manifest no disponible',confirmDelete:'¿Eliminar definitivamente este evento?',deleteError:'No se pudo eliminar',back:'← Volver a eventos',event:'Evento',subtitle:'Configuración, activación y manifest de la estación.',manifest:'Manifest',activate:'Activar',tempCode:'Código de activación temporal',expires:'Caduca el',warning:'Copia este código ahora. Una nueva activación revocará el código activo anterior.',name:'Nombre',description:'Descripción',start:'Inicio',end:'Fin',venue:'Lugar',address:'Dirección',client:'Cliente',preset:'Preset',none:'Ninguno',status:'Estado',saving:'Guardando…',save:'Guardar',delete:'Eliminar',stationManifest:'Manifest de estación',manifestEmpty:'Carga el manifest para comprobar la configuración que se enviará a la estación.',draft:'Borrador',ready:'Listo',active:'Activo',completed:'Completado',archived:'Archivado'},
+pt:{load:'Não foi possível carregar',updated:'Evento atualizado.',updateError:'Não foi possível atualizar',activated:'Evento ativado. O código abaixo é temporário.',activationError:'Não foi possível ativar',manifestError:'Manifest indisponível',confirmDelete:'Eliminar definitivamente este evento?',deleteError:'Não foi possível eliminar',back:'← Voltar aos eventos',event:'Evento',subtitle:'Configuração, ativação e manifest da estação.',manifest:'Manifest',activate:'Ativar',tempCode:'Código de ativação temporário',expires:'Expira em',warning:'Copie este código agora. Uma nova ativação revogará o código ativo anterior.',name:'Nome',description:'Descrição',start:'Início',end:'Fim',venue:'Local',address:'Morada',client:'Cliente',preset:'Preset',none:'Nenhum',status:'Estado',saving:'A guardar…',save:'Guardar',delete:'Eliminar',stationManifest:'Manifest da estação',manifestEmpty:'Carregue o manifest para verificar a configuração que será enviada para a estação.',draft:'Rascunho',ready:'Pronto',active:'Ativo',completed:'Concluído',archived:'Arquivado'},
 };
-
-type Activation = { code: string; expiresAt: string };
-type Manifest = {
-  version: number;
-  event: Record<string, unknown>;
-  preset: Record<string, unknown> | null;
-  organization: { id: string; name: string } | null;
-  capabilities: { capture: boolean; sharing: boolean; formats: string[] };
-};
-
-function toLocalInput(value?: string | null) {
-  if (!value) return '';
-  const date = new Date(value);
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 16);
-}
-
-export default function EventDetailPage() {
-  const params = useParams<{ id: string }>();
-  const router = useRouter();
-  const id = params.id;
-
-  const [event, setEvent] = useState<EventItem | null>(null);
-  const [clients, setClients] = useState<ClientItem[]>([]);
-  const [presets, setPresets] = useState<PresetItem[]>([]);
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [startsAt, setStartsAt] = useState('');
-  const [endsAt, setEndsAt] = useState('');
-  const [venueName, setVenueName] = useState('');
-  const [venueAddress, setVenueAddress] = useState('');
-  const [clientId, setClientId] = useState('');
-  const [presetId, setPresetId] = useState('');
-  const [status, setStatus] = useState('DRAFT');
-  const [activation, setActivation] = useState<Activation | null>(null);
-  const [manifest, setManifest] = useState<Manifest | null>(null);
-  const [canDelete, setCanDelete] = useState(false);
-  const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-
-  const load = useCallback(async () => {
-    setError('');
-    try {
-      const [eventItem, clientItems, presetItems] = await Promise.all([
-        apiRequest<EventItem>(`/events/${id}`),
-        apiRequest<ClientItem[]>('/clients'),
-        apiRequest<PresetItem[]>('/presets'),
-      ]);
-      setEvent(eventItem);
-      setClients(clientItems);
-      setPresets(presetItems);
-      setName(eventItem.name);
-      setDescription(eventItem.description ?? '');
-      setStartsAt(toLocalInput(eventItem.startsAt));
-      setEndsAt(toLocalInput(eventItem.endsAt));
-      setVenueName(eventItem.venueName ?? '');
-      setVenueAddress(eventItem.venueAddress ?? '');
-      setClientId(eventItem.clientId ?? '');
-      setPresetId(eventItem.presetId ?? '');
-      setStatus(eventItem.status);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Chargement impossible');
-    }
-  }, [id]);
-
-  useEffect(() => {
-    const role = getSessionUser()?.role;
-    setCanDelete(role === 'OWNER' || role === 'ADMIN');
-    void load();
-  }, [load]);
-
-  async function save(eventForm: FormEvent<HTMLFormElement>) {
-    eventForm.preventDefault();
-    setSubmitting(true);
-    setError('');
-    setMessage('');
-    try {
-      const updated = await apiRequest<EventItem>(`/events/${id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          name,
-          description: description || undefined,
-          startsAt: new Date(startsAt).toISOString(),
-          endsAt: endsAt ? new Date(endsAt).toISOString() : undefined,
-          venueName: venueName || undefined,
-          venueAddress: venueAddress || undefined,
-          clientId: clientId || undefined,
-          presetId: presetId || undefined,
-          status,
-        }),
-      });
-      setEvent(updated);
-      setMessage('Événement mis à jour.');
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Mise à jour impossible');
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function activate() {
-    setSubmitting(true);
-    setError('');
-    setMessage('');
-    try {
-      const result = await apiRequest<Activation>(`/events/${id}/activate`, { method: 'POST' });
-      setActivation(result);
-      setStatus('ACTIVE');
-      setMessage('Événement activé. Le code ci-dessous est temporaire.');
-      await load();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Activation impossible');
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function loadManifest() {
-    setError('');
-    try {
-      setManifest(await apiRequest<Manifest>(`/events/${id}/manifest`));
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Manifest indisponible');
-    }
-  }
-
-  async function remove() {
-    if (!canDelete || !window.confirm('Supprimer définitivement cet événement ?')) return;
-    setSubmitting(true);
-    setError('');
-    try {
-      await apiRequest<{ deleted: true }>(`/events/${id}`, { method: 'DELETE' });
-      router.replace('/events');
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Suppression impossible');
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <PortalShell>
-      <div className="header">
-        <div>
-          <Link className="muted" href="/events">← Retour aux événements</Link>
-          <h1 style={{ marginTop: 10 }}>{event?.name ?? 'Événement'}</h1>
-          <p>Configuration, activation et manifest de la station.</p>
-        </div>
-        <div className="toolbar">
-          <button className="button secondary" type="button" onClick={() => void loadManifest()}>Manifest</button>
-          <button className="button" type="button" disabled={submitting} onClick={() => void activate()}>Activer</button>
-        </div>
-      </div>
-
-      {error ? <p className="error">{error}</p> : null}
-      {message ? <p className="success">{message}</p> : null}
-
-      {activation ? (
-        <section className="card activation-card">
-          <div>
-            <div className="muted">Code d’activation temporaire</div>
-            <div className="activation-code">{activation.code}</div>
-            <div className="muted">Expire le {new Date(activation.expiresAt).toLocaleString('fr-CH')}</div>
-          </div>
-          <p className="warning">Copiez ce code maintenant. Une nouvelle activation révoquera le code actif précédent.</p>
-        </section>
-      ) : null}
-
-      <div className="grid detail-grid" style={{ marginTop: 20 }}>
-        <section className="card">
-          <form className="form" onSubmit={save}>
-            <div className="field"><label htmlFor="event-name">Nom</label><input id="event-name" required maxLength={180} value={name} onChange={(e) => setName(e.target.value)} /></div>
-            <div className="field"><label htmlFor="description">Description</label><textarea id="description" rows={4} maxLength={4000} value={description} onChange={(e) => setDescription(e.target.value)} /></div>
-            <div className="grid form-grid">
-              <div className="field"><label htmlFor="starts-at">Début</label><input id="starts-at" required type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} /></div>
-              <div className="field"><label htmlFor="ends-at">Fin</label><input id="ends-at" type="datetime-local" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} /></div>
-            </div>
-            <div className="field"><label htmlFor="venue-name">Lieu</label><input id="venue-name" maxLength={180} value={venueName} onChange={(e) => setVenueName(e.target.value)} /></div>
-            <div className="field"><label htmlFor="venue-address">Adresse</label><input id="venue-address" maxLength={300} value={venueAddress} onChange={(e) => setVenueAddress(e.target.value)} /></div>
-            <div className="grid form-grid">
-              <div className="field"><label htmlFor="client">Client</label><select id="client" value={clientId} onChange={(e) => setClientId(e.target.value)}><option value="">Aucun</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select></div>
-              <div className="field"><label htmlFor="preset">Preset</label><select id="preset" value={presetId} onChange={(e) => setPresetId(e.target.value)}><option value="">Aucun</option>{presets.map((preset) => <option key={preset.id} value={preset.id}>{preset.name} · {preset.aspectRatio}</option>)}</select></div>
-            </div>
-            <div className="field"><label htmlFor="status">Statut</label><select id="status" value={status} onChange={(e) => setStatus(e.target.value)}><option value="DRAFT">DRAFT</option><option value="READY">READY</option><option value="ACTIVE">ACTIVE</option><option value="COMPLETED">COMPLETED</option><option value="ARCHIVED">ARCHIVED</option></select></div>
-            <div className="toolbar">
-              <button className="button" disabled={submitting}>{submitting ? 'Enregistrement…' : 'Enregistrer'}</button>
-              {canDelete ? <button className="button danger" type="button" disabled={submitting} onClick={() => void remove()}>Supprimer</button> : null}
-            </div>
-          </form>
-        </section>
-
-        <section className="card">
-          <h2 style={{ marginTop: 0 }}>Manifest station</h2>
-          {manifest ? <pre className="manifest">{JSON.stringify(manifest, null, 2)}</pre> : <div className="empty">Chargez le manifest pour vérifier la configuration qui sera transmise à la station.</div>}
-        </section>
-      </div>
-    </PortalShell>
-  );
+function readLanguage():Language{if(typeof window==='undefined')return'fr';const value=window.localStorage.getItem('khe.web.language');return value&&value in TEXT?value as Language:'fr';}function toLocalInput(value?:string|null){if(!value)return'';const date=new Date(value);const local=new Date(date.getTime()-date.getTimezoneOffset()*60000);return local.toISOString().slice(0,16);}
+export default function EventDetailPage(){const params=useParams<{id:string}>();const router=useRouter();const id=params.id;const[language,setLanguage]=useState<Language>('fr');const[event,setEvent]=useState<EventItem|null>(null);const[clients,setClients]=useState<ClientItem[]>([]);const[presets,setPresets]=useState<PresetItem[]>([]);const[name,setName]=useState('');const[description,setDescription]=useState('');const[startsAt,setStartsAt]=useState('');const[endsAt,setEndsAt]=useState('');const[venueName,setVenueName]=useState('');const[venueAddress,setVenueAddress]=useState('');const[clientId,setClientId]=useState('');const[presetId,setPresetId]=useState('');const[status,setStatus]=useState('DRAFT');const[activation,setActivation]=useState<Activation|null>(null);const[manifest,setManifest]=useState<Manifest|null>(null);const[canDelete,setCanDelete]=useState(false);const[error,setError]=useState('');const[message,setMessage]=useState('');const[submitting,setSubmitting]=useState(false);const t=TEXT[language];
+const load=useCallback(async()=>{setError('');try{const[eventItem,clientItems,presetItems]=await Promise.all([apiRequest<EventItem>(`/events/${id}`),apiRequest<ClientItem[]>('/clients'),apiRequest<PresetItem[]>('/presets')]);setEvent(eventItem);setClients(clientItems);setPresets(presetItems);setName(eventItem.name);setDescription(eventItem.description??'');setStartsAt(toLocalInput(eventItem.startsAt));setEndsAt(toLocalInput(eventItem.endsAt));setVenueName(eventItem.venueName??'');setVenueAddress(eventItem.venueAddress??'');setClientId(eventItem.clientId??'');setPresetId(eventItem.presetId??'');setStatus(eventItem.status);}catch(caught){setError(caught instanceof Error?caught.message:TEXT[readLanguage()].load);}},[id]);
+useEffect(()=>{const role=getSessionUser()?.role;setCanDelete(role==='OWNER'||role==='ADMIN');setLanguage(readLanguage());const handler=(event:Event)=>{const detail=(event as CustomEvent<string>).detail;if(detail&&detail in TEXT)setLanguage(detail as Language);};window.addEventListener('khe-language-changed',handler);void load();return()=>window.removeEventListener('khe-language-changed',handler);},[load]);
+async function save(eventForm:FormEvent<HTMLFormElement>){eventForm.preventDefault();setSubmitting(true);setError('');setMessage('');try{const updated=await apiRequest<EventItem>(`/events/${id}`,{method:'PATCH',body:JSON.stringify({name,description:description||undefined,startsAt:new Date(startsAt).toISOString(),endsAt:endsAt?new Date(endsAt).toISOString():undefined,venueName:venueName||undefined,venueAddress:venueAddress||undefined,clientId:clientId||undefined,presetId:presetId||undefined,status})});setEvent(updated);setMessage(t.updated);}catch(caught){setError(caught instanceof Error?caught.message:t.updateError);}finally{setSubmitting(false);}}
+async function activate(){setSubmitting(true);setError('');setMessage('');try{const result=await apiRequest<Activation>(`/events/${id}/activate`,{method:'POST'});setActivation(result);setStatus('ACTIVE');setMessage(t.activated);await load();}catch(caught){setError(caught instanceof Error?caught.message:t.activationError);}finally{setSubmitting(false);}}
+async function loadManifest(){setError('');try{setManifest(await apiRequest<Manifest>(`/events/${id}/manifest`));}catch(caught){setError(caught instanceof Error?caught.message:t.manifestError);}}
+async function remove(){if(!canDelete||!window.confirm(t.confirmDelete))return;setSubmitting(true);setError('');try{await apiRequest<{deleted:true}>(`/events/${id}`,{method:'DELETE'});router.replace('/events');}catch(caught){setError(caught instanceof Error?caught.message:t.deleteError);setSubmitting(false);}}
+const statusLabels:Record<string,string>={DRAFT:t.draft,READY:t.ready,ACTIVE:t.active,COMPLETED:t.completed,ARCHIVED:t.archived};const locale=language==='fr'?'fr-CH':language;
+return <PortalShell><div className="header"><div><Link className="muted" href="/events">{t.back}</Link><h1 style={{marginTop:10}}>{event?.name??t.event}</h1><p>{t.subtitle}</p></div><div className="toolbar"><button className="button secondary" type="button" onClick={()=>void loadManifest()}>{t.manifest}</button><button className="button" type="button" disabled={submitting} onClick={()=>void activate()}>{t.activate}</button></div></div>{error?<p className="error">{error}</p>:null}{message?<p className="success">{message}</p>:null}{activation?<section className="card activation-card"><div><div className="muted">{t.tempCode}</div><div className="activation-code">{activation.code}</div><div className="muted">{t.expires} {new Date(activation.expiresAt).toLocaleString(locale)}</div></div><p className="warning">{t.warning}</p></section>:null}<div className="grid detail-grid" style={{marginTop:20}}><section className="card"><form className="form" onSubmit={save}><div className="field"><label htmlFor="event-name">{t.name}</label><input id="event-name" required maxLength={180} value={name} onChange={e=>setName(e.target.value)}/></div><div className="field"><label htmlFor="description">{t.description}</label><textarea id="description" rows={4} maxLength={4000} value={description} onChange={e=>setDescription(e.target.value)}/></div><div className="grid form-grid"><div className="field"><label htmlFor="starts-at">{t.start}</label><input id="starts-at" required type="datetime-local" value={startsAt} onChange={e=>setStartsAt(e.target.value)}/></div><div className="field"><label htmlFor="ends-at">{t.end}</label><input id="ends-at" type="datetime-local" value={endsAt} onChange={e=>setEndsAt(e.target.value)}/></div></div><div className="field"><label htmlFor="venue-name">{t.venue}</label><input id="venue-name" maxLength={180} value={venueName} onChange={e=>setVenueName(e.target.value)}/></div><div className="field"><label htmlFor="venue-address">{t.address}</label><input id="venue-address" maxLength={300} value={venueAddress} onChange={e=>setVenueAddress(e.target.value)}/></div><div className="grid form-grid"><div className="field"><label htmlFor="client">{t.client}</label><select id="client" value={clientId} onChange={e=>setClientId(e.target.value)}><option value="">{t.none}</option>{clients.map(client=><option key={client.id} value={client.id}>{client.name}</option>)}</select></div><div className="field"><label htmlFor="preset">{t.preset}</label><select id="preset" value={presetId} onChange={e=>setPresetId(e.target.value)}><option value="">{t.none}</option>{presets.map(preset=><option key={preset.id} value={preset.id}>{preset.name} · {preset.aspectRatio}</option>)}</select></div></div><div className="field"><label htmlFor="status">{t.status}</label><select id="status" value={status} onChange={e=>setStatus(e.target.value)}>{['DRAFT','READY','ACTIVE','COMPLETED','ARCHIVED'].map(key=><option value={key} key={key}>{statusLabels[key]}</option>)}</select></div><div className="toolbar"><button className="button" disabled={submitting}>{submitting?t.saving:t.save}</button>{canDelete?<button className="button danger" type="button" disabled={submitting} onClick={()=>void remove()}>{t.delete}</button>:null}</div></form></section><section className="card"><h2 style={{marginTop:0}}>{t.stationManifest}</h2>{manifest?<pre className="manifest">{JSON.stringify(manifest,null,2)}</pre>:<div className="empty">{t.manifestEmpty}</div>}</section></div></PortalShell>;
 }

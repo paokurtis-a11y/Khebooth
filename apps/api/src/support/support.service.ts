@@ -8,6 +8,7 @@ import {
 } from '@prisma/client';
 import type { AuthenticatedUser } from '../auth/auth.types';
 import { PrismaService } from '../prisma/prisma.service';
+import { kheSupportAnswer, wantsHumanAgent } from './khe-support-language';
 
 const AGENT_ROLES: UserRole[] = [UserRole.OWNER, UserRole.ADMIN, UserRole.OPERATOR];
 const ADMIN_ROLES: UserRole[] = [UserRole.OWNER, UserRole.ADMIN];
@@ -23,7 +24,7 @@ export class SupportService {
   }
 
   private wantsAgent(question: string) {
-    return /\b(agent|humain|humaine|conseiller|conseillere|support|technicien|technicienne|personne)\b/i.test(question);
+    return wantsHumanAgent(question);
   }
 
   private conversationActionUrl(conversationId: string) {
@@ -35,98 +36,8 @@ export class SupportService {
   }
 
   private kheAnswer(question: string): { answer: string; confident: boolean } {
-    const q = question.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    const rules: Array<{ words: string[]; answer: string }> = [
-      {
-        words: ['activation', 'code', 'station', 'activer'],
-        answer:
-          "Pour activer une station KHE Booth, ouvre l’événement dans le portail, génère un code d’activation, puis saisis ce code sur la tablette Capture ou Sharing. Le code est temporaire et sécurisé. S’il est refusé, vérifie qu’il n’est ni expiré ni déjà utilisé pour ce mode.",
-      },
-      {
-        words: ['camera', 'photo', 'video', 'capture', 'microphone'],
-        answer:
-          "Pour la capture, vérifie d’abord les autorisations Caméra et Microphone de KHE Booth sur la tablette. Dans Capture, choisis Photo ou Vidéo, cadre le sujet puis lance la prise. Si l’image reste noire, ferme puis rouvre le mode Capture après avoir confirmé les autorisations Android.",
-      },
-      {
-        words: ['sharing', 'partage', 'deuxieme tablette', '2 tablette', 'tablette partage'],
-        answer:
-          "La tablette Sharing doit rejoindre le même événement que la tablette Capture avec le mode SHARING. Vérifie que la connexion Sharing a été approuvée dans l’événement. Une fois les médias synchronisés, ils apparaissent dans la galerie de partage sans exposer les données d’une autre organisation.",
-      },
-      {
-        words: ['synchronisation', 'synchroniser', 'sync', 'upload', 'transfert', 'media manquant', 'video manquante', 'photo manquante'],
-        answer:
-          "Si un média n’apparaît pas encore, garde la tablette Capture ouverte et connectée, puis vérifie la file de synchronisation. Un média non confirmé reste localement en attente : ne supprime pas l’application ni ses données. Dès que l’envoi est confirmé, la tablette Sharing peut rafraîchir la galerie.",
-      },
-      {
-        words: ['hors ligne', 'offline', 'internet', 'reseau', 'connexion internet'],
-        answer:
-          "KHE Booth est conçu pour continuer à capturer hors ligne. Le manifeste de l’événement et la file de synchronisation restent localement sur la tablette. Quand Internet revient, laisse l’application ouverte pour terminer les transferts et ne supprime pas ses données avant confirmation de synchronisation.",
-      },
-      {
-        words: ['connexion sharing', 'autoriser tablette', 'approuver', 'approval', 'remote', 'commande distance', 'controle distance'],
-        answer:
-          "Pour connecter ou piloter une seconde station, ouvre l’événement dans le portail et vérifie la demande de connexion de la tablette. Approuve uniquement la station attendue. Les commandes à distance restent limitées à l’événement et à l’organisation auxquels la station est rattachée.",
-      },
-      {
-        words: ['imprimer', 'impression', 'print', 'photo imprim', 'imprimante'],
-        answer:
-          "Pour imprimer une photo, ouvre-la depuis la galerie puis utilise l’action Imprimer. Android affichera le service d’impression disponible. Vérifie que l’imprimante est déjà configurée sur Android et, si elle est réseau, qu’elle est accessible depuis la tablette.",
-      },
-      {
-        words: ['mot de passe', 'connexion', 'login', 'compte', 'identifiant', 'username', 'nom utilisateur'],
-        answer:
-          "Pour te connecter au portail, utilise ton adresse e-mail d’accès ou ton nom d’utilisateur KHE, puis ton mot de passe. Le nom d’utilisateur est unique et une adresse e-mail d’accès ne peut appartenir qu’à un seul compte. Si nécessaire, utilise “Mot de passe oublié” ou demande le transfert à un agent KHE.",
-      },
-      {
-        words: ['abonnement', 'subscription', 'facture', 'billing', 'paiement', 'stripe', 'renouvellement'],
-        answer:
-          "Pour l’abonnement ou la facturation, ouvre la rubrique Abonnement/Facturation du portail afin de vérifier le plan actif, les documents disponibles et les actions de renouvellement. Si un paiement est débité mais que l’accès n’est pas actualisé, transmets la conversation à un agent KHE avec la date du paiement, sans partager de numéro de carte.",
-      },
-      {
-        words: ['enterprise', 'kyc', 'identite', 'justificatif', 'onboarding', 'verification', 'reverification'],
-        answer:
-          "Pour un dossier Enterprise, suis le lien sécurisé d’onboarding ou de revérification et complète uniquement les champs demandés. Les pièces d’identité et justificatifs doivent être envoyés via l’espace prévu à cet effet. Si le dossier reste bloqué après envoi, un agent KHE peut vérifier son statut sans te demander ton mot de passe.",
-      },
-      {
-        words: ['crm', 'client', 'email marketing', 'marketing', 'newsletter', 'desabonner', 'consentement'],
-        answer:
-          "Le CRM KHE conserve les informations client nécessaires au suivi. Les e-mails marketing ne sont envoyés qu’aux contacts ayant un consentement enregistré et peuvent être désactivés via le lien de désabonnement. Modifier l’adresse e-mail du client réinitialise le consentement marketing pour éviter un envoi à une nouvelle adresse sans accord.",
-      },
-      {
-        words: ['notification', 'cloche', 'son', 'vibration', 'nouveaute', 'mise a jour', 'version'],
-        answer:
-          "Les nouveautés et réponses support apparaissent dans la cloche de notifications. Tu peux activer ou désactiver les notifications générales, les nouveautés produit et le support, puis régler le son et la vibration dans les paramètres. Les informations de sécurité importantes peuvent rester visibles dans l’application.",
-      },
-      {
-        words: ['securite', 'confidentialite', 'privacy', 'donnees', 'mot de passe partage', 'carte bancaire'],
-        answer:
-          "Pour ta sécurité, ne communique jamais ton mot de passe, un code d’activation sensible ou les données complètes d’une carte bancaire dans la messagerie. KHE Booth isole les données par organisation et l’équipe support peut diagnostiquer un compte sans demander ton mot de passe.",
-      },
-      {
-        words: ['urgent', 'evenement en cours', 'prestation en cours', 'bloque maintenant', 'panne evenement'],
-        answer:
-          "Si l’événement est en cours, conserve d’abord les médias déjà capturés : ne désinstalle pas l’application et ne vide pas ses données. Vérifie l’alimentation, les autorisations, le réseau et la file de synchronisation. Si la prestation reste bloquée, demande immédiatement le transfert à un agent KHE en précisant Capture ou Sharing et ce qui est affiché à l’écran.",
-      },
-      {
-        words: ['agent', 'humain', 'conseiller', 'support', 'personne', 'technicien'],
-        answer:
-          "Je peux transférer cette conversation à un agent KHE. Ton historique restera attaché au ticket afin que tu n’aies pas à répéter le problème.",
-      },
-    ];
-
-    let best: { score: number; answer: string } | null = null;
-    for (const rule of rules) {
-      const score = rule.words.filter((word) => q.includes(word)).length;
-      if (score > 0 && (!best || score > best.score)) best = { score, answer: rule.answer };
-    }
-
-    if (best) return { answer: best.answer, confident: true };
-
-    return {
-      answer:
-        "Je n’ai pas encore une réponse assez fiable pour cette demande. Je peux transmettre la conversation à un agent KHE avec le contexte déjà fourni afin qu’il puisse reprendre directement.",
-      confident: false,
-    };
+    const { answer, confident } = kheSupportAnswer(question);
+    return { answer, confident };
   }
 
   private async visibleSupportActionUrls(user: AuthenticatedUser) {
