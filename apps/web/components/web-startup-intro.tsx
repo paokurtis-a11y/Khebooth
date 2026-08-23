@@ -1,57 +1,53 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
-export function WebStartupIntro() {
-  const pathname = usePathname();
-  const guestShare = pathname?.startsWith('/m/');
-  const [visible, setVisible] = useState(!guestShare);
-  const [canSkip, setCanSkip] = useState(false);
+type Language='fr'|'en'|'de'|'it'|'es'|'pt';
+const copy:Record<Language,{tagline:string;sub:string;skip:string;capture:string;create:string;share:string;live:string}>={
+  fr:{tagline:'Votre événement, notre expertise',sub:'Des souvenirs qui prennent vie.',skip:'PASSER',capture:'CAPTUREZ',create:'CRÉEZ',share:'PARTAGEZ',live:'VIVEZ'},
+  en:{tagline:'Your event, our expertise',sub:'Memories brought to life.',skip:'SKIP',capture:'CAPTURE',create:'CREATE',share:'SHARE',live:'LIVE'},
+  de:{tagline:'Ihr Event, unsere Expertise',sub:'Erinnerungen, die lebendig werden.',skip:'ÜBERSPRINGEN',capture:'AUFNEHMEN',create:'GESTALTEN',share:'TEILEN',live:'ERLEBEN'},
+  it:{tagline:'Il tuo evento, la nostra esperienza',sub:'Ricordi che prendono vita.',skip:'SALTA',capture:'CATTURA',create:'CREA',share:'CONDIVIDI',live:'VIVI'},
+  es:{tagline:'Tu evento, nuestra experiencia',sub:'Recuerdos que cobran vida.',skip:'OMITIR',capture:'CAPTURA',create:'CREA',share:'COMPARTE',live:'VIVE'},
+  pt:{tagline:'O seu evento, a nossa experiência',sub:'Memórias que ganham vida.',skip:'SALTAR',capture:'CAPTURE',create:'CRIE',share:'PARTILHE',live:'VIVA'},
+};
+function readLanguage():Language{if(typeof window==='undefined')return'fr';const value=window.localStorage.getItem('khe.web.language');return value&&value in copy?value as Language:'fr';}
 
-  useEffect(() => {
-    if (guestShare) {
-      setVisible(false);
-      return;
-    }
-    setVisible(true);
-    const skip = window.setTimeout(() => setCanSkip(true), 900);
-    const done = window.setTimeout(() => setVisible(false), 4400);
-    return () => { window.clearTimeout(skip); window.clearTimeout(done); };
-  }, [guestShare]);
-
-  if (guestShare || !visible) return null;
-
-  return (
-    <div className="khe-startup" role="presentation">
-      <div className="sky-glow" /><div className="gold-glow" />
-      <div className="intro-stage">
-        <div className="letters"><span>K</span><span>H</span><span>E</span></div>
-        <div className="booth-title">KHE BOOTH</div>
-        <div className="logo-frame"><img src="/khe-logo.jpeg" alt="" /></div>
-        <div className="booths">
-          <div className="booth booth-360"><div className="ring"><div className="phone">360°</div></div><strong>PHOTOBOOTH 360</strong></div>
-          <div className="booth kiosk"><div className="kiosk-head"><i /></div><div className="kiosk-body">KHE</div><div className="kiosk-stand" /><strong>BORNE PHOTOBOOTH</strong></div>
-        </div>
-        <div className="copy"><h2>Votre événement, notre expertise</h2><p>Capturez, créez et partagez vos souvenirs avec une régie photobooth pensée pour vos événements.</p></div>
-      </div>
-      {canSkip ? <button type="button" className="skip" onClick={() => setVisible(false)}>PASSER</button> : null}
-      <style jsx>{`
-        .khe-startup{position:fixed;inset:0;z-index:99999;background:#101114;color:white;display:grid;place-items:center;overflow:hidden;animation:introOut .45s ease 3.95s forwards}
-        .intro-stage{position:relative;z-index:2;width:min(760px,92vw);display:flex;flex-direction:column;align-items:center;gap:9px;text-align:center}
-        .letters{display:flex;gap:3px;font-size:clamp(54px,8vw,78px);font-weight:950;line-height:.9;color:#d7b24c;text-shadow:0 0 24px rgba(255,231,145,.38)}
-        .letters span{display:inline-block;opacity:0;transform:translateY(28px) scale(.75);animation:letterIn .36s cubic-bezier(.22,.9,.32,1.35) forwards}.letters span:nth-child(2){animation-delay:.28s}.letters span:nth-child(3){animation-delay:.56s}
-        .booth-title{font-size:clamp(18px,3.4vw,27px);font-weight:950;letter-spacing:.35em;opacity:0;animation:fadeUp .42s ease .9s forwards}
-        .logo-frame{width:150px;height:90px;border:1px solid rgba(215,178,76,.58);border-radius:18px;overflow:hidden;background:#151619;box-shadow:0 0 28px rgba(215,178,76,.22);opacity:0;transform:scale(.72) rotate(-4deg);animation:logoIn .55s cubic-bezier(.2,.9,.3,1.2) 1.05s forwards}.logo-frame img{display:block;width:100%;height:100%;object-fit:contain}
-        .booths{display:flex;gap:36px;align-items:end;justify-content:center;flex-wrap:wrap;margin-top:6px}.booth{width:155px;display:flex;flex-direction:column;align-items:center;gap:7px;opacity:0}.booth strong{font-size:9px;letter-spacing:.16em;color:#d9dde3}.booth-360{animation:leftIn .52s cubic-bezier(.2,.9,.3,1.2) 1.42s forwards}.kiosk{animation:rightIn .52s cubic-bezier(.2,.9,.3,1.2) 1.42s forwards}
-        .ring{width:125px;height:68px;border:5px solid #d7b24c;border-radius:50%;display:grid;place-items:center;transform:perspective(220px) rotateX(57deg)}.phone{width:35px;height:61px;border:2px solid #8ad9f5;background:#17181d;border-radius:9px;display:grid;place-items:center;font-size:9px;font-weight:900;transform:rotateX(-57deg)}
-        .kiosk-head{width:82px;height:31px;border-radius:25px 25px 0 0;background:#d7b24c;display:grid;place-items:center}.kiosk-head i{width:12px;height:12px;border-radius:50%;background:#17181d;border:2px solid #8ad9f5}.kiosk-body{width:90px;height:72px;border:3px solid #d7b24c;border-radius:14px;background:#26282d;color:#8ad9f5;display:grid;place-items:center;font-weight:950;letter-spacing:.15em}.kiosk-stand{width:22px;height:30px;background:#d7b24c;border-radius:0 0 5px 5px}
-        .copy{max-width:570px;opacity:0;animation:fadeUp .46s ease 1.9s forwards}.copy h2{margin:8px 0 5px;color:#d7b24c;font-size:clamp(17px,2.7vw,23px)}.copy p{margin:0;color:#d9dde3;line-height:1.5;font-size:12px}
-        .skip{position:absolute;right:22px;bottom:22px;z-index:4;border:1px solid rgba(255,255,255,.35);background:rgba(16,17,20,.5);color:white;border-radius:999px;padding:10px 15px;font-size:10px;font-weight:900;letter-spacing:.12em;cursor:pointer}
-        .sky-glow,.gold-glow{position:absolute;border-radius:50%;filter:blur(2px)}.sky-glow{width:440px;height:440px;right:-130px;top:-130px;background:rgba(138,217,245,.17)}.gold-glow{width:390px;height:390px;left:-130px;bottom:-140px;background:rgba(215,178,76,.14)}
-        @keyframes letterIn{to{opacity:1;transform:none}}@keyframes fadeUp{from{transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}@keyframes logoIn{to{opacity:1;transform:none}}@keyframes leftIn{from{transform:translateX(-70px) scale(.78)}to{opacity:1;transform:none}}@keyframes rightIn{from{transform:translateX(70px) scale(.78)}to{opacity:1;transform:none}}@keyframes introOut{to{opacity:0;visibility:hidden;pointer-events:none}}
-        @media (prefers-reduced-motion:reduce){.khe-startup *{animation-duration:.01ms!important;animation-delay:0ms!important}.khe-startup{animation:none}.letters span,.booth-title,.logo-frame,.booth,.copy{opacity:1;transform:none}}
-      `}</style>
-    </div>
-  );
+export function WebStartupIntro(){
+  const pathname=usePathname();const guestShare=pathname?.startsWith('/m/');
+  const[visible,setVisible]=useState(!guestShare);const[canSkip,setCanSkip]=useState(false);const[language,setLanguage]=useState<Language>('fr');
+  const particles=useMemo(()=>Array.from({length:22},(_,i)=>i),[]);const t=copy[language];
+  useEffect(()=>{setLanguage(readLanguage());const onLanguage=(event:Event)=>{const detail=(event as CustomEvent<string>).detail;if(detail&&detail in copy)setLanguage(detail as Language);};window.addEventListener('khe-language-changed',onLanguage);return()=>window.removeEventListener('khe-language-changed',onLanguage);},[]);
+  useEffect(()=>{if(guestShare){setVisible(false);return;}setVisible(true);const skip=window.setTimeout(()=>setCanSkip(true),1150);const done=window.setTimeout(()=>setVisible(false),5700);return()=>{window.clearTimeout(skip);window.clearTimeout(done);};},[guestShare]);
+  if(guestShare||!visible)return null;
+  return <div className="khe-startup" role="presentation">
+    <div className="cinematic-scene"/><div className="scene-wash"/><div className="vignette"/><div className="grain"/>
+    <div className="light-beam beam-a"/><div className="light-beam beam-b"/>
+    <div className="portal-wrap"><div className="portal-orbit orbit-a"/><div className="portal-orbit orbit-b"/><div className="portal-core"><div className="brand-mark"><span className="khe-word">KHE</span><span className="booth-word">BOOTH</span></div></div>{particles.map(i=><i key={i} className="spark" style={{'--i':i} as React.CSSProperties}/>)}</div>
+    <div className="intro-copy"><div className="eyebrow">KURTIS HYPNOTIC EVENTS</div><h1>{t.tagline}</h1><p>{t.sub}</p><div className="experience-line"><span>{t.capture}</span><b>•</b><span>{t.create}</span><b>•</b><span>{t.share}</span><b>•</b><span>{t.live}</span></div></div>
+    <div className="depth-floor"><i/><i/><i/><i/></div>
+    {canSkip?<button type="button" className="skip" onClick={()=>setVisible(false)}>{t.skip}</button>:null}
+    <style jsx>{`
+      .khe-startup{position:fixed;inset:0;z-index:99999;overflow:hidden;background:#050607;color:#fff;isolation:isolate;animation:introOut .6s cubic-bezier(.4,0,.2,1) 5.05s forwards}
+      .cinematic-scene{position:absolute;inset:-5%;background:url('/khe-intro-2026.webp') center 44%/cover no-repeat;filter:saturate(.78) contrast(1.13) brightness(.58);transform:scale(1.1);animation:cameraMove 5.4s cubic-bezier(.2,.7,.2,1) forwards}
+      .scene-wash{position:absolute;inset:0;background:radial-gradient(circle at 50% 43%,rgba(0,0,0,.02) 0 16%,rgba(4,6,8,.46) 48%,rgba(4,5,7,.9) 85%),linear-gradient(180deg,rgba(3,5,8,.5),rgba(3,4,6,.18) 45%,rgba(2,3,5,.88));backdrop-filter:blur(.2px)}
+      .vignette{position:absolute;inset:-8%;box-shadow:inset 0 0 180px 70px rgba(0,0,0,.86);pointer-events:none}.grain{position:absolute;inset:0;opacity:.1;mix-blend-mode:soft-light;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.92' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E")}
+      .light-beam{position:absolute;top:-28%;width:24vw;height:100vh;filter:blur(22px);opacity:0;transform-origin:top center;background:linear-gradient(180deg,rgba(255,225,145,.38),rgba(216,171,66,.04) 65%,transparent);animation:beamIn 2.3s ease .65s forwards}.beam-a{left:25%;transform:rotate(19deg)}.beam-b{right:22%;transform:rotate(-20deg);animation-delay:.92s}
+      .portal-wrap{position:absolute;left:50%;top:44%;width:min(54vw,430px);aspect-ratio:1;transform:translate(-50%,-50%) scale(.56);opacity:0;display:grid;place-items:center;animation:portalIn 1.05s cubic-bezier(.15,.85,.2,1.18) .35s forwards}
+      .portal-core{position:absolute;inset:13%;border-radius:50%;display:grid;place-items:center;background:radial-gradient(circle at 42% 34%,#252728 0,#0b0d10 48%,#020304 76%);box-shadow:inset 0 0 36px rgba(255,255,255,.04),0 0 70px rgba(216,174,73,.18)}
+      .portal-core::before{content:'';position:absolute;inset:-8%;border-radius:50%;background:conic-gradient(from 30deg,transparent 0 12%,rgba(255,223,136,.95) 23%,rgba(166,117,26,.2) 37%,transparent 50%,rgba(255,232,167,.9) 68%,transparent 82%);filter:blur(7px);animation:spin 8s linear infinite}
+      .portal-core::after{content:'';position:absolute;inset:-2%;border:1px solid rgba(246,209,111,.52);border-radius:50%;box-shadow:0 0 28px rgba(226,177,65,.28),inset 0 0 26px rgba(226,177,65,.12)}
+      .portal-orbit{position:absolute;border-radius:50%;border:1px solid rgba(227,186,88,.2);animation:spin 11s linear infinite}.orbit-a{inset:3%;border-top-color:rgba(255,229,157,.86);box-shadow:0 -2px 24px rgba(225,178,66,.22)}.orbit-b{inset:0 9%;transform:rotate(68deg);border-right-color:rgba(255,228,151,.72);animation-direction:reverse;animation-duration:14s}
+      .brand-mark{position:relative;z-index:4;display:grid;justify-items:center;transform:translateY(2%)}.khe-word{font-size:clamp(52px,10vw,96px);font-weight:1000;line-height:.85;letter-spacing:.02em;background:linear-gradient(180deg,#fff1ba 0,#e6b94e 33%,#a86d13 67%,#f0c761 100%);-webkit-background-clip:text;color:transparent;text-shadow:0 13px 32px rgba(0,0,0,.58);filter:drop-shadow(0 0 12px rgba(237,191,77,.16));animation:brandBreathe 2.8s ease-in-out 1.1s infinite alternate}.booth-word{margin-top:12px;font-size:clamp(13px,2.5vw,24px);letter-spacing:.48em;font-weight:820;color:#f7f7f6;text-shadow:0 2px 14px #000}
+      .spark{--angle:calc(var(--i)*16.36deg);position:absolute;width:4px;height:4px;border-radius:50%;background:#ffd979;box-shadow:0 0 10px #d7a83b;left:50%;top:50%;transform:rotate(var(--angle)) translateY(-42%) translateX(calc(min(27vw,215px) + (var(--i)%4)*7px));opacity:0;animation:sparkPulse 2.2s ease-in-out calc(.55s + (var(--i)*.045s)) infinite alternate}
+      .intro-copy{position:absolute;z-index:5;left:50%;top:73%;width:min(88vw,720px);text-align:center;transform:translate(-50%,18px);opacity:0;animation:copyIn .8s ease 1.65s forwards}.intro-copy .eyebrow{font-size:9px;letter-spacing:.36em;color:#d7b65e;font-weight:900}.intro-copy h1{margin:8px 0 4px;font-size:clamp(19px,3.8vw,32px);font-weight:850;letter-spacing:-.02em}.intro-copy p{margin:0;color:#d0d5db;font-size:clamp(11px,1.8vw,14px)}
+      .experience-line{margin-top:16px;display:flex;justify-content:center;gap:9px;flex-wrap:wrap;color:#d9b65c;font-size:9px;font-weight:900;letter-spacing:.18em}.experience-line b{color:rgba(255,255,255,.4)}
+      .depth-floor{position:absolute;left:50%;bottom:-14%;width:min(900px,130vw);height:34vh;transform:translateX(-50%) perspective(500px) rotateX(66deg);opacity:.45;filter:blur(.3px)}.depth-floor i{position:absolute;left:50%;bottom:0;width:100%;height:1px;transform:translateX(-50%);background:linear-gradient(90deg,transparent,#b58b2f,transparent);box-shadow:0 0 12px rgba(216,174,73,.25)}.depth-floor i:nth-child(2){bottom:22%;width:82%}.depth-floor i:nth-child(3){bottom:45%;width:64%}.depth-floor i:nth-child(4){bottom:68%;width:46%}
+      .skip{position:absolute;right:max(18px,env(safe-area-inset-right));bottom:max(20px,env(safe-area-inset-bottom));z-index:9;border:1px solid rgba(255,255,255,.34);background:rgba(4,6,8,.46);backdrop-filter:blur(14px);color:#fff;border-radius:999px;padding:11px 18px;font-size:9px;font-weight:950;letter-spacing:.17em;cursor:pointer;transition:border-color .2s ease,background .2s ease,transform .2s ease}.skip:hover{border-color:#d8b354;background:rgba(216,179,84,.12);transform:translateY(-2px)}
+      @keyframes cameraMove{0%{transform:scale(1.1) translate3d(0,0,0)}100%{transform:scale(1.035) translate3d(-.7%,.4%,0)}}@keyframes portalIn{0%{opacity:0;transform:translate(-50%,-50%) scale(.56);filter:blur(10px)}70%{opacity:1;filter:blur(0)}100%{opacity:1;transform:translate(-50%,-50%) scale(1)}}@keyframes spin{to{transform:rotate(360deg)}}@keyframes brandBreathe{to{filter:drop-shadow(0 0 24px rgba(237,191,77,.29));transform:scale(1.018)}}@keyframes sparkPulse{0%{opacity:.08}100%{opacity:.85}}@keyframes beamIn{to{opacity:.58}}@keyframes copyIn{to{opacity:1;transform:translate(-50%,0)}}@keyframes introOut{to{opacity:0;visibility:hidden;pointer-events:none;transform:scale(1.012)}}
+      @media(max-width:600px){.portal-wrap{width:min(74vw,360px);top:42%}.intro-copy{top:68%;width:90vw}.experience-line{gap:6px;font-size:8px;letter-spacing:.12em}.cinematic-scene{background-position:center 35%}.skip{padding:10px 15px}.light-beam{width:34vw}}
+      @media(prefers-reduced-motion:reduce){.khe-startup,.khe-startup *{animation:none!important}.cinematic-scene{transform:scale(1.04)}.portal-wrap,.intro-copy{opacity:1;transform:translate(-50%,-50%)}.intro-copy{transform:translate(-50%,0)}}
+    `}</style>
+  </div>;
 }
