@@ -26,8 +26,8 @@ const VALID_ACTIONS = new Set<StationNotificationMailboxAction>(['READ', 'KEEP',
 export class StationNotificationsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private async purgeExpiredTrash(organizationId: string): Promise<void> {
-    await this.prisma.$executeRaw(Prisma.sql`
+  private async purgeExpiredTrash(organizationId: string): Promise<number> {
+    return this.prisma.$executeRaw(Prisma.sql`
       DELETE FROM "AppNotification" notification
       USING "StationNotificationMailbox" mailbox
       WHERE mailbox."notificationId" = notification.id
@@ -37,6 +37,19 @@ export class StationNotificationsService {
         AND mailbox."trashedAt" IS NOT NULL
         AND mailbox."trashedAt" <= CURRENT_TIMESTAMP - INTERVAL '30 days'
     `);
+  }
+
+  async purgeAllExpiredTrash(): Promise<{ purged: number; retentionDays: number }> {
+    const purged = await this.prisma.$executeRaw(Prisma.sql`
+      DELETE FROM "AppNotification" notification
+      USING "StationNotificationMailbox" mailbox
+      WHERE mailbox."notificationId" = notification.id
+        AND mailbox."organizationId" = notification."organizationId"
+        AND mailbox.state = 'TRASHED'
+        AND mailbox."trashedAt" IS NOT NULL
+        AND mailbox."trashedAt" <= CURRENT_TIMESTAMP - INTERVAL '30 days'
+    `);
+    return { purged, retentionDays: 30 };
   }
 
   async list(station: AuthenticatedStation): Promise<StationNotificationMailboxRow[]> {
