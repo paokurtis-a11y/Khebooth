@@ -1,152 +1,23 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useState } from 'react';
-import { PortalShell } from '@/components/portal-shell';
-import { apiRequest, getSessionUser } from '@/lib/api';
-
-type PresetItem = {
-  id: string;
-  name: string;
-  aspectRatio: 'PORTRAIT_9_16' | 'SQUARE_1_1';
-  configuration: Record<string, unknown>;
+import {FormEvent,useCallback,useEffect,useState} from 'react';
+import {PortalShell} from '@/components/portal-shell';
+import {apiRequest,getSessionUser} from '@/lib/api';
+type Language='fr'|'en'|'de'|'it'|'es'|'pt';type PresetItem={id:string;name:string;aspectRatio:'PORTRAIT_9_16'|'SQUARE_1_1';configuration:Record<string,unknown>};
+const TEXT:Record<Language,Record<string,string>>={
+fr:{load:'Chargement impossible',jsonObject:'La configuration doit être un objet JSON.',jsonInvalid:'Configuration JSON invalide',updated:'Preset mis à jour.',created:'Preset créé.',saveError:'Enregistrement impossible',deleteConfirm:'Supprimer définitivement le preset « {name} » ?',deleted:'Preset supprimé.',deleteError:'Suppression impossible',title:'Modèles Studio',subtitle:'Configurations de capture KHE Booth.',edit:'Modifier le preset',new:'Nouveau preset',name:'Nom',format:'Format',square:'Carré',configuration:'Configuration JSON',saving:'Enregistrement…',saveChanges:'Enregistrer les modifications',create:'Créer le preset',cancel:'Annuler',empty:'Aucun preset. Créez d’abord une configuration 9:16 ou 1:1.',modify:'Modifier',delete:'Supprimer'},
+en:{load:'Unable to load',jsonObject:'Configuration must be a JSON object.',jsonInvalid:'Invalid JSON configuration',updated:'Preset updated.',created:'Preset created.',saveError:'Unable to save',deleteConfirm:'Permanently delete preset “{name}”?',deleted:'Preset deleted.',deleteError:'Unable to delete',title:'Studio presets',subtitle:'KHE Booth capture configurations.',edit:'Edit preset',new:'New preset',name:'Name',format:'Format',square:'Square',configuration:'JSON configuration',saving:'Saving…',saveChanges:'Save changes',create:'Create preset',cancel:'Cancel',empty:'No presets. Create a 9:16 or 1:1 configuration first.',modify:'Edit',delete:'Delete'},
+de:{load:'Laden nicht möglich',jsonObject:'Die Konfiguration muss ein JSON-Objekt sein.',jsonInvalid:'Ungültige JSON-Konfiguration',updated:'Preset aktualisiert.',created:'Preset erstellt.',saveError:'Speichern nicht möglich',deleteConfirm:'Preset „{name}“ dauerhaft löschen?',deleted:'Preset gelöscht.',deleteError:'Löschen nicht möglich',title:'Studio-Vorlagen',subtitle:'KHE-Booth-Aufnahmekonfigurationen.',edit:'Preset bearbeiten',new:'Neues Preset',name:'Name',format:'Format',square:'Quadratisch',configuration:'JSON-Konfiguration',saving:'Speichern…',saveChanges:'Änderungen speichern',create:'Preset erstellen',cancel:'Abbrechen',empty:'Keine Presets. Erstelle zuerst eine 9:16- oder 1:1-Konfiguration.',modify:'Bearbeiten',delete:'Löschen'},
+it:{load:'Caricamento impossibile',jsonObject:'La configurazione deve essere un oggetto JSON.',jsonInvalid:'Configurazione JSON non valida',updated:'Preset aggiornato.',created:'Preset creato.',saveError:'Salvataggio impossibile',deleteConfirm:'Eliminare definitivamente il preset “{name}”?',deleted:'Preset eliminato.',deleteError:'Eliminazione impossibile',title:'Modelli Studio',subtitle:'Configurazioni di acquisizione KHE Booth.',edit:'Modifica preset',new:'Nuovo preset',name:'Nome',format:'Formato',square:'Quadrato',configuration:'Configurazione JSON',saving:'Salvataggio…',saveChanges:'Salva modifiche',create:'Crea preset',cancel:'Annulla',empty:'Nessun preset. Crea prima una configurazione 9:16 o 1:1.',modify:'Modifica',delete:'Elimina'},
+es:{load:'No se pudo cargar',jsonObject:'La configuración debe ser un objeto JSON.',jsonInvalid:'Configuración JSON no válida',updated:'Preset actualizado.',created:'Preset creado.',saveError:'No se pudo guardar',deleteConfirm:'¿Eliminar definitivamente el preset “{name}”?',deleted:'Preset eliminado.',deleteError:'No se pudo eliminar',title:'Plantillas Studio',subtitle:'Configuraciones de captura KHE Booth.',edit:'Editar preset',new:'Nuevo preset',name:'Nombre',format:'Formato',square:'Cuadrado',configuration:'Configuración JSON',saving:'Guardando…',saveChanges:'Guardar cambios',create:'Crear preset',cancel:'Cancelar',empty:'No hay presets. Crea primero una configuración 9:16 o 1:1.',modify:'Editar',delete:'Eliminar'},
+pt:{load:'Não foi possível carregar',jsonObject:'A configuração deve ser um objeto JSON.',jsonInvalid:'Configuração JSON inválida',updated:'Preset atualizado.',created:'Preset criado.',saveError:'Não foi possível guardar',deleteConfirm:'Eliminar definitivamente o preset “{name}”?',deleted:'Preset eliminado.',deleteError:'Não foi possível eliminar',title:'Modelos Studio',subtitle:'Configurações de captura KHE Booth.',edit:'Editar preset',new:'Novo preset',name:'Nome',format:'Formato',square:'Quadrado',configuration:'Configuração JSON',saving:'A guardar…',saveChanges:'Guardar alterações',create:'Criar preset',cancel:'Cancelar',empty:'Sem presets. Crie primeiro uma configuração 9:16 ou 1:1.',modify:'Editar',delete:'Eliminar'},
 };
-
-export default function PresetsPage() {
-  const [presets, setPresets] = useState<PresetItem[]>([]);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [name, setName] = useState('');
-  const [aspectRatio, setAspectRatio] = useState<PresetItem['aspectRatio']>('PORTRAIT_9_16');
-  const [configuration, setConfiguration] = useState('{}');
-  const [canDelete, setCanDelete] = useState(false);
-  const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-
-  const loadPresets = useCallback(() => {
-    apiRequest<PresetItem[]>('/presets')
-      .then(setPresets)
-      .catch((caught) => setError(caught instanceof Error ? caught.message : 'Chargement impossible'));
-  }, []);
-
-  useEffect(() => {
-    const role = getSessionUser()?.role;
-    setCanDelete(role === 'OWNER' || role === 'ADMIN');
-    loadPresets();
-  }, [loadPresets]);
-
-  function resetForm() {
-    setEditingId(null);
-    setName('');
-    setAspectRatio('PORTRAIT_9_16');
-    setConfiguration('{}');
-  }
-
-  function editPreset(preset: PresetItem) {
-    setEditingId(preset.id);
-    setName(preset.name);
-    setAspectRatio(preset.aspectRatio);
-    setConfiguration(JSON.stringify(preset.configuration ?? {}, null, 2));
-    setError('');
-    setMessage('');
-  }
-
-  async function submitPreset(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError('');
-    setMessage('');
-
-    let parsedConfiguration: Record<string, unknown>;
-    try {
-      const parsed = JSON.parse(configuration) as unknown;
-      if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
-        throw new Error('La configuration doit être un objet JSON.');
-      }
-      parsedConfiguration = parsed as Record<string, unknown>;
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Configuration JSON invalide');
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      const body = JSON.stringify({ name, aspectRatio, configuration: parsedConfiguration });
-      if (editingId) {
-        await apiRequest<PresetItem>(`/presets/${editingId}`, { method: 'PATCH', body });
-        setMessage('Preset mis à jour.');
-      } else {
-        await apiRequest<PresetItem>('/presets', { method: 'POST', body });
-        setMessage('Preset créé.');
-      }
-      resetForm();
-      loadPresets();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Enregistrement impossible');
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function removePreset(preset: PresetItem) {
-    if (!canDelete || !window.confirm(`Supprimer définitivement le preset « ${preset.name} » ?`)) return;
-    setSubmitting(true);
-    setError('');
-    setMessage('');
-    try {
-      await apiRequest<{ deleted: true }>(`/presets/${preset.id}`, { method: 'DELETE' });
-      if (editingId === preset.id) resetForm();
-      setMessage('Preset supprimé.');
-      loadPresets();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Suppression impossible');
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <PortalShell>
-      <div className="header">
-        <div><h1>Presets</h1><p>Configurations de capture du MVP KHE Booth.</p></div>
-      </div>
-      {error ? <p className="error">{error}</p> : null}
-      {message ? <p className="success">{message}</p> : null}
-
-      <div className="grid client-grid">
-        <section className="card">
-          <h2 style={{ marginTop: 0 }}>{editingId ? 'Modifier le preset' : 'Nouveau preset'}</h2>
-          <form className="form" onSubmit={submitPreset}>
-            <div className="field"><label htmlFor="preset-name">Nom</label><input id="preset-name" required maxLength={160} value={name} onChange={(e) => setName(e.target.value)} /></div>
-            <div className="field">
-              <label htmlFor="aspect-ratio">Format</label>
-              <select id="aspect-ratio" value={aspectRatio} onChange={(e) => setAspectRatio(e.target.value as PresetItem['aspectRatio'])}>
-                <option value="PORTRAIT_9_16">9:16 · Portrait</option>
-                <option value="SQUARE_1_1">1:1 · Carré</option>
-              </select>
-            </div>
-            <div className="field"><label htmlFor="configuration">Configuration JSON</label><textarea id="configuration" className="code-input" rows={12} value={configuration} onChange={(e) => setConfiguration(e.target.value)} spellCheck={false} /></div>
-            <div className="toolbar">
-              <button className="button" disabled={submitting}>{submitting ? 'Enregistrement…' : editingId ? 'Enregistrer les modifications' : 'Créer le preset'}</button>
-              {editingId ? <button className="button secondary" type="button" onClick={resetForm}>Annuler</button> : null}
-            </div>
-          </form>
-        </section>
-
-        <section className="card">
-          {presets.length === 0 ? <div className="empty">Aucun preset. Créez d’abord une configuration 9:16 ou 1:1.</div> : (
-            <table className="table">
-              <thead><tr><th>Nom</th><th>Format</th><th>Configuration</th><th></th></tr></thead>
-              <tbody>{presets.map((preset) => (
-                <tr key={preset.id}>
-                  <td><button className="link-button" type="button" onClick={() => editPreset(preset)}>{preset.name}</button></td>
-                  <td>{preset.aspectRatio === 'PORTRAIT_9_16' ? '9:16' : '1:1'}</td>
-                  <td><code>{JSON.stringify(preset.configuration)}</code></td>
-                  <td><div className="toolbar"><button className="button secondary compact" type="button" onClick={() => editPreset(preset)}>Modifier</button>{canDelete ? <button className="button danger compact" type="button" disabled={submitting} onClick={() => void removePreset(preset)}>Supprimer</button> : null}</div></td>
-                </tr>
-              ))}</tbody>
-            </table>
-          )}
-        </section>
-      </div>
-    </PortalShell>
-  );
+function readLanguage():Language{if(typeof window==='undefined')return'fr';const value=window.localStorage.getItem('khe.web.language');return value&&value in TEXT?value as Language:'fr';}function fill(value:string,name:string){return value.replace('{name}',name);}
+export default function PresetsPage(){const[language,setLanguage]=useState<Language>('fr');const[presets,setPresets]=useState<PresetItem[]>([]);const[editingId,setEditingId]=useState<string|null>(null);const[name,setName]=useState('');const[aspectRatio,setAspectRatio]=useState<PresetItem['aspectRatio']>('PORTRAIT_9_16');const[configuration,setConfiguration]=useState('{}');const[canDelete,setCanDelete]=useState(false);const[error,setError]=useState('');const[message,setMessage]=useState('');const[submitting,setSubmitting]=useState(false);const t=TEXT[language];
+const loadPresets=useCallback(()=>{apiRequest<PresetItem[]>('/presets').then(setPresets).catch(caught=>setError(caught instanceof Error?caught.message:TEXT[readLanguage()].load));},[]);
+useEffect(()=>{const role=getSessionUser()?.role;setCanDelete(role==='OWNER'||role==='ADMIN');setLanguage(readLanguage());const handler=(event:Event)=>{const detail=(event as CustomEvent<string>).detail;if(detail&&detail in TEXT)setLanguage(detail as Language);};window.addEventListener('khe-language-changed',handler);loadPresets();return()=>window.removeEventListener('khe-language-changed',handler);},[loadPresets]);
+function resetForm(){setEditingId(null);setName('');setAspectRatio('PORTRAIT_9_16');setConfiguration('{}');}function editPreset(preset:PresetItem){setEditingId(preset.id);setName(preset.name);setAspectRatio(preset.aspectRatio);setConfiguration(JSON.stringify(preset.configuration??{},null,2));setError('');setMessage('');}
+async function submitPreset(event:FormEvent<HTMLFormElement>){event.preventDefault();setError('');setMessage('');let parsedConfiguration:Record<string,unknown>;try{const parsed=JSON.parse(configuration) as unknown;if(!parsed||Array.isArray(parsed)||typeof parsed!=='object')throw new Error(t.jsonObject);parsedConfiguration=parsed as Record<string,unknown>;}catch(caught){setError(caught instanceof Error?caught.message:t.jsonInvalid);return;}setSubmitting(true);try{const body=JSON.stringify({name,aspectRatio,configuration:parsedConfiguration});if(editingId){await apiRequest<PresetItem>(`/presets/${editingId}`,{method:'PATCH',body});setMessage(t.updated);}else{await apiRequest<PresetItem>('/presets',{method:'POST',body});setMessage(t.created);}resetForm();loadPresets();}catch(caught){setError(caught instanceof Error?caught.message:t.saveError);}finally{setSubmitting(false);}}
+async function removePreset(preset:PresetItem){if(!canDelete||!window.confirm(fill(t.deleteConfirm,preset.name)))return;setSubmitting(true);setError('');setMessage('');try{await apiRequest<{deleted:true}>(`/presets/${preset.id}`,{method:'DELETE'});if(editingId===preset.id)resetForm();setMessage(t.deleted);loadPresets();}catch(caught){setError(caught instanceof Error?caught.message:t.deleteError);}finally{setSubmitting(false);}}
+return <PortalShell><div className="header"><div><h1>{t.title}</h1><p>{t.subtitle}</p></div></div>{error?<p className="error">{error}</p>:null}{message?<p className="success">{message}</p>:null}<div className="grid client-grid"><section className="card"><h2 style={{marginTop:0}}>{editingId?t.edit:t.new}</h2><form className="form" onSubmit={submitPreset}><div className="field"><label htmlFor="preset-name">{t.name}</label><input id="preset-name" required maxLength={160} value={name} onChange={e=>setName(e.target.value)}/></div><div className="field"><label htmlFor="aspect-ratio">{t.format}</label><select id="aspect-ratio" value={aspectRatio} onChange={e=>setAspectRatio(e.target.value as PresetItem['aspectRatio'])}><option value="PORTRAIT_9_16">9:16 · Portrait</option><option value="SQUARE_1_1">1:1 · {t.square}</option></select></div><div className="field"><label htmlFor="configuration">{t.configuration}</label><textarea id="configuration" className="code-input" rows={12} value={configuration} onChange={e=>setConfiguration(e.target.value)} spellCheck={false}/></div><div className="toolbar"><button className="button" disabled={submitting}>{submitting?t.saving:editingId?t.saveChanges:t.create}</button>{editingId?<button className="button secondary" type="button" onClick={resetForm}>{t.cancel}</button>:null}</div></form></section><section className="card">{presets.length===0?<div className="empty">{t.empty}</div>:<table className="table"><thead><tr><th>{t.name}</th><th>{t.format}</th><th>{t.configuration}</th><th></th></tr></thead><tbody>{presets.map(preset=><tr key={preset.id}><td><button className="link-button" type="button" onClick={()=>editPreset(preset)}>{preset.name}</button></td><td>{preset.aspectRatio==='PORTRAIT_9_16'?'9:16':'1:1'}</td><td><code>{JSON.stringify(preset.configuration)}</code></td><td><div className="toolbar"><button className="button secondary compact" type="button" onClick={()=>editPreset(preset)}>{t.modify}</button>{canDelete?<button className="button danger compact" type="button" disabled={submitting} onClick={()=>void removePreset(preset)}>{t.delete}</button>:null}</div></td></tr>)}</tbody></table>}</section></div></PortalShell>;
 }
