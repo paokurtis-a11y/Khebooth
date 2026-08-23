@@ -73,18 +73,10 @@ jobs:
           const fs = require('fs');
           const production = JSON.parse(fs.readFileSync('/tmp/khe-expo-production.json', 'utf8'));
           const beta = JSON.parse(fs.readFileSync('/tmp/khe-expo-beta.json', 'utf8'));
-          if (production.android?.package !== 'com.kurtishypnotic.khebooth') {
-            throw new Error(`Unexpected production package: ${production.android?.package}`);
-          }
-          if (production.name !== 'KHE Booth') {
-            throw new Error(`Unexpected production app name: ${production.name}`);
-          }
-          if (beta.android?.package !== 'com.kurtishypnotic.khebooth.beta') {
-            throw new Error(`Unexpected beta package: ${beta.android?.package}`);
-          }
-          if (beta.name !== 'KHE Booth Beta') {
-            throw new Error(`Unexpected beta app name: ${beta.name}`);
-          }
+          if (production.android?.package !== 'com.kurtishypnotic.khebooth') throw new Error(`Unexpected production package: ${production.android?.package}`);
+          if (production.name !== 'KHE Booth') throw new Error(`Unexpected production app name: ${production.name}`);
+          if (beta.android?.package !== 'com.kurtishypnotic.khebooth.beta') throw new Error(`Unexpected beta package: ${beta.android?.package}`);
+          if (beta.name !== 'KHE Booth Beta') throw new Error(`Unexpected beta app name: ${beta.name}`);
           console.log('Android identities verified:', production.android.package, beta.android.package);
           NODE
 
@@ -102,15 +94,28 @@ jobs:
           grep -Eq "applicationId[[:space:]]+['\"]com\.kurtishypnotic\.khebooth\.beta['\"]" android/app/build.gradle
           grep -q '<string name="app_name">KHE Booth Beta</string>' android/app/src/main/res/values/strings.xml
 
-      - name: Compile Android native debug APK
+      - name: Compile Android standalone beta APK
         working-directory: apps/mobile/android
-        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
+        env:
+          NODE_ENV: production
+        run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
 
-      - name: Upload Android debug APK
+      - name: Verify embedded JavaScript bundle
+        working-directory: apps/mobile
+        run: |
+          set -euo pipefail
+          APK="android/app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          unzip -l "$APK" | grep -Eq 'assets/(index\.android\.bundle|expo-router|.*\.bundle)' || {
+            echo "Standalone APK does not contain an embedded JS bundle" >&2
+            exit 1
+          }
+
+      - name: Upload Android standalone APK
         uses: actions/upload-artifact@v4
         with:
-          name: khe-booth-android-debug
-          path: apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          name: khe-booth-android-standalone
+          path: apps/mobile/android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 7
 
@@ -127,7 +132,7 @@ jobs:
       - name: Download validated Android APK
         uses: actions/download-artifact@v4
         with:
-          name: khe-booth-android-debug
+          name: khe-booth-android-standalone
           path: android-release
 
       - name: Publish stable Android beta release
@@ -136,20 +141,20 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          APK_SOURCE="android-release/app-debug.apk"
-          APK_RELEASE="KHE-Booth-Android-debug.apk"
+          APK_SOURCE="android-release/app-release.apk"
+          APK_RELEASE="KHE-Booth-Android-Standalone.apk"
           cp "$APK_SOURCE" "$APK_RELEASE"
 
           if gh release view android-latest >/dev/null 2>&1; then
             gh release upload android-latest "$APK_RELEASE" --clobber
             gh release edit android-latest \
               --prerelease \
-              --title "KHE Booth Android — bêta" \
-              --notes "APK Android bêta généré automatiquement depuis main après validation native. Le package bêta com.kurtishypnotic.khebooth.beta est distinct de la production et peut être installé à côté d’une ancienne KHE Booth sans conflit de package."
+              --title "KHE Booth Android — bêta autonome" \
+              --notes "APK Android bêta autonome avec bundle JavaScript embarqué, généré automatiquement depuis main après validation native. Package : com.kurtishypnotic.khebooth.beta. Aucun serveur Metro n’est nécessaire."
           else
             gh release create android-latest "$APK_RELEASE" \
               --prerelease \
               --target "$GITHUB_SHA" \
-              --title "KHE Booth Android — bêta" \
-              --notes "APK Android bêta généré automatiquement depuis main après validation native. Le package bêta com.kurtishypnotic.khebooth.beta est distinct de la production et peut être installé à côté d’une ancienne KHE Booth sans conflit de package."
+              --title "KHE Booth Android — bêta autonome" \
+              --notes "APK Android bêta autonome avec bundle JavaScript embarqué, généré automatiquement depuis main après validation native. Package : com.kurtishypnotic.khebooth.beta. Aucun serveur Metro n’est nécessaire."
           fi
