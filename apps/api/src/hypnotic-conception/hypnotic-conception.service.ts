@@ -4,13 +4,27 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SecurityCenterService } from '../security/security-center.service';
 
 type StoredMessage = { id: string; role: 'OWNER' | 'ASSISTANT'; body: string; createdAt: Date };
+type ResponsesPayload = {
+  output_text?: unknown;
+  output?: Array<{ content?: Array<{ type?: unknown; text?: unknown }> }>;
+};
+
+export function extractResponseText(payload: unknown) {
+  if (!payload || typeof payload !== 'object') return '';
+  const response = payload as ResponsesPayload;
+  if (typeof response.output_text === 'string' && response.output_text.trim()) return response.output_text.trim();
+  if (!Array.isArray(response.output)) return '';
+  return response.output.flatMap(item => Array.isArray(item.content) ? item.content : [])
+    .filter(item => item.type === 'output_text' && typeof item.text === 'string')
+    .map(item => String(item.text).trim()).filter(Boolean).join('\n').trim();
+}
 
 @Injectable()
 export class HypnoticConceptionService {
   constructor(private readonly prisma: PrismaService, private readonly security: SecurityCenterService) {}
 
   private version() {
-    const release = process.env.KHE_PLATFORM_VERSION?.trim() || '2.0';
+    const release = process.env.KHE_PLATFORM_VERSION?.trim() || '0.3.1';
     const revision = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7);
     return revision ? `${release}+${revision}` : release;
   }
@@ -84,8 +98,8 @@ export class HypnoticConceptionService {
       signal: AbortSignal.timeout(45_000),
     });
     if (!response.ok) throw new ServiceUnavailableException(`OpenAI service unavailable (${response.status})`);
-    const payload = await response.json() as { output_text?: string };
-    const answer = payload.output_text?.trim();
+    const payload = await response.json() as unknown;
+    const answer = extractResponseText(payload);
     if (!answer) throw new ServiceUnavailableException('Hypnotic Conception returned no response');
 
     await this.prisma.$transaction([

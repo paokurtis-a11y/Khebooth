@@ -44,7 +44,7 @@ export default function HypnoticConceptionPage() {
   return <PortalShell><div style={{maxWidth:1180,margin:'0 auto',display:'grid',gap:18}}>
     <header className="card" style={{background:'linear-gradient(135deg,rgba(210,173,79,.16),rgba(14,21,39,.96))'}}>
       <div className="muted" style={{fontSize:12,fontWeight:900,letterSpacing:'.14em'}}>ROBO PROGRAMMEUR · PROPRIÉTAIRE UNIQUEMENT</div>
-      <h1 style={{margin:'8px 0 6px'}}>Hypnotic Conception {status?.version ?? '2.0'}</h1>
+      <h1 style={{margin:'8px 0 6px'}}>Hypnotic Conception {status?.version ?? '0.3.1'}</h1>
       <p className="muted" style={{margin:0}}>Questions, diagnostic, solutions et préparation d’exécution pour KHE BOOTH.</p>
       <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:14}}>
         <span className="badge">Accès ROOT OWNER</span><span className="badge">Journal d’audit actif</span>

@@ -1,7 +1,7 @@
 import { ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import type { AuthenticatedUser } from '../src/auth/auth.types';
-import { HypnoticConceptionService } from '../src/hypnotic-conception/hypnotic-conception.service';
+import { extractResponseText, HypnoticConceptionService } from '../src/hypnotic-conception/hypnotic-conception.service';
 import type { PrismaService } from '../src/prisma/prisma.service';
 import type { SecurityCenterService } from '../src/security/security-center.service';
 
@@ -13,6 +13,14 @@ const rootOwner: AuthenticatedUser = {
 };
 
 describe('HypnoticConceptionService', () => {
+  it('extracts every native Responses API text item safely', () => {
+    expect(extractResponseText({ output: [
+      { type: 'reasoning', content: [] },
+      { type: 'message', content: [{ type: 'output_text', text: 'Bonjour' }, { type: 'output_text', text: 'KHE' }] },
+    ] })).toBe('Bonjour\nKHE');
+    expect(extractResponseText({ output: [{ content: [{ type: 'refusal', text: 'ignored' }] }] })).toBe('');
+  });
+
   const prisma = { $queryRaw: jest.fn() } as unknown as PrismaService;
   const security = { status: jest.fn() } as unknown as SecurityCenterService;
   const service = new HypnoticConceptionService(prisma, security);
