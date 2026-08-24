@@ -1,123 +1,204 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import { UserRole } from '@prisma/client';
 import type { AuthenticatedUser } from '../auth/auth.types';
 import { PrismaService } from '../prisma/prisma.service';
 
+export const GLOBE_MODES = ['agents', 'clients', 'relations', 'growth', 'all'] as const;
+export const GLOBE_WINDOWS = ['real-time', '1d', '7d', '30d'] as const;
+export type GlobeMode = (typeof GLOBE_MODES)[number];
+export type GlobeWindow = (typeof GLOBE_WINDOWS)[number];
+
+type GlobeRequest = { mode: GlobeMode; window: GlobeWindow; windowDays: number };
 type StrategyThresholds = {
+  enabled: boolean;
   analysisWindowDays: number;
+  highIntentScore: number;
   regularClientMinSessions: number;
   regularClientMinActiveDays: number;
   regularClientMinMinutes: number;
+  geoSegmentationEnabled: boolean;
+  anonymousAnalyticsEnabled: boolean;
 };
+type CacheEntry = { expiresAt: number; value: Promise<Record<string, unknown>> };
+
+const CACHE_TTL_MS = 10_000;
+const DEFAULT_STRATEGY: StrategyThresholds = {
+  enabled: true,
+  analysisWindowDays: 30,
+  highIntentScore: 60,
+  regularClientMinSessions: 5,
+  regularClientMinActiveDays: 3,
+  regularClientMinMinutes: 60,
+  geoSegmentationEnabled: true,
+  anonymousAnalyticsEnabled: true,
+};
+
+export function normalizeCountryCode(value: unknown): string | null {
+  const code = String(value ?? '').trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(code) ? code : null;
+}
+
+export function roundCoordinate(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const coordinate = Number(value);
+  return Number.isFinite(coordinate) ? Math.round(coordinate * 100) / 100 : null;
+}
+
+export function parseGlobeRequest(modeValue: unknown, windowValue: unknown, role: UserRole): GlobeRequest {
+  const mode = String(modeValue ?? 'agents').toLowerCase();
+  const window = String(windowValue ?? 'real-time').toLowerCase();
+  if (!GLOBE_MODES.includes(mode as GlobeMode)) throw new BadRequestException('Mode Globe KHE invalide');
+  if (!GLOBE_WINDOWS.includes(window as GlobeWindow)) throw new BadRequestException('Fenêtre Globe KHE invalide');
+  if (mode === 'all' && role !== UserRole.OWNER) throw new ForbiddenException('La vue Tout est réservée à l’OWNER');
+  const normalizedWindow = window as GlobeWindow;
+  return {
+    mode: mode as GlobeMode,
+    window: normalizedWindow,
+    windowDays: normalizedWindow === '30d' ? 30 : normalizedWindow === '7d' ? 7 : 1,
+  };
+}
 
 @Injectable()
 export class GlobeIntelligenceService {
+  private readonly cache = new Map<string, CacheEntry>();
+
   constructor(private readonly prisma: PrismaService) {}
 
-  async overview(user: AuthenticatedUser) {
-    const strategyRows = await this.prisma.$queryRaw<StrategyThresholds[]>`
-      SELECT
-        COALESCE("analysisWindowDays", 30)::int AS "analysisWindowDays",
-        COALESCE("regularClientMinSessions", 5)::int AS "regularClientMinSessions",
-        COALESCE("regularClientMinActiveDays", 3)::int AS "regularClientMinActiveDays",
-        COALESCE("regularClientMinMinutes", 60)::int AS "regularClientMinMinutes"
+  async overview(user: AuthenticatedUser, mode?: unknown, window?: unknown) {
+    const request = parseGlobeRequest(mode, window, user.role);
+    const cacheKey = `${user.organizationId}:${request.mode}:${request.window}`;
+    const cached = this.cache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.value;
+
+    const value = this.buildOverview(user, request).catch((error) => {
+      this.cache.delete(cacheKey);
+      throw error;
+    });
+    this.cache.set(cacheKey, { expiresAt: Date.now() + CACHE_TTL_MS, value });
+    if (this.cache.size > 100) {
+      const now = Date.now();
+      for (const [key, entry] of this.cache) if (entry.expiresAt <= now) this.cache.delete(key);
+    }
+    return value;
+  }
+
+  private async strategy(organizationId: string): Promise<StrategyThresholds> {
+    const rows = await this.prisma.$queryRaw<StrategyThresholds[]>`
+      SELECT enabled,
+        COALESCE("analysisWindowDays",30)::int AS "analysisWindowDays",
+        COALESCE("highIntentScore",60)::int AS "highIntentScore",
+        COALESCE("regularClientMinSessions",5)::int AS "regularClientMinSessions",
+        COALESCE("regularClientMinActiveDays",3)::int AS "regularClientMinActiveDays",
+        COALESCE("regularClientMinMinutes",60)::int AS "regularClientMinMinutes",
+        COALESCE("geoSegmentationEnabled",TRUE) AS "geoSegmentationEnabled",
+        COALESCE("anonymousAnalyticsEnabled",TRUE) AS "anonymousAnalyticsEnabled"
       FROM "GrowthStrategyConfig"
-      WHERE "organizationId"=${user.organizationId}::uuid
+      WHERE "organizationId"=${organizationId}::uuid
       LIMIT 1
     `;
-    const strategy = strategyRows[0] ?? {
-      analysisWindowDays: 30,
-      regularClientMinSessions: 5,
-      regularClientMinActiveDays: 3,
-      regularClientMinMinutes: 60,
-    };
+    return { ...DEFAULT_STRATEGY, ...(rows[0] ?? {}) };
+  }
 
-    const [clients, relations, growth, summaryRows] = await Promise.all([
-      this.prisma.$queryRaw<any[]>`
-        SELECT
-          c.id,c.name,c.email,c."companyName",
-          COALESCE(us.sessions,0)::int AS "connectionCount",
-          COALESCE(us.days,0)::int AS "activeDays",
-          COALESCE(us.seconds,0)::bigint AS "totalConnectedSeconds",
-          us."lastSeenAt",
-          us."lastCountryCode",us."lastRegionCode",us."lastMunicipality",
-          us."lastLatitude",us."lastLongitude",
-          COALESCE(ev.events,0)::int AS "eventCount",
-          COALESCE(st.sessions,0)::int AS "stationSessionCount"
-        FROM "Client" c
-        LEFT JOIN LATERAL (
-          SELECT
-            count(*) sessions,
-            count(DISTINCT "startedAt"::date) days,
-            COALESCE(sum(EXTRACT(EPOCH FROM (COALESCE("endedAt","lastSeenAt")-"startedAt"))),0) seconds,
-            max("lastSeenAt") "lastSeenAt",
-            (array_agg("countryCode" ORDER BY "lastSeenAt" DESC) FILTER(WHERE "countryCode" IS NOT NULL))[1] "lastCountryCode",
-            (array_agg("regionCode" ORDER BY "lastSeenAt" DESC) FILTER(WHERE "regionCode" IS NOT NULL))[1] "lastRegionCode",
-            (array_agg(municipality ORDER BY "lastSeenAt" DESC) FILTER(WHERE municipality IS NOT NULL))[1] "lastMunicipality",
-            (array_agg(latitude ORDER BY "lastSeenAt" DESC) FILTER(WHERE latitude IS NOT NULL AND "locationSharingEnabled"=TRUE))[1] "lastLatitude",
-            (array_agg(longitude ORDER BY "lastSeenAt" DESC) FILTER(WHERE longitude IS NOT NULL AND "locationSharingEnabled"=TRUE))[1] "lastLongitude"
-          FROM "UserActivitySession"
-          WHERE "clientId"=c.id
-        ) us ON TRUE
-        LEFT JOIN LATERAL (SELECT count(*) events FROM "Event" WHERE "clientId"=c.id) ev ON TRUE
-        LEFT JOIN LATERAL (
-          SELECT count(*) sessions
-          FROM "StationSession" ss
-          JOIN "Event" e ON e.id=ss."eventId"
-          WHERE e."clientId"=c.id
-        ) st ON TRUE
-        WHERE c."organizationId"=${user.organizationId}::uuid
-        ORDER BY COALESCE(us."lastSeenAt",c."createdAt") DESC
-        LIMIT 500
-      `,
-      this.prisma.$queryRaw<any[]>`
-        SELECT
-          sc.id,
-          sc.status::text AS status,
-          sc.subject,
-          sc."lastMessageAt",
-          sc."createdAt",
-          sc."assignedToUserId" AS "agentId",
-          requester."managedClientId" AS "clientId"
-        FROM "SupportConversation" sc
-        JOIN "User" requester ON requester.id=sc."requesterUserId"
-        WHERE sc."organizationId"=${user.organizationId}::uuid
-          AND sc."assignedToUserId" IS NOT NULL
-          AND requester."managedClientId" IS NOT NULL
-          AND sc.status IN ('ASSIGNED','HANDOFF_REQUESTED')
-        ORDER BY sc."lastMessageAt" DESC
-        LIMIT 250
-      `,
-      this.prisma.$queryRaw<any[]>`
-        SELECT
-          "countryCode","regionCode",municipality,
-          round(avg(latitude)::numeric,4)::float8 latitude,
-          round(avg(longitude)::numeric,4)::float8 longitude,
-          count(*)::int events,
-          count(DISTINCT "anonymousId")::int visitors
+  private clients(organizationId: string, windowDays: number) {
+    return this.prisma.$queryRaw<any[]>`
+      SELECT c.id,c.name,c.email,c."companyName",c."subscriptionPlan",c."subscriptionStatus",c."paymentStatus",
+        COALESCE(us.sessions,0)::int AS "connectionCount",COALESCE(us.days,0)::int AS "activeDays",
+        COALESCE(us.seconds,0)::bigint AS "totalConnectedSeconds",us."lastSeenAt",us."lastCountryCode",us."lastRegionCode",us."lastMunicipality",us."lastLatitude",us."lastLongitude",
+        COALESCE(ev.events,0)::int AS "eventCount",COALESCE(ev.active,0)::int AS "activeEventCount",
+        COALESCE(st.sessions,0)::int AS "stationSessionCount",COALESCE(st."captureOnline",FALSE) AS "captureOnline",COALESCE(st."sharingOnline",FALSE) AS "sharingOnline",
+        COALESCE(media.total,0)::int AS "mediaCount",COALESCE(media.pending,0)::int AS "pendingMediaCount",COALESCE(media.failed,0)::int AS "failedMediaCount",media."lastMediaAt"
+      FROM "Client" c
+      LEFT JOIN LATERAL (
+        SELECT count(*) sessions,count(DISTINCT "startedAt"::date) days,
+          COALESCE(sum(EXTRACT(EPOCH FROM (COALESCE("endedAt","lastSeenAt")-"startedAt"))),0) seconds,max("lastSeenAt") "lastSeenAt",
+          (array_agg(upper("countryCode") ORDER BY "lastSeenAt" DESC) FILTER(WHERE "countryCode" IS NOT NULL))[1] "lastCountryCode",
+          (array_agg("regionCode" ORDER BY "lastSeenAt" DESC) FILTER(WHERE "regionCode" IS NOT NULL))[1] "lastRegionCode",
+          (array_agg(municipality ORDER BY "lastSeenAt" DESC) FILTER(WHERE municipality IS NOT NULL))[1] "lastMunicipality",
+          (array_agg(round(latitude::numeric,2) ORDER BY "lastSeenAt" DESC) FILTER(WHERE latitude IS NOT NULL AND "locationSharingEnabled"=TRUE))[1] "lastLatitude",
+          (array_agg(round(longitude::numeric,2) ORDER BY "lastSeenAt" DESC) FILTER(WHERE longitude IS NOT NULL AND "locationSharingEnabled"=TRUE))[1] "lastLongitude"
+        FROM "UserActivitySession" WHERE "clientId"=c.id AND "startedAt">=CURRENT_TIMESTAMP-${windowDays}*INTERVAL '1 day'
+      ) us ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT count(*) events,count(*) FILTER(WHERE status IN ('READY','ACTIVE')) active FROM "Event" WHERE "clientId"=c.id
+      ) ev ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT count(*) sessions,
+          bool_or(ss.mode='CAPTURE' AND ss."revokedAt" IS NULL AND ss."expiresAt">CURRENT_TIMESTAMP AND ss."lastSeenAt">CURRENT_TIMESTAMP-INTERVAL '90 seconds') "captureOnline",
+          bool_or(ss.mode='SHARING' AND ss."revokedAt" IS NULL AND ss."expiresAt">CURRENT_TIMESTAMP AND ss."lastSeenAt">CURRENT_TIMESTAMP-INTERVAL '90 seconds') "sharingOnline"
+        FROM "StationSession" ss JOIN "Event" e ON e.id=ss."eventId" WHERE e."clientId"=c.id
+      ) st ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT count(*) total,count(*) FILTER(WHERE m."syncState" IN ('QUEUED','UPLOADING')) pending,
+          count(*) FILTER(WHERE m."syncState"='FAILED') failed,max(m."createdAt") "lastMediaAt"
+        FROM "MediaAsset" m JOIN "Event" e ON e.id=m."eventId" WHERE e."clientId"=c.id
+      ) media ON TRUE
+      WHERE c."organizationId"=${organizationId}::uuid AND c."archivedAt" IS NULL
+      ORDER BY COALESCE(us."lastSeenAt",c."createdAt") DESC
+      LIMIT 1000
+    `;
+  }
+
+  private relations(organizationId: string) {
+    return this.prisma.$queryRaw<any[]>`
+      SELECT sc.id,sc.status::text AS status,sc.subject,sc."lastMessageAt",sc."createdAt" AS "startedAt",sc."resolvedAt" AS "endedAt",
+        sc."assignedToUserId" AS "agentId",requester."managedClientId" AS "clientId",
+        'SUPPORT'::text AS "assignmentType",'support'::text AS channel,
+        CASE WHEN sc.status='HANDOFF_REQUESTED' THEN 'HIGH' ELSE 'NORMAL' END AS priority,
+        (sc.status='HANDOFF_REQUESTED' OR sc."lastMessageAt"<CURRENT_TIMESTAMP-INTERVAL '15 minutes') AS "slaRisk"
+      FROM "SupportConversation" sc JOIN "User" requester ON requester.id=sc."requesterUserId"
+      WHERE sc."organizationId"=${organizationId}::uuid AND sc."assignedToUserId" IS NOT NULL AND requester."managedClientId" IS NOT NULL
+        AND sc.status IN ('ASSIGNED','HANDOFF_REQUESTED')
+      ORDER BY "slaRisk" DESC,sc."lastMessageAt" DESC
+      LIMIT 250
+    `;
+  }
+
+  private growth(organizationId: string, windowDays: number) {
+    return this.prisma.$queryRaw<any[]>`
+      WITH visitor_stage AS (
+        SELECT "anonymousId",upper(left("countryCode",2)) "countryCode","regionCode",municipality,
+          round(avg(latitude)::numeric,1)::float8 latitude,round(avg(longitude)::numeric,1)::float8 longitude,count(*)::int events,
+          CASE WHEN bool_or("eventType"='CHECKOUT_COMPLETED') THEN 4 WHEN bool_or("eventType"='CHECKOUT_STARTED') THEN 3
+            WHEN bool_or("eventType"='PLAN_SELECTED') THEN 2 WHEN count(*)>1 THEN 1 ELSE 0 END stage
         FROM "MarketingAnalyticsEvent"
-        WHERE "organizationId"=${user.organizationId}::uuid
-          AND consent=TRUE
-          AND latitude IS NOT NULL
-          AND longitude IS NOT NULL
-          AND "createdAt">=CURRENT_TIMESTAMP-${strategy.analysisWindowDays}*INTERVAL '1 day'
-        GROUP BY "countryCode","regionCode",municipality
-        ORDER BY visitors DESC,events DESC
-        LIMIT 120
-      `,
-      this.prisma.$queryRaw<any[]>`
-        SELECT
-          count(*) FILTER(WHERE "eventType"='PAGE_VIEW')::int visits,
-          count(DISTINCT "anonymousId") FILTER(WHERE "anonymousId" IS NOT NULL)::int visitors,
-          count(*) FILTER(WHERE "eventType"='PLAN_SELECTED')::int "planSelections",
-          count(*) FILTER(WHERE "eventType"='CHECKOUT_STARTED')::int checkouts,
-          count(*) FILTER(WHERE "eventType"='CHECKOUT_COMPLETED')::int conversions
-        FROM "MarketingAnalyticsEvent"
-        WHERE "organizationId"=${user.organizationId}::uuid
-          AND "createdAt">=CURRENT_TIMESTAMP-${strategy.analysisWindowDays}*INTERVAL '1 day'
-      `,
+        WHERE "organizationId"=${organizationId}::uuid AND consent=TRUE AND "anonymousId" IS NOT NULL
+          AND latitude IS NOT NULL AND longitude IS NOT NULL AND "createdAt">=CURRENT_TIMESTAMP-${windowDays}*INTERVAL '1 day'
+        GROUP BY "anonymousId",upper(left("countryCode",2)),"regionCode",municipality
+      )
+      SELECT "countryCode","regionCode",municipality,round(avg(latitude)::numeric,1)::float8 latitude,round(avg(longitude)::numeric,1)::float8 longitude,
+        sum(events)::int events,count(*)::int visitors,count(*) FILTER(WHERE stage=0)::int "visitorCount",count(*) FILTER(WHERE stage=1)::int "engagedCount",
+        count(*) FILTER(WHERE stage=2)::int "leadCount",count(*) FILTER(WHERE stage=3)::int "prospectCount",count(*) FILTER(WHERE stage=4)::int "clientCount"
+      FROM visitor_stage GROUP BY "countryCode","regionCode",municipality ORDER BY visitors DESC,events DESC LIMIT 250
+    `;
+  }
+
+  private growthSummary(organizationId: string, windowDays: number) {
+    return this.prisma.$queryRaw<any[]>`
+      SELECT count(*) FILTER(WHERE "eventType"='PAGE_VIEW')::int visits,
+        count(DISTINCT "anonymousId") FILTER(WHERE "anonymousId" IS NOT NULL)::int visitors,
+        count(*) FILTER(WHERE "eventType"='PLAN_SELECTED')::int "planSelections",
+        count(*) FILTER(WHERE "eventType"='CHECKOUT_STARTED')::int checkouts,
+        count(*) FILTER(WHERE "eventType"='CHECKOUT_COMPLETED')::int conversions
+      FROM "MarketingAnalyticsEvent" WHERE "organizationId"=${organizationId}::uuid AND "createdAt">=CURRENT_TIMESTAMP-${windowDays}*INTERVAL '1 day'
+    `;
+  }
+
+  private async buildOverview(user: AuthenticatedUser, request: GlobeRequest): Promise<Record<string, unknown>> {
+    const strategy = await this.strategy(user.organizationId);
+    const includeClients = ['clients', 'relations', 'all'].includes(request.mode);
+    const includeRelations = ['relations', 'all'].includes(request.mode);
+    const growthEnabled = strategy.enabled && strategy.geoSegmentationEnabled && strategy.anonymousAnalyticsEnabled;
+    const includeGrowth = growthEnabled && ['growth', 'all'].includes(request.mode);
+    const windowDays = request.window === 'real-time' ? 1 : request.windowDays;
+
+    const [clientRows, relationRows, growthRows, summaryRows] = await Promise.all([
+      includeClients ? this.clients(user.organizationId, windowDays) : Promise.resolve([]),
+      includeRelations ? this.relations(user.organizationId) : Promise.resolve([]),
+      includeGrowth ? this.growth(user.organizationId, windowDays) : Promise.resolve([]),
+      includeGrowth ? this.growthSummary(user.organizationId, windowDays) : Promise.resolve([]),
     ]);
 
-    const normalizedClients = clients.map((row) => {
+    const clients = clientRows.map((row) => {
       const seconds = Number(row.totalConnectedSeconds || 0);
       const connectionCount = Number(row.connectionCount || 0);
       const activeDays = Number(row.activeDays || 0);
@@ -125,27 +206,35 @@ export class GlobeIntelligenceService {
       const stationSessionCount = Number(row.stationSessionCount || 0);
       return {
         ...row,
+        lastCountryCode: normalizeCountryCode(row.lastCountryCode),
+        lastLatitude: roundCoordinate(row.lastLatitude),
+        lastLongitude: roundCoordinate(row.lastLongitude),
         totalConnectedSeconds: seconds,
-        lastLatitude: row.lastLatitude === null ? null : Number(row.lastLatitude),
-        lastLongitude: row.lastLongitude === null ? null : Number(row.lastLongitude),
         online: Boolean(row.lastSeenAt && Date.now() - new Date(row.lastSeenAt).getTime() < 90_000),
-        regular:
-          connectionCount >= strategy.regularClientMinSessions &&
-          activeDays >= strategy.regularClientMinActiveDays &&
-          seconds >= strategy.regularClientMinMinutes * 60,
-        engagementScore: Math.min(
-          100,
-          Math.round(connectionCount * 5 + eventCount * 12 + stationSessionCount * 2 + Math.min(30, (seconds / 3600) * 3)),
-        ),
+        regular: connectionCount >= strategy.regularClientMinSessions && activeDays >= strategy.regularClientMinActiveDays && seconds >= strategy.regularClientMinMinutes * 60,
+        engagementScore: Math.min(100, Math.round(connectionCount * 5 + eventCount * 12 + stationSessionCount * 2 + Math.min(30, (seconds / 3600) * 3))),
       };
+    });
+    const geographies = growthRows.map((row) => {
+      const stages = {
+        visitor: Number(row.visitorCount || 0), engaged: Number(row.engagedCount || 0), lead: Number(row.leadCount || 0),
+        prospect: Number(row.prospectCount || 0), client: Number(row.clientCount || 0),
+      };
+      const dominantStage = (['client', 'prospect', 'lead', 'engaged', 'visitor'] as const).find((stage) => stages[stage] > 0) ?? 'visitor';
+      return { ...row, countryCode: normalizeCountryCode(row.countryCode), latitude: roundCoordinate(row.latitude), longitude: roundCoordinate(row.longitude), events: Number(row.events || 0), visitors: Number(row.visitors || 0), stages, dominantStage };
     });
 
     return {
       generatedAt: new Date().toISOString(),
-      clients: normalizedClients,
-      relations,
+      mode: request.mode,
+      window: request.window,
+      capabilities: { canViewAll: user.role === UserRole.OWNER },
+      clients,
+      relations: relationRows,
       growth: {
-        geographies: growth,
+        enabled: growthEnabled,
+        disabledReason: growthEnabled ? null : 'L’analytics géographique pseudonymisée est désactivée.',
+        geographies,
         summary: summaryRows[0] ?? { visits: 0, visitors: 0, planSelections: 0, checkouts: 0, conversions: 0 },
       },
     };

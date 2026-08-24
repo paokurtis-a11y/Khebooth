@@ -1,84 +1,295 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiRequest } from '@/lib/api';
+import { clusterProjectedPoints, labelBudget } from './globe-performance';
 
-type Language='fr'|'en'|'de'|'it'|'es'|'pt';
-type Mode='agents'|'clients'|'relations'|'growth'|'all';
-type AgentPoint={id:string;email:string;firstName?:string|null;lastName?:string|null;online:boolean;available:boolean;availability?:string|null;countryCode?:string|null;regionCode?:string|null;municipality?:string|null;latitude?:number|null;longitude?:number|null};
-type ClientPoint={id:string;name:string;email?:string|null;companyName?:string|null;lastSeenAt?:string|null;lastCountryCode?:string|null;lastRegionCode?:string|null;lastMunicipality?:string|null;lastLatitude?:number|null;lastLongitude?:number|null;online?:boolean;regular?:boolean;engagementScore?:number;stationSessionCount?:number;eventCount?:number};
-type Geo={countryCode?:string|null;regionCode?:string|null;municipality?:string|null;latitude?:number|null;longitude?:number|null;events:number;visitors:number};
-type RelationRecord={id:string;status:string;subject:string;lastMessageAt:string;createdAt:string;agentId:string;clientId:string};
-type GlobeOverview={generatedAt:string;clients:ClientPoint[];relations:RelationRecord[];growth:{geographies:Geo[];summary:{visits:number;visitors:number;planSelections:number;checkouts:number;conversions:number}}};
-type OwnerGeo={isOwner:boolean;countryCode:string|null};
-type CountryProps={ADMIN?:string;CONTINENT?:string;LABELRANK?:number;LABEL_X?:number;LABEL_Y?:number;ISO_A2?:string;ISO_A2_EH?:string;NAME_FR?:string;NAME_EN?:string;NAME_DE?:string;NAME_IT?:string;NAME_ES?:string;NAME_PT?:string};
-type Geometry={type:'Polygon'|'MultiPolygon';coordinates:number[][][]|number[][][][]};
-type Country={type:'Feature';properties:CountryProps;geometry:Geometry};
-type WorldData={type:'FeatureCollection';features:Country[]};
-type GeoLabel={key:string;lon:number;lat:number};
-type Selected={kind:'agent'|'client'|'relation'|'growth'|'country';title:string;subtitle:string;details:string[]}|null;
+type Language = 'fr' | 'en' | 'de' | 'it' | 'es' | 'pt';
+type Mode = 'agents' | 'clients' | 'relations' | 'growth' | 'all';
+type WindowKey = 'real-time' | '1d' | '7d' | '30d';
+type StatusFilter = 'all' | 'online' | 'available' | 'busy' | 'offline' | 'risk' | 'regular' | 'business' | 'enterprise' | 'visitor' | 'engaged' | 'lead' | 'prospect' | 'customer';
+type Stage = 'visitor' | 'engaged' | 'lead' | 'prospect' | 'client';
+type CurrentUser = { role: string };
+type AgentPoint = { id: string; email: string; firstName?: string | null; lastName?: string | null; online: boolean; available: boolean; availability?: string | null; countryCode?: string | null; regionCode?: string | null; municipality?: string | null; latitude?: number | null; longitude?: number | null };
+type ClientPoint = { id: string; name: string; email?: string | null; companyName?: string | null; subscriptionPlan?: string; subscriptionStatus?: string; paymentStatus?: string; lastSeenAt?: string | null; lastCountryCode?: string | null; lastRegionCode?: string | null; lastMunicipality?: string | null; lastLatitude?: number | null; lastLongitude?: number | null; online?: boolean; regular?: boolean; engagementScore?: number; stationSessionCount?: number; eventCount?: number; activeEventCount?: number; captureOnline?: boolean; sharingOnline?: boolean; mediaCount?: number; pendingMediaCount?: number; failedMediaCount?: number };
+type Geo = { countryCode?: string | null; regionCode?: string | null; municipality?: string | null; latitude?: number | null; longitude?: number | null; events: number; visitors: number; dominantStage: Stage; stages: Record<Stage, number> };
+type RelationRecord = { id: string; status: string; subject: string; lastMessageAt: string; startedAt: string; agentId: string; clientId: string; channel: string; priority: string; slaRisk: boolean };
+type GlobeOverview = { generatedAt: string; mode: Mode; window: WindowKey; capabilities: { canViewAll: boolean }; clients: ClientPoint[]; relations: RelationRecord[]; growth: { enabled: boolean; disabledReason?: string | null; geographies: Geo[]; summary: { visits: number; visitors: number; planSelections: number; checkouts: number; conversions: number } } };
+type OwnerGeo = { isOwner: boolean; countryCode: string | null };
+type CountryProps = { ADMIN?: string; CONTINENT?: string; LABELRANK?: number; LABEL_X?: number; LABEL_Y?: number; ISO_A2?: string; ISO_A2_EH?: string; NAME_FR?: string; NAME_EN?: string; NAME_DE?: string; NAME_IT?: string; NAME_ES?: string; NAME_PT?: string };
+type Geometry = { type: 'Polygon' | 'MultiPolygon'; coordinates: number[][][] | number[][][][] };
+type Country = { type: 'Feature'; properties: CountryProps; geometry: Geometry };
+type WorldData = { type: 'FeatureCollection'; features: Country[] };
+type Selected = { key: string; title: string; subtitle: string; details: string[] } | null;
 
-const WORLD_SOURCE='https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson';
-const copy:Record<Language,Record<string,string>>={
-fr:{rotate:'Rotation du globe',auto:'Rotation automatique',stop:'Arrêter la rotation',available:'disponible',connected:'connecté',offline:'hors ligne',ownerCurrent:'OWNER · pays actuel',privacy:'Les positions affichées sont des estimations de zone, jamais un suivi GPS précis.',loading:'Chargement de la carte mondiale…',unavailable:'Carte détaillée temporairement indisponible',hidden:'agent(s) sans zone partagée restent visibles dans la liste.',agents:'Agents',clients:'Clients',relations:'Relations',growth:'Growth',all:'Tout',clientOnline:'client connecté',clientActive:'client actif',visitor:'visiteurs',support:'support actif',noData:'Aucune donnée géographique fiable pour cette couche.',events:'événements',stations:'stations',engagement:'Engagement',actions:'actions',europe:'Europe',africa:'Afrique',asia:'Asie',northAmerica:'Amérique du Nord',southAmerica:'Amérique du Sud',oceania:'Océanie',antarctica:'Antarctique',westernEurope:'Europe occidentale',westAfrica:'Afrique de l’Ouest',centralAfrica:'Afrique centrale',latinAmerica:'Amérique latine',middleEast:'Moyen-Orient',southAsia:'Asie du Sud',eastAsia:'Asie de l’Est'},
-en:{rotate:'Globe rotation',auto:'Auto rotate',stop:'Stop rotation',available:'available',connected:'connected',offline:'offline',ownerCurrent:'OWNER · current country',privacy:'Displayed positions are approximate areas, never precise GPS tracking.',loading:'Loading world map…',unavailable:'Detailed map temporarily unavailable',hidden:'agent(s) without a shared area remain visible in the list.',agents:'Agents',clients:'Clients',relations:'Relations',growth:'Growth',all:'All',clientOnline:'client online',clientActive:'active client',visitor:'visitors',support:'active support',noData:'No reliable geographic data for this layer.',events:'events',stations:'stations',engagement:'Engagement',actions:'actions',europe:'Europe',africa:'Africa',asia:'Asia',northAmerica:'North America',southAmerica:'South America',oceania:'Oceania',antarctica:'Antarctica',westernEurope:'Western Europe',westAfrica:'West Africa',centralAfrica:'Central Africa',latinAmerica:'Latin America',middleEast:'Middle East',southAsia:'South Asia',eastAsia:'East Asia'},
-de:{rotate:'Globus drehen',auto:'Automatisch drehen',stop:'Rotation stoppen',available:'verfügbar',connected:'verbunden',offline:'offline',ownerCurrent:'OWNER · aktuelles Land',privacy:'Angezeigte Positionen sind ungefähre Gebiete, niemals präzises GPS-Tracking.',loading:'Weltkarte wird geladen…',unavailable:'Detailkarte vorübergehend nicht verfügbar',hidden:'Agent(en) ohne geteilte Region bleiben in der Liste sichtbar.',agents:'Agenten',clients:'Kunden',relations:'Beziehungen',growth:'Growth',all:'Alle',clientOnline:'Kunde online',clientActive:'aktiver Kunde',visitor:'Besucher',support:'aktiver Support',noData:'Keine verlässlichen Geodaten für diese Ebene.',events:'Events',stations:'Stationen',engagement:'Engagement',actions:'Aktionen',europe:'Europa',africa:'Afrika',asia:'Asien',northAmerica:'Nordamerika',southAmerica:'Südamerika',oceania:'Ozeanien',antarctica:'Antarktis',westernEurope:'Westeuropa',westAfrica:'Westafrika',centralAfrica:'Zentralafrika',latinAmerica:'Lateinamerika',middleEast:'Naher Osten',southAsia:'Südasien',eastAsia:'Ostasien'},
-it:{rotate:'Rotazione del globo',auto:'Rotazione automatica',stop:'Ferma rotazione',available:'disponibile',connected:'connesso',offline:'offline',ownerCurrent:'OWNER · paese attuale',privacy:'Le posizioni mostrate sono zone approssimative, mai tracciamento GPS preciso.',loading:'Caricamento mappa mondiale…',unavailable:'Mappa dettagliata temporaneamente non disponibile',hidden:'agente/i senza zona condivisa restano visibili nell’elenco.',agents:'Agenti',clients:'Clienti',relations:'Relazioni',growth:'Growth',all:'Tutto',clientOnline:'cliente connesso',clientActive:'cliente attivo',visitor:'visitatori',support:'supporto attivo',noData:'Nessun dato geografico affidabile per questo livello.',events:'eventi',stations:'stazioni',engagement:'Coinvolgimento',actions:'azioni',europe:'Europa',africa:'Africa',asia:'Asia',northAmerica:'Nord America',southAmerica:'Sud America',oceania:'Oceania',antarctica:'Antartide',westernEurope:'Europa occidentale',westAfrica:'Africa occidentale',centralAfrica:'Africa centrale',latinAmerica:'America Latina',middleEast:'Medio Oriente',southAsia:'Asia meridionale',eastAsia:'Asia orientale'},
-es:{rotate:'Rotación del globo',auto:'Rotación automática',stop:'Detener rotación',available:'disponible',connected:'conectado',offline:'sin conexión',ownerCurrent:'OWNER · país actual',privacy:'Las posiciones mostradas son zonas aproximadas, nunca seguimiento GPS preciso.',loading:'Cargando mapa mundial…',unavailable:'Mapa detallado temporalmente no disponible',hidden:'agente(s) sin zona compartida siguen visibles en la lista.',agents:'Agentes',clients:'Clientes',relations:'Relaciones',growth:'Growth',all:'Todo',clientOnline:'cliente conectado',clientActive:'cliente activo',visitor:'visitantes',support:'soporte activo',noData:'No hay datos geográficos fiables para esta capa.',events:'eventos',stations:'estaciones',engagement:'Participación',actions:'acciones',europe:'Europa',africa:'África',asia:'Asia',northAmerica:'América del Norte',southAmerica:'América del Sur',oceania:'Oceanía',antarctica:'Antártida',westernEurope:'Europa occidental',westAfrica:'África occidental',centralAfrica:'África central',latinAmerica:'América Latina',middleEast:'Oriente Medio',southAsia:'Asia del Sur',eastAsia:'Asia Oriental'},
-pt:{rotate:'Rotação do globo',auto:'Rotação automática',stop:'Parar rotação',available:'disponível',connected:'ligado',offline:'offline',ownerCurrent:'OWNER · país atual',privacy:'As posições apresentadas são zonas aproximadas, nunca seguimento GPS preciso.',loading:'A carregar mapa mundial…',unavailable:'Mapa detalhado temporariamente indisponível',hidden:'agente(s) sem zona partilhada continuam visíveis na lista.',agents:'Agentes',clients:'Clientes',relations:'Relações',growth:'Growth',all:'Tudo',clientOnline:'cliente ligado',clientActive:'cliente ativo',visitor:'visitantes',support:'suporte ativo',noData:'Sem dados geográficos fiáveis para esta camada.',events:'eventos',stations:'estações',engagement:'Envolvimento',actions:'ações',europe:'Europa',africa:'África',asia:'Ásia',northAmerica:'América do Norte',southAmerica:'América do Sul',oceania:'Oceânia',antarctica:'Antártida',westernEurope:'Europa Ocidental',westAfrica:'África Ocidental',centralAfrica:'África Central',latinAmerica:'América Latina',middleEast:'Médio Oriente',southAsia:'Sul da Ásia',eastAsia:'Ásia Oriental'},
+type Copy = {
+  agents: string; clients: string; relations: string; growth: string; all: string; filters: string; status: string; geography: string; period: string;
+  allStatuses: string; online: string; available: string; busy: string; offline: string; risk: string; world: string; rotate: string; auto: string; stop: string;
+  ownerCurrent: string; privacy: string; loading: string; unavailable: string; noData: string; hidden: string; cluster: string; close: string; details: string;
+  visitor: string; engaged: string; lead: string; prospect: string; client: string; events: string; stations: string; engagement: string; actions: string;
+  activeEvent: string; capture: string; sharing: string; media: string; pending: string; failed: string; support: string; conversion: string; refreshed: string; regular: string; business: string; enterprise: string;
 };
-const CONTINENTS:GeoLabel[]=[{key:'europe',lon:15,lat:52},{key:'africa',lon:20,lat:5},{key:'asia',lon:88,lat:47},{key:'northAmerica',lon:-105,lat:49},{key:'southAmerica',lon:-60,lat:-20},{key:'oceania',lon:137,lat:-24},{key:'antarctica',lon:15,lat:-75}];
-const ZONES:GeoLabel[]=[{key:'westernEurope',lon:5,lat:48},{key:'westAfrica',lon:-4,lat:10},{key:'centralAfrica',lon:20,lat:0},{key:'northAmerica',lon:-105,lat:39},{key:'latinAmerica',lon:-70,lat:-8},{key:'middleEast',lon:44,lat:28},{key:'southAsia',lon:78,lat:21},{key:'eastAsia',lon:112,lat:34},{key:'oceania',lon:145,lat:-29}];
-function readLanguage():Language{if(typeof window==='undefined')return'fr';const value=window.localStorage.getItem('khe.web.language');return value&&value in copy?value as Language:'fr';}
-function rings(geometry:Geometry):number[][][]{return geometry.type==='Polygon'?geometry.coordinates as number[][][]:(geometry.coordinates as number[][][][]).flat();}
-function localizedCountry(p:CountryProps,language:Language){const key=(`NAME_${language.toUpperCase()}`) as keyof CountryProps;return String(p[key]||p.NAME_EN||p.ADMIN||'');}
-function iso2(p:CountryProps){return String(p.ISO_A2_EH||p.ISO_A2||'').toUpperCase();}
-function displayName(a:{firstName?:string|null;lastName?:string|null;email?:string|null}){return [a.firstName,a.lastName].filter(Boolean).join(' ')||a.email||'KHE';}
 
-export function OperationsGlobe({agents}:{agents:AgentPoint[]}){
-  const[rotation,setRotation]=useState(0);const[playing,setPlaying]=useState(true);const[world,setWorld]=useState<WorldData|null>(null);const[worldError,setWorldError]=useState(false);const[language,setLanguage]=useState<Language>('fr');
-  const[mode,setMode]=useState<Mode>('agents');const[overview,setOverview]=useState<GlobeOverview|null>(null);const[ownerGeo,setOwnerGeo]=useState<OwnerGeo|null>(null);const[selected,setSelected]=useState<Selected>(null);const ownerFocused=useRef(false);
-  const size=520,c=size/2,r=218,t=copy[language];const clients=overview?.clients??[];const growth=overview?.growth.geographies??[];const relationRecords=overview?.relations??[];
-  useEffect(()=>{setLanguage(readLanguage());const handler=(event:Event)=>{const detail=(event as CustomEvent<string>).detail;if(detail&&detail in copy)setLanguage(detail as Language);};window.addEventListener('khe-language-changed',handler);return()=>window.removeEventListener('khe-language-changed',handler);},[]);
-  useEffect(()=>{let active=true;fetch(WORLD_SOURCE,{cache:'force-cache'}).then(response=>{if(!response.ok)throw new Error('world map');return response.json() as Promise<WorldData>;}).then(data=>{if(active)setWorld(data);}).catch(()=>{if(active)setWorldError(true);});return()=>{active=false;};},[]);
-  useEffect(()=>{let active=true;const load=async()=>{const results=await Promise.allSettled([apiRequest<GlobeOverview>('/operations/globe/overview'),apiRequest<OwnerGeo>('/operations/geo/me')]);if(!active)return;if(results[0].status==='fulfilled')setOverview(results[0].value);if(results[1].status==='fulfilled')setOwnerGeo(results[1].value);};void load();const timer=window.setInterval(()=>void load(),15000);return()=>{active=false;window.clearInterval(timer);};},[]);
-  useEffect(()=>{if(!world||!ownerGeo?.isOwner||!ownerGeo.countryCode||ownerFocused.current)return;const feature=world.features.find(item=>iso2(item.properties)===ownerGeo.countryCode);const lon=Number(feature?.properties.LABEL_X);ownerFocused.current=true;if(!Number.isFinite(lon))return;setPlaying(false);setRotation(lon);const timer=window.setTimeout(()=>setPlaying(true),2400);return()=>window.clearTimeout(timer);},[world,ownerGeo]);
-  useEffect(()=>{if(!playing)return;const timer=window.setInterval(()=>setRotation(value=>{const next=value+.55;return next>180?-180:next;}),90);return()=>window.clearInterval(timer);},[playing]);
-  const project=(lon:number,lat:number)=>{const phi=lat*Math.PI/180;const lambda=(lon-rotation)*Math.PI/180;const visibility=Math.cos(phi)*Math.cos(lambda);return{visible:visibility>=-.015,x:c+r*Math.cos(phi)*Math.sin(lambda),y:c-r*Math.sin(phi),depth:Math.max(0,visibility)};};
-  const ownerCountryCode=ownerGeo?.isOwner?ownerGeo.countryCode?.toUpperCase()||null:null;
-  const countryByCode=useMemo(()=>{const map=new Map<string,Country>();world?.features.forEach(feature=>{const code=iso2(feature.properties);if(code&&code!=='-99')map.set(code,feature);});return map;},[world]);
-  const countryShapes=useMemo(()=>{if(!world)return[];return world.features.map((country,index)=>{const paths:string[]=[];for(const ring of rings(country.geometry)){let current='';let visibleCount=0;for(const pair of ring){const p=project(pair[0],pair[1]);if(p.visible){current+=`${visibleCount?'L':'M'}${p.x.toFixed(1)},${p.y.toFixed(1)}`;visibleCount++;}else if(visibleCount>2){paths.push(current);current='';visibleCount=0;}else{current='';visibleCount=0;}}if(visibleCount>2)paths.push(current);}return{country,index,paths};}).filter(item=>item.paths.length);},[world,rotation]);
-  const labels=useMemo(()=>{if(!world)return[];return world.features.map(country=>{const p=country.properties;if(!Number.isFinite(p.LABEL_X)||!Number.isFinite(p.LABEL_Y))return null;const q=project(Number(p.LABEL_X),Number(p.LABEL_Y));if(!q.visible||q.depth<.12)return null;return{name:localizedCountry(p,language),code:iso2(p),rank:Number(p.LABELRANK||9),x:q.x,y:q.y,depth:q.depth};}).filter(Boolean).sort((a,b)=>(a!.rank-b!.rank)||((b!.depth)-(a!.depth))).slice(0,32) as Array<{name:string;code:string;rank:number;x:number;y:number;depth:number}>;},[world,rotation,language]);
-  const agentPoints=useMemo(()=>agents.filter(a=>Number.isFinite(Number(a.latitude))&&Number.isFinite(Number(a.longitude))).map(agent=>({agent,...project(Number(agent.longitude),Number(agent.latitude))})).filter(point=>point.visible),[agents,rotation]);
-  const clientLocations=useMemo(()=>clients.map(client=>{let lon=Number(client.lastLongitude),lat=Number(client.lastLatitude);if(!Number.isFinite(lon)||!Number.isFinite(lat)){const feature=client.lastCountryCode?countryByCode.get(client.lastCountryCode.toUpperCase()):undefined;lon=Number(feature?.properties.LABEL_X);lat=Number(feature?.properties.LABEL_Y);}if(!Number.isFinite(lon)||!Number.isFinite(lat))return null;return{client,lon,lat,...project(lon,lat)};}).filter(Boolean) as Array<{client:ClientPoint;lon:number;lat:number;visible:boolean;x:number;y:number;depth:number}>,[clients,countryByCode,rotation]);
-  const growthPoints=useMemo(()=>growth.filter(g=>Number.isFinite(Number(g.latitude))&&Number.isFinite(Number(g.longitude))).map(g=>({g,...project(Number(g.longitude),Number(g.latitude))})).filter(p=>p.visible),[growth,rotation]);
-  const relations=useMemo(()=>{const clientsById=new Map(clientLocations.map(x=>[x.client.id,x]));const agentById=new Map(agents.map(x=>[x.id,x]));return relationRecords.flatMap(item=>{const agent=agentById.get(item.agentId);const clientLocation=clientsById.get(item.clientId);if(!agent||!clientLocation)return[];const agentLon=Number(agent.longitude),agentLat=Number(agent.latitude);if(!Number.isFinite(agentLon)||!Number.isFinite(agentLat))return[];const a=project(agentLon,agentLat),b=project(clientLocation.lon,clientLocation.lat);if(!a.visible||!b.visible)return[];return[{item,agent,client:clientLocation.client,a,b}];});},[relationRecords,clientLocations,agents,rotation]);
-  const hidden=agents.filter(a=>!Number.isFinite(Number(a.latitude))||!Number.isFinite(Number(a.longitude)));
-  const continentLabels=CONTINENTS.map(item=>({...item,name:t[item.key],...project(item.lon,item.lat)})).filter(x=>x.visible&&x.depth>.24);
-  const zoneLabels=ZONES.map(item=>({...item,name:t[item.key],...project(item.lon,item.lat)})).filter(x=>x.visible&&x.depth>.34);
-  const showAgents=mode==='agents'||mode==='relations'||mode==='all';const showClients=mode==='clients'||mode==='relations'||mode==='all';const showRelations=mode==='relations'||mode==='all';const showGrowth=mode==='growth'||mode==='all';
-  const layerCount=mode==='agents'?agentPoints.length:mode==='clients'?clientLocations.filter(x=>x.visible).length:mode==='relations'?relations.length:mode==='growth'?growthPoints.length:agentPoints.length+clientLocations.filter(x=>x.visible).length+growthPoints.length;
-  return <div className="operations-globe">
-    <div className="globe-modebar">{([['agents',t.agents],['clients',t.clients],['relations',t.relations],['growth',t.growth],['all',t.all]] as const).map(([key,label])=><button key={key} type="button" className={mode===key?'mode active':'mode'} onClick={()=>{setMode(key);setSelected(null);}}>{label}</button>)}</div>
-    <div className="globe-stage"><div className="globe-halo"/><svg viewBox={`0 0 ${size} ${size}`} width="100%" className="world-globe" role="img" aria-label="KHE Global Intelligence globe">
-      <defs><radialGradient id="ocean" cx="37%" cy="30%"><stop offset="0" stopColor="#203446"/><stop offset=".55" stopColor="#0f1b26"/><stop offset="1" stopColor="#05090d"/></radialGradient><radialGradient id="shine" cx="28%" cy="20%"><stop offset="0" stopColor="rgba(255,255,255,.24)"/><stop offset=".55" stopColor="rgba(255,255,255,.02)"/><stop offset="1" stopColor="rgba(255,255,255,0)"/></radialGradient><clipPath id="earth-clip"><circle cx={c} cy={c} r={r}/></clipPath><filter id="agent-glow"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter><filter id="owner-glow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
-      <circle cx={c} cy={c} r={r} fill="url(#ocean)" stroke="rgba(218,177,76,.72)" strokeWidth="2.4"/>
-      <g clipPath="url(#earth-clip)"><g className="geo-grid" fill="none" stroke="rgba(143,166,187,.13)" strokeWidth=".8"><ellipse cx={c} cy={c} rx={r*.72} ry={r}/><ellipse cx={c} cy={c} rx={r*.36} ry={r}/><line x1={c-r} y1={c} x2={c+r} y2={c}/><ellipse cx={c} cy={c-r*.49} rx={r*.87} ry={r*.25}/><ellipse cx={c} cy={c+r*.49} rx={r*.87} ry={r*.25}/></g>
-        {countryShapes.map(({country,index,paths})=>{const code=iso2(country.properties);const isOwner=Boolean(ownerCountryCode&&code===ownerCountryCode);return paths.map((d,i)=><path key={`${index}-${i}`} d={d} className={`country ${isOwner?'owner-country':''} continent-${(country.properties.CONTINENT||'other').replace(/\s+/g,'-').toLowerCase()}`} onClick={()=>setSelected({kind:'country',title:localizedCountry(country.properties,language),subtitle:isOwner?t.ownerCurrent:code,details:[t.privacy]})}/>);})}
-        {showRelations?relations.map(({item,agent,client,a,b})=>{const mx=(a.x+b.x)/2,my=Math.min(a.y,b.y)-36;const d=`M${a.x.toFixed(1)},${a.y.toFixed(1)} Q${mx.toFixed(1)},${my.toFixed(1)} ${b.x.toFixed(1)},${b.y.toFixed(1)}`;return <path key={item.id} d={d} className="relation-line" onClick={()=>setSelected({kind:'relation',title:`${displayName(agent)} ↔ ${client.name}`,subtitle:t.support,details:[item.subject,item.status,new Date(item.lastMessageAt).toLocaleString()]})}/>;}):null}
-        {zoneLabels.map(zone=><text key={zone.key} x={zone.x} y={zone.y} textAnchor="middle" className="zone-label">{zone.name}</text>)}
-        {continentLabels.map(continent=><text key={continent.key} x={continent.x} y={continent.y} textAnchor="middle" className="continent-label">{continent.name}</text>)}
-        {labels.map(label=><text key={`${label.name}-${label.x}`} x={label.x} y={label.y} textAnchor="middle" className={`country-label rank-${Math.min(8,label.rank)} ${ownerCountryCode&&label.code===ownerCountryCode?'owner-label':''}`}>{ownerCountryCode&&label.code===ownerCountryCode?'★ ':''}{label.name}</text>)}
-        {showGrowth?growthPoints.map(({g,x,y,depth},i)=><g key={`${g.countryCode}-${g.regionCode}-${g.municipality}-${i}`} transform={`translate(${x} ${y})`} opacity={.48+.52*depth} className="clickable" onClick={()=>setSelected({kind:'growth',title:[g.municipality,g.regionCode,g.countryCode].filter(Boolean).join(' · ')||t.growth,subtitle:`${g.visitors} ${t.visitor}`,details:[`${g.events} ${t.actions}`]})}><circle r={Math.min(13,5+Math.sqrt(Math.max(1,g.visitors))*1.7)} fill="rgba(239,148,63,.68)" stroke="#ffd08a" strokeWidth="1.1"/><circle r={Math.min(19,9+Math.sqrt(Math.max(1,g.visitors))*2)} fill="none" stroke="rgba(239,148,63,.28)" strokeWidth="1"/></g>):null}
-        {showClients?clientLocations.filter(p=>p.visible).map(({client,x,y,depth})=>{const online=Boolean(client.online);return <g key={client.id} transform={`translate(${x} ${y}) rotate(45)`} opacity={.48+.52*depth} className="clickable" onClick={()=>setSelected({kind:'client',title:client.name,subtitle:online?t.clientOnline:t.clientActive,details:[[client.lastMunicipality,client.lastRegionCode,client.lastCountryCode].filter(Boolean).join(' · '),`${client.eventCount||0} ${t.events} · ${client.stationSessionCount||0} ${t.stations}`,`${t.engagement} ${client.engagementScore??0}/100`].filter(Boolean)})}><rect x={online?-6:-5} y={online?-6:-5} width={online?12:10} height={online?12:10} rx="2" fill={client.regular?'#c39cff':online?'#54d7e7':'#7f8dc0'} stroke="#fff" strokeWidth="1.1"/><circle r={online?12:9} fill="none" stroke={online?'rgba(84,215,231,.42)':'rgba(127,141,192,.28)'} strokeWidth="1"/></g>;}):null}
-        {showAgents?agentPoints.map(({agent,x,y,depth})=><g key={agent.id} transform={`translate(${x} ${y})`} opacity={.45+.55*depth} filter="url(#agent-glow)" className="clickable" onClick={()=>setSelected({kind:'agent',title:displayName(agent),subtitle:agent.available?t.available:agent.online?t.connected:t.offline,details:[[agent.municipality,agent.regionCode,agent.countryCode].filter(Boolean).join(' · '),agent.email].filter(Boolean) as string[]})}><circle r={agent.available?7:agent.online?5.5:4.5} fill={agent.available?'#6fe09a':agent.online?'#e0b94d':'#7c8794'} stroke="#fff" strokeWidth="1.25"/>{agent.available?<circle r="12" fill="none" stroke="rgba(111,224,154,.5)" strokeWidth="1.2"/>:null}</g>):null}<circle cx={c} cy={c} r={r} fill="url(#shine)" pointerEvents="none"/></g><circle cx={c} cy={c} r={r} fill="none" stroke="rgba(255,220,131,.25)" strokeWidth="7" opacity=".22"/>
-    </svg>{!world&&!worldError?<div className="globe-loading">{t.loading}</div>:null}{worldError?<div className="globe-loading">{t.unavailable}</div>:null}{layerCount===0&&world?<div className="globe-empty">{t.noData}</div>:null}</div>
-    {selected?<div className="globe-detail"><div><strong>{selected.title}</strong><div className="detail-subtitle">{selected.subtitle}</div></div><div className="detail-lines">{selected.details.map((line,i)=><span key={`${line}-${i}`}>{line}</span>)}</div><button type="button" onClick={()=>setSelected(null)} aria-label="Fermer">×</button></div>:null}
-    <div className="globe-controls"><label><span>{t.rotate}</span><input type="range" min={-180} max={180} value={rotation} onChange={e=>{setPlaying(false);setRotation(Number(e.target.value));}}/></label><button type="button" className="button secondary" onClick={()=>setPlaying(v=>!v)}>{playing?`Ⅱ ${t.stop}`:`▶ ${t.auto}`}</button></div>
-    <div className="globe-legend"><span><i className="dot owner"/> {t.ownerCurrent}</span><span><i className="dot available"/> {t.agents}</span><span><i className="diamond client"/> {t.clients}</span><span><i className="dot prospect"/> {t.growth}</span><span><i className="line relation"/> {t.relations}</span></div><p className="globe-privacy">{t.privacy}</p>{hidden.length?<p className="globe-privacy">{hidden.length} {t.hidden}</p>:null}
+const WORLD_SOURCE = 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson';
+const copy: Record<Language, Copy> = {
+  fr: { agents:'Agents',clients:'Clients',relations:'Relations',growth:'Croissance',all:'Tout',filters:'Filtres',status:'Statut',geography:'Zone',period:'Période',allStatuses:'Tous',online:'En ligne',available:'Disponible',busy:'Occupé',offline:'Hors ligne',risk:'SLA à risque',world:'Monde',rotate:'Rotation du globe',auto:'Rotation automatique',stop:'Arrêter la rotation',ownerCurrent:'OWNER · pays actuel',privacy:'Position estimée de zone, jamais un suivi GPS précis.',loading:'Chargement du Globe KHE…',unavailable:'Carte détaillée indisponible : le globe simplifié reste actif.',noData:'Aucune donnée géographique fiable pour cette couche.',hidden:'élément(s) sans zone restent dans les listes, sans point inventé.',cluster:'éléments dans cette zone',close:'Fermer',details:'Détails',visitor:'Visiteur',engaged:'Engagé',lead:'Lead',prospect:'Prospect',client:'Client',events:'événements',stations:'stations',engagement:'Engagement',actions:'actions',activeEvent:'événement actif',capture:'CAPTURE',sharing:'SHARING',media:'médias',pending:'en attente',failed:'échec',support:'Support actif',conversion:'Conversion',refreshed:'Actualisé',regular:'Régulier',business:'Business',enterprise:'Enterprise' },
+  en: { agents:'Agents',clients:'Clients',relations:'Relations',growth:'Growth',all:'All',filters:'Filters',status:'Status',geography:'Area',period:'Period',allStatuses:'All',online:'Online',available:'Available',busy:'Busy',offline:'Offline',risk:'SLA at risk',world:'World',rotate:'Globe rotation',auto:'Auto rotate',stop:'Stop rotation',ownerCurrent:'OWNER · current country',privacy:'Approximate area only, never precise GPS tracking.',loading:'Loading KHE Globe…',unavailable:'Detailed map unavailable: the simplified globe remains active.',noData:'No reliable geographic data for this layer.',hidden:'item(s) without an area remain in lists, with no invented point.',cluster:'items in this area',close:'Close',details:'Details',visitor:'Visitor',engaged:'Engaged',lead:'Lead',prospect:'Prospect',client:'Client',events:'events',stations:'stations',engagement:'Engagement',actions:'actions',activeEvent:'active event',capture:'CAPTURE',sharing:'SHARING',media:'media',pending:'pending',failed:'failed',support:'Active support',conversion:'Conversion',refreshed:'Refreshed',regular:'Regular',business:'Business',enterprise:'Enterprise' },
+  de: { agents:'Agenten',clients:'Kunden',relations:'Beziehungen',growth:'Wachstum',all:'Alle',filters:'Filter',status:'Status',geography:'Gebiet',period:'Zeitraum',allStatuses:'Alle',online:'Online',available:'Verfügbar',busy:'Beschäftigt',offline:'Offline',risk:'SLA gefährdet',world:'Welt',rotate:'Globus drehen',auto:'Automatisch drehen',stop:'Rotation stoppen',ownerCurrent:'OWNER · aktuelles Land',privacy:'Nur geschätztes Gebiet, niemals präzises GPS-Tracking.',loading:'KHE-Globus wird geladen…',unavailable:'Detailkarte nicht verfügbar: der vereinfachte Globus bleibt aktiv.',noData:'Keine verlässlichen Geodaten für diese Ebene.',hidden:'Element(e) ohne Gebiet bleiben in Listen, ohne erfundenen Punkt.',cluster:'Elemente in diesem Gebiet',close:'Schließen',details:'Details',visitor:'Besucher',engaged:'Engagiert',lead:'Lead',prospect:'Interessent',client:'Kunde',events:'Events',stations:'Stationen',engagement:'Engagement',actions:'Aktionen',activeEvent:'aktives Event',capture:'CAPTURE',sharing:'SHARING',media:'Medien',pending:'ausstehend',failed:'fehlgeschlagen',support:'Aktiver Support',conversion:'Konversion',refreshed:'Aktualisiert',regular:'Regelmäßig',business:'Business',enterprise:'Enterprise' },
+  it: { agents:'Agenti',clients:'Clienti',relations:'Relazioni',growth:'Crescita',all:'Tutto',filters:'Filtri',status:'Stato',geography:'Zona',period:'Periodo',allStatuses:'Tutti',online:'Online',available:'Disponibile',busy:'Occupato',offline:'Offline',risk:'SLA a rischio',world:'Mondo',rotate:'Rotazione del globo',auto:'Rotazione automatica',stop:'Ferma rotazione',ownerCurrent:'OWNER · paese attuale',privacy:'Solo zona approssimativa, mai tracciamento GPS preciso.',loading:'Caricamento Globe KHE…',unavailable:'Mappa dettagliata non disponibile: il globo semplificato resta attivo.',noData:'Nessun dato geografico affidabile per questo livello.',hidden:'elemento/i senza zona restano nelle liste, senza punti inventati.',cluster:'elementi in questa zona',close:'Chiudi',details:'Dettagli',visitor:'Visitatore',engaged:'Coinvolto',lead:'Lead',prospect:'Potenziale',client:'Cliente',events:'eventi',stations:'stazioni',engagement:'Coinvolgimento',actions:'azioni',activeEvent:'evento attivo',capture:'CAPTURE',sharing:'SHARING',media:'media',pending:'in attesa',failed:'errore',support:'Supporto attivo',conversion:'Conversione',refreshed:'Aggiornato',regular:'Regolare',business:'Business',enterprise:'Enterprise' },
+  es: { agents:'Agentes',clients:'Clientes',relations:'Relaciones',growth:'Crecimiento',all:'Todo',filters:'Filtros',status:'Estado',geography:'Zona',period:'Periodo',allStatuses:'Todos',online:'En línea',available:'Disponible',busy:'Ocupado',offline:'Sin conexión',risk:'SLA en riesgo',world:'Mundo',rotate:'Rotación del globo',auto:'Rotación automática',stop:'Detener rotación',ownerCurrent:'OWNER · país actual',privacy:'Solo zona aproximada, nunca seguimiento GPS preciso.',loading:'Cargando Globo KHE…',unavailable:'Mapa detallado no disponible: el globo simplificado sigue activo.',noData:'No hay datos geográficos fiables para esta capa.',hidden:'elemento(s) sin zona permanecen en listas, sin puntos inventados.',cluster:'elementos en esta zona',close:'Cerrar',details:'Detalles',visitor:'Visitante',engaged:'Interesado',lead:'Lead',prospect:'Prospecto',client:'Cliente',events:'eventos',stations:'estaciones',engagement:'Participación',actions:'acciones',activeEvent:'evento activo',capture:'CAPTURE',sharing:'SHARING',media:'medios',pending:'pendiente',failed:'fallo',support:'Soporte activo',conversion:'Conversión',refreshed:'Actualizado',regular:'Regular',business:'Business',enterprise:'Enterprise' },
+  pt: { agents:'Agentes',clients:'Clientes',relations:'Relações',growth:'Crescimento',all:'Tudo',filters:'Filtros',status:'Estado',geography:'Zona',period:'Período',allStatuses:'Todos',online:'Online',available:'Disponível',busy:'Ocupado',offline:'Offline',risk:'SLA em risco',world:'Mundo',rotate:'Rotação do globo',auto:'Rotação automática',stop:'Parar rotação',ownerCurrent:'OWNER · país atual',privacy:'Apenas zona aproximada, nunca seguimento GPS preciso.',loading:'A carregar Globo KHE…',unavailable:'Mapa detalhado indisponível: o globo simplificado continua ativo.',noData:'Sem dados geográficos fiáveis para esta camada.',hidden:'elemento(s) sem zona permanecem nas listas, sem ponto inventado.',cluster:'elementos nesta zona',close:'Fechar',details:'Detalhes',visitor:'Visitante',engaged:'Envolvido',lead:'Lead',prospect:'Prospect',client:'Cliente',events:'eventos',stations:'estações',engagement:'Envolvimento',actions:'ações',activeEvent:'evento ativo',capture:'CAPTURE',sharing:'SHARING',media:'media',pending:'pendente',failed:'falha',support:'Suporte ativo',conversion:'Conversão',refreshed:'Atualizado',regular:'Regular',business:'Business',enterprise:'Enterprise' },
+};
+
+const stageColors: Record<Stage, string> = { visitor:'#718096',engaged:'#5aa6c9',lead:'#d8ae45',prospect:'#ef943f',client:'#7bd89b' };
+function readLanguage(): Language { if (typeof window === 'undefined') return 'fr'; const value = window.localStorage.getItem('khe.web.language'); return value && value in copy ? value as Language : 'fr'; }
+function rings(geometry: Geometry): number[][][] { return geometry.type === 'Polygon' ? geometry.coordinates as number[][][] : (geometry.coordinates as number[][][][]).flat(); }
+function iso2(properties: CountryProps) { return String(properties.ISO_A2_EH || properties.ISO_A2 || '').toUpperCase(); }
+function localizedCountry(properties: CountryProps, language: Language) { const key = `NAME_${language.toUpperCase()}` as keyof CountryProps; return String(properties[key] || properties.NAME_EN || properties.ADMIN || ''); }
+function displayName(agent: AgentPoint) { return [agent.firstName, agent.lastName].filter(Boolean).join(' ') || agent.email; }
+function activate(event: React.KeyboardEvent, action: () => void) { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); action(); } }
+
+export function OperationsGlobe({ agents }: { agents: AgentPoint[] }) {
+  const [rotation, setRotation] = useState(0);
+  const [playing, setPlaying] = useState(true);
+  const [reducedMotion, setReducedMotion] = useState(false);
+  const [world, setWorld] = useState<WorldData | null>(null);
+  const [worldError, setWorldError] = useState(false);
+  const [language, setLanguage] = useState<Language>('fr');
+  const [role, setRole] = useState<string>('ADMIN');
+  const [mode, setMode] = useState<Mode>('agents');
+  const [windowKey, setWindowKey] = useState<WindowKey>('real-time');
+  const [status, setStatus] = useState<StatusFilter>('all');
+  const [country, setCountry] = useState('all');
+  const [overview, setOverview] = useState<GlobeOverview | null>(null);
+  const [ownerGeo, setOwnerGeo] = useState<OwnerGeo | null>(null);
+  const [selected, setSelected] = useState<Selected>(null);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [viewportWidth, setViewportWidth] = useState(1000);
+  const ownerFocused = useRef(false);
+  const frameRef = useRef<number | null>(null);
+  const lastFrameRef = useRef(0);
+  const t = copy[language];
+  const size = 520, center = size / 2, radius = 218;
+  const clients = overview?.clients ?? [];
+  const growth = overview?.growth.geographies ?? [];
+  const relationRecords = overview?.relations ?? [];
+  const isOwner = role === 'OWNER';
+
+  useEffect(() => {
+    setLanguage(readLanguage());
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const updateMotion = () => { setReducedMotion(media.matches); if (media.matches) setPlaying(false); };
+    const updateWidth = () => setViewportWidth(window.innerWidth);
+    const updateLanguage = (event: Event) => { const detail = (event as CustomEvent<string>).detail; if (detail && detail in copy) setLanguage(detail as Language); };
+    updateMotion(); updateWidth();
+    media.addEventListener('change', updateMotion); window.addEventListener('resize', updateWidth); window.addEventListener('khe-language-changed', updateLanguage);
+    return () => { media.removeEventListener('change', updateMotion); window.removeEventListener('resize', updateWidth); window.removeEventListener('khe-language-changed', updateLanguage); };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    fetch(WORLD_SOURCE, { cache: 'force-cache' }).then((response) => { if (!response.ok) throw new Error('world map'); return response.json() as Promise<WorldData>; }).then((data) => { if (active) setWorld(data); }).catch(() => { if (active) setWorldError(true); });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    Promise.allSettled([apiRequest<CurrentUser>('/auth/me'), apiRequest<OwnerGeo>('/operations/geo/me')]).then((results) => {
+      if (!active) return;
+      if (results[0].status === 'fulfilled') setRole(results[0].value.role);
+      if (results[1].status === 'fulfilled') setOwnerGeo(results[1].value);
+    });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => { if (!isOwner && mode === 'all') setMode('agents'); }, [isOwner, mode]);
+  useEffect(() => { setSelected(null); setCountry('all'); setStatus('all'); }, [mode]);
+  useEffect(() => { setSelected(null); }, [status, windowKey]);
+
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true);
+    try {
+      const data = await apiRequest<GlobeOverview>(`/operations/globe/overview?mode=${mode}&window=${windowKey}`);
+      setOverview(data); setError('');
+    } catch (loadError) {
+      if (!quiet) setError(loadError instanceof Error ? loadError.message : t.noData);
+    } finally { if (!quiet) setLoading(false); }
+  }, [mode, t.noData, windowKey]);
+
+  useEffect(() => { void load(); const timer = window.setInterval(() => void load(true), 15_000); return () => window.clearInterval(timer); }, [load]);
+
+  const project = useCallback((longitude: number, latitude: number) => {
+    const phi = latitude * Math.PI / 180, lambda = (longitude - rotation) * Math.PI / 180;
+    const visibility = Math.cos(phi) * Math.cos(lambda);
+    return { visible: visibility >= -0.015, x: center + radius * Math.cos(phi) * Math.sin(lambda), y: center - radius * Math.sin(phi), depth: Math.max(0, visibility) };
+  }, [rotation]);
+
+  useEffect(() => {
+    if (!playing || reducedMotion) return;
+    const animate = (time: number) => {
+      if (time - lastFrameRef.current >= 33) { setRotation((value) => value >= 180 ? -180 : value + 0.28); lastFrameRef.current = time; }
+      frameRef.current = window.requestAnimationFrame(animate);
+    };
+    frameRef.current = window.requestAnimationFrame(animate);
+    return () => { if (frameRef.current !== null) window.cancelAnimationFrame(frameRef.current); };
+  }, [playing, reducedMotion]);
+
+  const ownerCountryCode = ownerGeo?.isOwner ? ownerGeo.countryCode?.toUpperCase() || null : null;
+  const countryByCode = useMemo(() => { const map = new Map<string, Country>(); world?.features.forEach((feature) => { const code = iso2(feature.properties); if (code && code !== '-99') map.set(code, feature); }); return map; }, [world]);
+  useEffect(() => {
+    if (!world || !ownerCountryCode || ownerFocused.current) return;
+    const feature = countryByCode.get(ownerCountryCode), longitude = Number(feature?.properties.LABEL_X);
+    ownerFocused.current = true; if (!Number.isFinite(longitude)) return;
+    setPlaying(false); setRotation(longitude); const timer = window.setTimeout(() => { if (!reducedMotion) setPlaying(true); }, 2200);
+    return () => window.clearTimeout(timer);
+  }, [countryByCode, ownerCountryCode, reducedMotion, world]);
+
+  const countryShapes = useMemo(() => {
+    if (!world) return [];
+    return world.features.map((feature, index) => {
+      const paths: string[] = [];
+      for (const ring of rings(feature.geometry)) {
+        let current = '', visibleCount = 0;
+        for (const [longitude, latitude] of ring) {
+          const point = project(longitude, latitude);
+          if (point.visible) { current += `${visibleCount ? 'L' : 'M'}${point.x.toFixed(1)},${point.y.toFixed(1)}`; visibleCount += 1; }
+          else if (visibleCount > 2) { paths.push(current); current = ''; visibleCount = 0; }
+          else { current = ''; visibleCount = 0; }
+        }
+        if (visibleCount > 2) paths.push(current);
+      }
+      return { feature, index, paths };
+    }).filter((item) => item.paths.length);
+  }, [project, world]);
+
+  const labels = useMemo(() => {
+    if (!world) return [];
+    return world.features.map((feature) => {
+      const properties = feature.properties, longitude = Number(properties.LABEL_X), latitude = Number(properties.LABEL_Y);
+      if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return null;
+      const point = project(longitude, latitude); if (!point.visible || point.depth < 0.12) return null;
+      return { name: localizedCountry(properties, language), code: iso2(properties), rank: Number(properties.LABELRANK || 9), ...point };
+    }).filter(Boolean).sort((a, b) => (a!.rank - b!.rank) || (b!.depth - a!.depth)).slice(0, labelBudget(viewportWidth)) as Array<{ name: string; code: string; rank: number; x: number; y: number; depth: number }>;
+  }, [language, project, viewportWidth, world]);
+
+  const availableCountries = useMemo(() => {
+    const codes = new Set<string>();
+    agents.forEach((item) => item.countryCode && codes.add(item.countryCode.toUpperCase()));
+    clients.forEach((item) => item.lastCountryCode && codes.add(item.lastCountryCode.toUpperCase()));
+    growth.forEach((item) => item.countryCode && codes.add(item.countryCode.toUpperCase()));
+    return Array.from(codes).filter((code) => countryByCode.has(code)).sort((a, b) => localizedCountry(countryByCode.get(a)!.properties, language).localeCompare(localizedCountry(countryByCode.get(b)!.properties, language)));
+  }, [agents, clients, countryByCode, growth, language]);
+
+  const filteredAgents = useMemo(() => agents.filter((agent) => {
+    if (country !== 'all' && agent.countryCode?.toUpperCase() !== country) return false;
+    if (status === 'online' && !agent.online) return false;
+    if (status === 'available' && !agent.available) return false;
+    if (status === 'busy' && agent.availability !== 'BUSY') return false;
+    if (status === 'offline' && agent.online) return false;
+    return true;
+  }), [agents, country, status]);
+  const filteredClients = useMemo(() => clients.filter((client) => {
+    if (country !== 'all' && client.lastCountryCode?.toUpperCase() !== country) return false;
+    if (status === 'online' && !client.online) return false;
+    if (status === 'offline' && client.online) return false;
+    if (status === 'regular' && !client.regular) return false;
+    if (status === 'business' && client.subscriptionPlan !== 'BUSINESS') return false;
+    if (status === 'enterprise' && client.subscriptionPlan !== 'ENTERPRISE') return false;
+    if (status === 'risk' && !client.failedMediaCount && client.paymentStatus !== 'OVERDUE' && client.subscriptionStatus !== 'SUSPENDED') return false;
+    return true;
+  }), [clients, country, status]);
+  const filteredGrowth = useMemo(() => growth.filter((item) => {
+    if (country !== 'all' && item.countryCode?.toUpperCase() !== country) return false;
+    const selectedStage = status === 'customer' ? 'client' : status;
+    if (['visitor','engaged','lead','prospect','client'].includes(selectedStage) && item.dominantStage !== selectedStage) return false;
+    return true;
+  }), [country, growth, status]);
+  const filteredRelations = useMemo(() => relationRecords.filter((item) => status !== 'risk' || item.slaRisk), [relationRecords, status]);
+
+  const agentLocations = useMemo(() => filteredAgents.flatMap((agent) => {
+    const longitude = Number(agent.longitude), latitude = Number(agent.latitude); if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return [];
+    const point = project(longitude, latitude); return point.visible ? [{ item: agent, ...point }] : [];
+  }), [filteredAgents, project]);
+  const clientLocations = useMemo(() => filteredClients.flatMap((client) => {
+    let longitude = Number(client.lastLongitude), latitude = Number(client.lastLatitude), estimated = false;
+    if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) {
+      const feature = client.lastCountryCode ? countryByCode.get(client.lastCountryCode.toUpperCase()) : undefined;
+      longitude = Number(feature?.properties.LABEL_X); latitude = Number(feature?.properties.LABEL_Y); estimated = true;
+    }
+    if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return [];
+    const point = project(longitude, latitude); return point.visible ? [{ item: { ...client, estimated, longitude, latitude }, ...point }] : [];
+  }), [countryByCode, filteredClients, project]);
+  const growthLocations = useMemo(() => filteredGrowth.flatMap((item) => {
+    const longitude = Number(item.longitude), latitude = Number(item.latitude); if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return [];
+    const point = project(longitude, latitude); return point.visible ? [{ item, ...point }] : [];
+  }), [filteredGrowth, project]);
+  const agentClusters = useMemo(() => clusterProjectedPoints(agentLocations, viewportWidth < 600 ? 35 : 27), [agentLocations, viewportWidth]);
+  const clientClusters = useMemo(() => clusterProjectedPoints(clientLocations, viewportWidth < 600 ? 36 : 28), [clientLocations, viewportWidth]);
+  const growthClusters = useMemo(() => clusterProjectedPoints(growthLocations, viewportWidth < 600 ? 42 : 32), [growthLocations, viewportWidth]);
+
+  const relations = useMemo(() => {
+    const agentMap = new Map(agentLocations.map((point) => [point.item.id, point]));
+    const clientMap = new Map(clientLocations.map((point) => [point.item.id, point]));
+    return filteredRelations.flatMap((item) => { const agent = agentMap.get(item.agentId), client = clientMap.get(item.clientId); return agent && client ? [{ item, agent, client }] : []; });
+  }, [agentLocations, clientLocations, filteredRelations]);
+
+  const hiddenCount = filteredAgents.filter((item) => !Number.isFinite(Number(item.latitude)) || !Number.isFinite(Number(item.longitude))).length + filteredClients.filter((item) => !item.lastCountryCode && (!Number.isFinite(Number(item.lastLatitude)) || !Number.isFinite(Number(item.lastLongitude)))).length;
+  const showAgents = mode === 'agents' || mode === 'relations' || mode === 'all';
+  const showClients = mode === 'clients' || mode === 'relations' || mode === 'all';
+  const showRelations = mode === 'relations' || mode === 'all';
+  const showGrowth = mode === 'growth' || mode === 'all';
+  const layerCount = mode === 'agents' ? agentLocations.length : mode === 'clients' ? clientLocations.length : mode === 'relations' ? relations.length : mode === 'growth' ? growthLocations.length : agentLocations.length + clientLocations.length + growthLocations.length;
+  const modeOptions: Array<[Mode, string]> = [['agents', t.agents], ['clients', t.clients], ['relations', t.relations], ['growth', t.growth], ...(isOwner ? [['all', t.all] as [Mode, string]] : [])];
+  const statusOptions: Array<[StatusFilter, string]> = mode === 'relations'
+    ? [['all', t.allStatuses], ['risk', t.risk]]
+    : mode === 'growth'
+      ? [['all', t.allStatuses], ['visitor', t.visitor], ['engaged', t.engaged], ['lead', t.lead], ['prospect', t.prospect], ['customer', t.client]]
+      : mode === 'clients'
+        ? [['all', t.allStatuses], ['online', t.online], ['offline', t.offline], ['regular', t.regular], ['business', t.business], ['enterprise', t.enterprise], ['risk', t.risk]]
+        : [['all', t.allStatuses], ['online', t.online], ['available', t.available], ['busy', t.busy], ['offline', t.offline]];
+  const toggleSelected = (next: NonNullable<Selected>) => setSelected((current) => current?.key === next.key ? null : next);
+  const selectCountry = (feature: Country) => {
+    const code = iso2(feature.properties); if (!code || code === '-99') return;
+    setCountry(code);
+    const countryAgents = agents.filter((item) => item.countryCode?.toUpperCase() === code).length;
+    const countryClients = clients.filter((item) => item.lastCountryCode?.toUpperCase() === code).length;
+    const countryVisitors = growth.filter((item) => item.countryCode?.toUpperCase() === code).reduce((sum, item) => sum + Number(item.visitors || 0), 0);
+    toggleSelected({ key:`country:${code}`,title:localizedCountry(feature.properties, language),subtitle:code === ownerCountryCode ? t.ownerCurrent : code,details:[`${countryAgents} ${t.agents}`,`${countryClients} ${t.clients}`,`${countryVisitors} ${t.visitor}`] });
+  };
+
+  return <div className="operations-globe" aria-busy={loading}>
+    <div className="globe-toolbar" aria-label={t.filters}>
+      <div className="modebar">{modeOptions.map(([key, label]) => <button key={key} type="button" className={mode === key ? 'mode active' : 'mode'} aria-pressed={mode === key} onClick={() => setMode(key)}>{label}</button>)}</div>
+      <div className="filters">
+        <label><span>{t.status}</span><select value={status} onChange={(event) => setStatus(event.target.value as StatusFilter)}>{statusOptions.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
+        <label><span>{t.geography}</span><select value={country} onChange={(event) => { setCountry(event.target.value); setSelected(null); }}><option value="all">{t.world}</option>{availableCountries.map((code) => <option key={code} value={code}>{localizedCountry(countryByCode.get(code)!.properties, language)}</option>)}</select></label>
+        <label><span>{t.period}</span><select value={windowKey} onChange={(event) => setWindowKey(event.target.value as WindowKey)}><option value="real-time">Temps réel</option><option value="1d">24 h</option><option value="7d">7 j</option><option value="30d">30 j</option></select></label>
+      </div>
+    </div>
+    {showGrowth && overview?.growth ? <div className="kpis" aria-label={t.growth}><span>{overview.growth.summary.visitors} {t.visitor}</span><span>{overview.growth.summary.planSelections} {t.lead}</span><span>{overview.growth.summary.checkouts} {t.prospect}</span><span>{overview.growth.summary.conversions} {t.client}</span><span>{t.conversion} {overview.growth.summary.checkouts ? Math.round(overview.growth.summary.conversions / overview.growth.summary.checkouts * 100) : 0}%</span></div> : null}
+    <div className="globe-stage"><div className="globe-halo"/><svg viewBox={`0 0 ${size} ${size}`} width="100%" className="world-globe" role="img" aria-label="KHE Global Intelligence Globe 2.0">
+      <defs><radialGradient id="ocean" cx="37%" cy="30%"><stop offset="0" stopColor="#203446"/><stop offset=".55" stopColor="#0f1b26"/><stop offset="1" stopColor="#05090d"/></radialGradient><radialGradient id="shine" cx="28%" cy="20%"><stop offset="0" stopColor="rgba(255,255,255,.24)"/><stop offset=".55" stopColor="rgba(255,255,255,.02)"/><stop offset="1" stopColor="rgba(255,255,255,0)"/></radialGradient><clipPath id="earth-clip"><circle cx={center} cy={center} r={radius}/></clipPath><filter id="glow"><feGaussianBlur stdDeviation="3" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+      <circle cx={center} cy={center} r={radius} fill="url(#ocean)" stroke="rgba(218,177,76,.72)" strokeWidth="2.4"/>
+      <g clipPath="url(#earth-clip)"><g className="geo-grid" fill="none" stroke="rgba(143,166,187,.13)" strokeWidth=".8"><ellipse cx={center} cy={center} rx={radius*.72} ry={radius}/><ellipse cx={center} cy={center} rx={radius*.36} ry={radius}/><line x1={center-radius} y1={center} x2={center+radius} y2={center}/><ellipse cx={center} cy={center-radius*.49} rx={radius*.87} ry={radius*.25}/><ellipse cx={center} cy={center+radius*.49} rx={radius*.87} ry={radius*.25}/></g>
+        {countryShapes.map(({ feature, index, paths }) => paths.map((path, pathIndex) => { const code = iso2(feature.properties), action = () => selectCountry(feature); return <path key={`${index}-${pathIndex}`} d={path} className={`country ${code === ownerCountryCode ? 'owner-country' : ''} ${code === country ? 'selected-country' : ''}`} role={pathIndex === 0 ? 'button' : undefined} tabIndex={pathIndex === 0 ? 0 : -1} aria-label={pathIndex === 0 ? localizedCountry(feature.properties, language) : undefined} onClick={action} onKeyDown={(event) => activate(event, action)}/>; }))}
+        {showRelations ? relations.map(({ item, agent, client }) => { const middleX=(agent.x+client.x)/2,middleY=Math.min(agent.y,client.y)-36,path=`M${agent.x.toFixed(1)},${agent.y.toFixed(1)} Q${middleX.toFixed(1)},${middleY.toFixed(1)} ${client.x.toFixed(1)},${client.y.toFixed(1)}`,action=()=>toggleSelected({key:`relation:${item.id}`,title:`${displayName(agent.item)} ↔ ${client.item.name}`,subtitle:item.slaRisk?t.risk:t.support,details:[item.subject,item.status,item.channel,new Date(item.lastMessageAt).toLocaleString()]}); return <path key={item.id} d={path} className={`relation-line ${item.slaRisk?'risk':''}`} role="button" tabIndex={0} aria-label={`${t.relations}: ${displayName(agent.item)} ${client.item.name}`} onClick={action} onKeyDown={(event)=>activate(event,action)}/>; }) : null}
+        {labels.map((label) => <text key={`${label.code}-${label.x}`} x={label.x} y={label.y} textAnchor="middle" className={`country-label rank-${Math.min(8,label.rank)} ${label.code===ownerCountryCode?'owner-label':''}`}>{label.code===ownerCountryCode?'★ ':''}{label.name}</text>)}
+        {showGrowth ? growthClusters.map((cluster) => { const representative=cluster.items[0],count=cluster.items.reduce((sum,item)=>sum+item.visitors,0),action=()=>toggleSelected({key:`growth:${cluster.key}`,title:[representative.municipality,representative.regionCode,representative.countryCode].filter(Boolean).join(' · ')||t.growth,subtitle:`${count} ${t.visitor}`,details:Object.entries(representative.stages).map(([stage,value])=>`${t[stage as Stage]}: ${value}`)}); return <g key={cluster.key} transform={`translate(${cluster.x} ${cluster.y})`} role="button" tabIndex={0} aria-label={`${count} ${t.visitor}`} className="clickable" onClick={action} onKeyDown={(event)=>activate(event,action)}><circle r={Math.min(16,6+Math.sqrt(Math.max(1,count))*1.4)} fill={stageColors[representative.dominantStage]} opacity=".82" stroke="#fff1c2" strokeWidth="1.1"/><circle r={Math.min(22,10+Math.sqrt(Math.max(1,count))*1.8)} fill="none" stroke={stageColors[representative.dominantStage]} opacity=".35"/><text textAnchor="middle" y="3" className="cluster-count">{count}</text></g>; }) : null}
+        {showClients ? clientClusters.map((cluster) => { const client=cluster.items[0],action=()=>toggleSelected({key:`client:${client.id}`,title:cluster.items.length>1?`${cluster.items.length} ${t.cluster}`:client.name,subtitle:client.online?t.online:t.offline,details:cluster.items.length>1?cluster.items.slice(0,5).map((item)=>item.name):[[client.lastMunicipality,client.lastRegionCode,client.lastCountryCode].filter(Boolean).join(' · '),`${client.subscriptionPlan||'—'} · ${client.engagementScore??0}/100`,`${client.activeEventCount||0} ${t.activeEvent} · ${client.stationSessionCount||0} ${t.stations}`,`${t.capture}: ${client.captureOnline?t.online:t.offline} · ${t.sharing}: ${client.sharingOnline?t.online:t.offline}`,`${client.mediaCount||0} ${t.media} · ${client.pendingMediaCount||0} ${t.pending} · ${client.failedMediaCount||0} ${t.failed}`].filter(Boolean)}); return <g key={cluster.key} transform={`translate(${cluster.x} ${cluster.y}) rotate(45)`} role="button" tabIndex={0} aria-label={client.name} className="clickable" onClick={action} onKeyDown={(event)=>activate(event,action)}><rect x={cluster.items.length>1?-8:-6} y={cluster.items.length>1?-8:-6} width={cluster.items.length>1?16:12} height={cluster.items.length>1?16:12} rx="2" fill={client.regular?'#c39cff':client.online?'#54d7e7':'#7f8dc0'} stroke="#fff" strokeWidth="1.1"/><circle r={cluster.items.length>1?14:client.online?11:9} fill="none" stroke="rgba(84,215,231,.4)"/>{cluster.items.length>1?<text transform="rotate(-45)" textAnchor="middle" y="3" className="cluster-count">{cluster.items.length}</text>:null}</g>; }) : null}
+        {showAgents ? agentClusters.map((cluster) => { const agent=cluster.items[0],action=()=>toggleSelected({key:`agent:${agent.id}`,title:cluster.items.length>1?`${cluster.items.length} ${t.cluster}`:displayName(agent),subtitle:agent.available?t.available:agent.online?t.online:t.offline,details:cluster.items.length>1?cluster.items.slice(0,5).map(displayName):[[agent.municipality,agent.regionCode,agent.countryCode].filter(Boolean).join(' · '),agent.email].filter(Boolean)}); return <g key={cluster.key} transform={`translate(${cluster.x} ${cluster.y})`} role="button" tabIndex={0} aria-label={displayName(agent)} className="clickable" filter="url(#glow)" onClick={action} onKeyDown={(event)=>activate(event,action)}><circle r={cluster.items.length>1?9:agent.available?7:agent.online?5.5:4.5} fill={agent.available?'#6fe09a':agent.online?'#e0b94d':'#7c8794'} stroke="#fff" strokeWidth="1.2"/>{cluster.items.length>1?<text textAnchor="middle" y="3" className="cluster-count">{cluster.items.length}</text>:agent.available?<circle r="12" fill="none" stroke="rgba(111,224,154,.5)"/>:null}</g>; }) : null}
+        <circle cx={center} cy={center} r={radius} fill="url(#shine)" pointerEvents="none"/>
+      </g><circle cx={center} cy={center} r={radius} fill="none" stroke="rgba(255,220,131,.25)" strokeWidth="7" opacity=".22"/>
+    </svg>{loading?<div className="globe-message">{t.loading}</div>:null}{worldError?<div className="globe-message fallback">{t.unavailable}</div>:null}{!loading&&layerCount===0?<div className="globe-message">{overview?.growth.enabled===false&&showGrowth?overview.growth.disabledReason||t.noData:t.noData}</div>:null}</div>
+    {error?<p className="globe-error" role="alert">{error}</p>:null}
+    {selected?<aside className="globe-detail" aria-live="polite" aria-label={t.details}><div><strong>{selected.title}</strong><div className="detail-subtitle">{selected.subtitle}</div></div><div className="detail-lines">{selected.details.map((line,index)=><span key={`${line}-${index}`}>{line}</span>)}</div><button type="button" onClick={()=>setSelected(null)} aria-label={t.close}>×</button></aside>:null}
+    <div className="globe-controls"><label><span>{t.rotate}</span><input aria-label={t.rotate} type="range" min={-180} max={180} value={rotation} onChange={(event)=>{setPlaying(false);setRotation(Number(event.target.value));}}/></label><button type="button" className="button secondary" disabled={reducedMotion} onClick={()=>setPlaying((value)=>!value)}>{playing?`Ⅱ ${t.stop}`:`▶ ${t.auto}`}</button></div>
+    <div className="globe-legend"><span><i className="dot owner"/> {t.ownerCurrent}</span><span><i className="dot agent"/> {t.agents}</span><span><i className="diamond"/> {t.clients}</span>{Object.entries(stageColors).map(([stage,color])=><span key={stage}><i className="dot" style={{background:color}}/> {t[stage as Stage]}</span>)}<span><i className="line"/> {t.relations}</span></div>
+    <p className="globe-privacy">{t.privacy}{hiddenCount?` · ${hiddenCount} ${t.hidden}`:''}{overview?.generatedAt?` · ${t.refreshed} ${new Date(overview.generatedAt).toLocaleTimeString()}`:''}</p>
     <style jsx>{`
-      .operations-globe{position:relative}.globe-modebar{display:flex;gap:6px;overflow-x:auto;padding:2px 2px 10px}.mode{border:1px solid #39434f;background:#10151b;color:#aeb8c5;border-radius:999px;padding:7px 11px;font-size:10px;font-weight:850;white-space:nowrap;cursor:pointer}.mode.active{background:linear-gradient(135deg,#d9af49,#9e7428);border-color:#efcf79;color:#0b0d0f;box-shadow:0 7px 20px rgba(210,173,79,.18)}.globe-stage{position:relative;display:grid;place-items:center;isolation:isolate;min-height:300px}.globe-halo{position:absolute;width:78%;aspect-ratio:1;border-radius:50%;background:radial-gradient(circle,rgba(210,173,79,.14),transparent 68%);filter:blur(20px)}.world-globe{position:relative;z-index:1;max-width:590px;filter:drop-shadow(0 24px 34px rgba(0,0,0,.42))}.country{fill:rgba(70,87,72,.88);stroke:rgba(217,197,140,.28);stroke-width:.55;cursor:pointer;transition:fill .25s ease}.country:hover{fill:rgba(93,106,85,.96)}.country.owner-country{fill:#b88a2b;stroke:#ffe186;stroke-width:1.25;filter:url(#owner-glow)}.continent-europe{fill:#5a6257}.continent-africa{fill:#4e594c}.continent-asia{fill:#586052}.continent-north-america{fill:#515f5e}.continent-south-america{fill:#536057}.continent-oceania{fill:#5d6255}.continent-antarctica{fill:#687079}.owner-country.continent-europe,.owner-country.continent-africa,.owner-country.continent-asia,.owner-country.continent-north-america,.owner-country.continent-south-america,.owner-country.continent-oceania{fill:#b88a2b}.country-label{fill:rgba(236,239,236,.76);font-size:6.15px;font-weight:720;paint-order:stroke;stroke:rgba(3,7,10,.8);stroke-width:1.75px;pointer-events:none}.owner-label{fill:#ffe69b;font-size:8px;font-weight:950}.country-label.rank-1,.country-label.rank-2{font-size:7.4px;fill:#fff}.continent-label{fill:rgba(239,200,99,.66);font-size:10.5px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;paint-order:stroke;stroke:rgba(4,7,10,.74);stroke-width:2px}.zone-label{fill:rgba(167,194,214,.52);font-size:5.2px;font-weight:750;paint-order:stroke;stroke:#071019;stroke-width:1.4px}.relation-line{fill:none;stroke:#e0b94d;stroke-width:1.7;stroke-dasharray:6 4;filter:drop-shadow(0 0 5px rgba(224,185,77,.7));cursor:pointer;animation:relationFlow 1.4s linear infinite}.clickable{cursor:pointer}.globe-loading,.globe-empty{position:absolute;z-index:4;padding:8px 12px;border:1px solid rgba(210,173,79,.25);border-radius:999px;background:rgba(7,11,15,.78);backdrop-filter:blur(10px);color:#cbd3dc;font-size:10px}.globe-empty{top:12px}.globe-detail{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr) auto;gap:12px;align-items:start;max-width:590px;margin:8px auto 0;padding:11px 12px;border:1px solid rgba(210,173,79,.28);border-radius:14px;background:linear-gradient(135deg,rgba(25,27,30,.95),rgba(12,16,21,.96));box-shadow:0 14px 35px rgba(0,0,0,.2)}.globe-detail strong{color:#fff;font-size:12px}.detail-subtitle{color:#d9b75d;font-size:9px;font-weight:850;margin-top:2px}.detail-lines{display:grid;gap:3px;color:#aeb8c5;font-size:9px}.globe-detail button{border:0;background:transparent;color:#8e99a8;font-size:20px;cursor:pointer}.globe-controls{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:end;max-width:590px;margin:9px auto 0}.globe-controls label{display:grid;gap:5px}.globe-controls label span{font-size:11px;font-weight:850;color:#aeb8c5}.globe-controls input{width:100%;accent-color:#d8ae45}.globe-controls .button{min-height:36px;padding:7px 10px;font-size:10px}.globe-legend{display:flex;justify-content:center;gap:13px;flex-wrap:wrap;margin-top:12px;color:#aeb8c5;font-size:9.5px}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:3px}.dot.owner{background:#b88a2b;box-shadow:0 0 7px #eac96c}.dot.available{background:#6fe09a}.dot.prospect{background:#ef943f}.diamond{display:inline-block;width:8px;height:8px;transform:rotate(45deg);margin-right:5px}.diamond.client{background:#54d7e7}.line{display:inline-block;width:15px;height:2px;margin:0 4px 2px 0}.line.relation{background:#e0b94d}.globe-privacy{text-align:center;color:#8e99a8;font-size:10px;line-height:1.45;margin:8px auto 0;max-width:590px}@keyframes relationFlow{to{stroke-dashoffset:-20}}
-      @media(max-width:600px){.globe-stage{min-height:260px}.country-label{font-size:5.7px}.country-label.rank-5,.country-label.rank-6,.country-label.rank-7,.country-label.rank-8{display:none}.continent-label{font-size:8.7px}.zone-label{display:none}.globe-controls{grid-template-columns:1fr}.globe-controls .button{justify-self:start}.globe-legend{gap:8px}.globe-detail{grid-template-columns:1fr auto}.detail-lines{grid-column:1/-1}.relation-line{stroke-width:2.3}.mode{padding:7px 10px}}
+      .operations-globe{position:relative}.globe-toolbar{display:grid;gap:9px}.modebar,.filters{display:flex;gap:6px;overflow-x:auto;padding:2px}.mode{border:1px solid #39434f;background:#10151b;color:#aeb8c5;border-radius:999px;padding:7px 11px;font-size:10px;font-weight:850;white-space:nowrap;cursor:pointer}.mode.active{background:linear-gradient(135deg,#d9af49,#9e7428);border-color:#efcf79;color:#0b0d0f}.filters label{display:grid;gap:3px;min-width:125px}.filters span{font-size:9px;color:#8793a2;font-weight:850}.filters select{border:1px solid #36404b;background:#0e141a;color:#dfe6ed;border-radius:9px;padding:7px;font-size:10px}.kpis{display:flex;gap:7px;flex-wrap:wrap;margin:9px 0 0}.kpis span{padding:5px 8px;border:1px solid rgba(210,173,79,.2);border-radius:999px;color:#c5cfda;font-size:9px}.globe-stage{position:relative;display:grid;place-items:center;isolation:isolate;min-height:300px}.globe-halo{position:absolute;width:78%;aspect-ratio:1;border-radius:50%;background:radial-gradient(circle,rgba(210,173,79,.14),transparent 68%);filter:blur(20px)}.world-globe{position:relative;z-index:1;max-width:590px;filter:drop-shadow(0 24px 34px rgba(0,0,0,.42))}.country{fill:rgba(70,87,72,.88);stroke:rgba(217,197,140,.28);stroke-width:.55;cursor:pointer;transition:fill .2s ease}.country:hover,.country:focus{fill:rgba(101,113,91,.98);outline:none}.country.owner-country{fill:#b88a2b;stroke:#ffe186;stroke-width:1.2}.country.selected-country{stroke:#fff1b6;stroke-width:1.7}.country-label{fill:rgba(236,239,236,.76);font-size:6.15px;font-weight:720;paint-order:stroke;stroke:rgba(3,7,10,.8);stroke-width:1.75px;pointer-events:none}.owner-label{fill:#ffe69b;font-size:8px;font-weight:950}.relation-line{fill:none;stroke:#e0b94d;stroke-width:1.8;stroke-dasharray:6 4;filter:drop-shadow(0 0 5px rgba(224,185,77,.7));cursor:pointer;animation:relationFlow 1.4s linear infinite}.relation-line.risk{stroke:#e87575}.relation-line:focus{stroke-width:3;outline:none}.clickable{cursor:pointer;outline:none}.clickable:focus>*:first-child{stroke:#fff4b8;stroke-width:3}.cluster-count{fill:#071019;font-size:7px;font-weight:950;pointer-events:none}.globe-message{position:absolute;z-index:4;padding:8px 12px;border:1px solid rgba(210,173,79,.25);border-radius:999px;background:rgba(7,11,15,.82);color:#cbd3dc;font-size:10px}.globe-message.fallback{top:9px}.globe-error{color:#ff9aa4;font-size:11px;text-align:center}.globe-detail{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr) auto;gap:12px;max-width:590px;margin:8px auto 0;padding:11px 12px;border:1px solid rgba(210,173,79,.28);border-radius:14px;background:linear-gradient(135deg,rgba(25,27,30,.95),rgba(12,16,21,.96))}.globe-detail strong{color:#fff;font-size:12px}.detail-subtitle{color:#d9b75d;font-size:9px;font-weight:850;margin-top:2px}.detail-lines{display:grid;gap:3px;color:#aeb8c5;font-size:9px}.globe-detail button{border:0;background:transparent;color:#a8b3bf;font-size:20px;cursor:pointer}.globe-controls{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:end;max-width:590px;margin:9px auto 0}.globe-controls label{display:grid;gap:5px}.globe-controls label span{font-size:11px;font-weight:850;color:#aeb8c5}.globe-controls input{width:100%;accent-color:#d8ae45}.globe-controls .button{min-height:36px;padding:7px 10px;font-size:10px}.globe-legend{display:flex;justify-content:center;gap:11px;flex-wrap:wrap;margin-top:12px;color:#aeb8c5;font-size:9px}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:3px}.dot.owner{background:#b88a2b;box-shadow:0 0 7px #eac96c}.dot.agent{background:#6fe09a}.diamond{display:inline-block;width:8px;height:8px;transform:rotate(45deg);margin-right:5px;background:#54d7e7}.line{display:inline-block;width:15px;height:2px;margin:0 4px 2px 0;background:#e0b94d}.globe-privacy{text-align:center;color:#8e99a8;font-size:10px;line-height:1.45;margin:8px auto 0;max-width:650px}@keyframes relationFlow{to{stroke-dashoffset:-20}}
+      @media(max-width:600px){.globe-stage{min-height:260px}.country-label{font-size:5.7px}.country-label.rank-5,.country-label.rank-6,.country-label.rank-7,.country-label.rank-8{display:none}.filters{display:grid;grid-template-columns:repeat(3,minmax(110px,1fr));overflow-x:auto}.globe-controls{grid-template-columns:1fr}.globe-controls .button{justify-self:start}.globe-detail{grid-template-columns:1fr auto}.detail-lines{grid-column:1/-1}.relation-line{stroke-width:2.3}}
+      @media(prefers-reduced-motion:reduce){.relation-line{animation:none}.country{transition:none}}
     `}</style>
   </div>;
 }

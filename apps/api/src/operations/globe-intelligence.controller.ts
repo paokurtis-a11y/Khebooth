@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { UserRole } from '@prisma/client';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -14,7 +14,11 @@ export class GlobeIntelligenceController {
 
   @Roles(UserRole.OWNER, UserRole.ADMIN)
   @Get('overview')
-  overview(@CurrentUser() user: AuthenticatedUser) {
-    return this.globe.overview(user);
+  overview(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('mode') mode?: string,
+    @Query('window') window?: string,
+  ) {
+    return this.globe.overview(user, mode, window);
   }
 }

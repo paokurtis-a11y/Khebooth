@@ -45,13 +45,13 @@ export class OperationsService {
       VALUES (gen_random_uuid(),${user.organizationId}::uuid,${user.id}::uuid,${clientId}::uuid,${sessionKey},${surface},CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,${pageViews},${actions},
         ${this.geoValue(share,geo.countryCode)},${this.geoValue(share,geo.regionCode)},${this.geoValue(share,geo.municipality)},${this.geoValue(share,geo.latitude)},${this.geoValue(share,geo.longitude)},${this.geoValue(share,geo.timezone)},${share},${String(userAgent??'').slice(0,500)||null})
       ON CONFLICT ("userId","sessionKey") DO UPDATE SET "lastSeenAt"=CURRENT_TIMESTAMP,"pageViews"="UserActivitySession"."pageViews"+EXCLUDED."pageViews",actions="UserActivitySession".actions+EXCLUDED.actions,
-        "countryCode"=CASE WHEN EXCLUDED."locationSharingEnabled" THEN EXCLUDED."countryCode" ELSE "UserActivitySession"."countryCode" END,
-        "regionCode"=CASE WHEN EXCLUDED."locationSharingEnabled" THEN EXCLUDED."regionCode" ELSE "UserActivitySession"."regionCode" END,
-        municipality=CASE WHEN EXCLUDED."locationSharingEnabled" THEN EXCLUDED.municipality ELSE "UserActivitySession".municipality END,
-        latitude=CASE WHEN EXCLUDED."locationSharingEnabled" THEN EXCLUDED.latitude ELSE "UserActivitySession".latitude END,
-        longitude=CASE WHEN EXCLUDED."locationSharingEnabled" THEN EXCLUDED.longitude ELSE "UserActivitySession".longitude END,
-        timezone=CASE WHEN EXCLUDED."locationSharingEnabled" THEN EXCLUDED.timezone ELSE "UserActivitySession".timezone END,
-        "locationSharingEnabled"="UserActivitySession"."locationSharingEnabled" OR EXCLUDED."locationSharingEnabled"
+        "countryCode"=CASE WHEN EXCLUDED."locationSharingEnabled" THEN EXCLUDED."countryCode" ELSE NULL END,
+        "regionCode"=CASE WHEN EXCLUDED."locationSharingEnabled" THEN EXCLUDED."regionCode" ELSE NULL END,
+        municipality=CASE WHEN EXCLUDED."locationSharingEnabled" THEN EXCLUDED.municipality ELSE NULL END,
+        latitude=CASE WHEN EXCLUDED."locationSharingEnabled" THEN EXCLUDED.latitude ELSE NULL END,
+        longitude=CASE WHEN EXCLUDED."locationSharingEnabled" THEN EXCLUDED.longitude ELSE NULL END,
+        timezone=CASE WHEN EXCLUDED."locationSharingEnabled" THEN EXCLUDED.timezone ELSE NULL END,
+        "locationSharingEnabled"=EXCLUDED."locationSharingEnabled"
     `;
     if(this.isAgent(user)){
       const current=await this.prisma.$queryRaw<PresenceRow[]>`SELECT * FROM "AgentPresence" WHERE "userId"=${user.id}::uuid LIMIT 1`;
@@ -64,13 +64,13 @@ export class OperationsService {
           availability=CASE WHEN "AgentPresence"."activeSessionKey" IS DISTINCT FROM ${sessionKey} THEN 'UNAVAILABLE' ELSE "AgentPresence".availability END,
           "acceptingAssignments"=CASE WHEN "AgentPresence"."activeSessionKey" IS DISTINCT FROM ${sessionKey} THEN FALSE ELSE "AgentPresence"."acceptingAssignments" END,
           "availableSince"=CASE WHEN "AgentPresence"."activeSessionKey" IS DISTINCT FROM ${sessionKey} THEN NULL ELSE "AgentPresence"."availableSince" END,
-          "countryCode"=CASE WHEN ${share} THEN ${geo.countryCode??null} ELSE "AgentPresence"."countryCode" END,
-          "regionCode"=CASE WHEN ${share} THEN ${geo.regionCode??null} ELSE "AgentPresence"."regionCode" END,
-          municipality=CASE WHEN ${share} THEN ${geo.municipality??null} ELSE "AgentPresence".municipality END,
-          latitude=CASE WHEN ${share} THEN ${geo.latitude??null} ELSE "AgentPresence".latitude END,
-          longitude=CASE WHEN ${share} THEN ${geo.longitude??null} ELSE "AgentPresence".longitude END,
-          timezone=CASE WHEN ${share} THEN ${geo.timezone??null} ELSE "AgentPresence".timezone END,
-          "locationSharingEnabled"="AgentPresence"."locationSharingEnabled" OR ${share},"locationUpdatedAt"=CASE WHEN ${share} THEN CURRENT_TIMESTAMP ELSE "AgentPresence"."locationUpdatedAt" END,"updatedAt"=CURRENT_TIMESTAMP
+          "countryCode"=CASE WHEN ${share} THEN ${geo.countryCode??null} ELSE NULL END,
+          "regionCode"=CASE WHEN ${share} THEN ${geo.regionCode??null} ELSE NULL END,
+          municipality=CASE WHEN ${share} THEN ${geo.municipality??null} ELSE NULL END,
+          latitude=CASE WHEN ${share} THEN ${geo.latitude??null} ELSE NULL END,
+          longitude=CASE WHEN ${share} THEN ${geo.longitude??null} ELSE NULL END,
+          timezone=CASE WHEN ${share} THEN ${geo.timezone??null} ELSE NULL END,
+          "locationSharingEnabled"=${share},"locationUpdatedAt"=CASE WHEN ${share} THEN CURRENT_TIMESTAMP ELSE "AgentPresence"."locationUpdatedAt" END,"updatedAt"=CURRENT_TIMESTAMP
       `;
       if(newSession)await this.prisma.$executeRaw`
         INSERT INTO "AgentAvailabilityEvent" (id,"organizationId","userId","sessionKey",availability,"acceptingAssignments",source,"countryCode","regionCode",municipality)
@@ -91,13 +91,13 @@ export class OperationsService {
         ${this.geoValue(share,geo.countryCode)},${this.geoValue(share,geo.regionCode)},${this.geoValue(share,geo.municipality)},${this.geoValue(share,geo.latitude)},${this.geoValue(share,geo.longitude)},${this.geoValue(share,geo.timezone)},${share},${share?new Date():null})
       ON CONFLICT ("userId") DO UPDATE SET "activeSessionKey"=${sessionKey},availability=${requested},"acceptingAssignments"=${accepting},"lastHeartbeatAt"=CURRENT_TIMESTAMP,
         "availableSince"=CASE WHEN ${accepting} THEN COALESCE("AgentPresence"."availableSince",CURRENT_TIMESTAMP) ELSE NULL END,
-        "countryCode"=CASE WHEN ${share} THEN ${geo.countryCode??null} ELSE "AgentPresence"."countryCode" END,
-        "regionCode"=CASE WHEN ${share} THEN ${geo.regionCode??null} ELSE "AgentPresence"."regionCode" END,
-        municipality=CASE WHEN ${share} THEN ${geo.municipality??null} ELSE "AgentPresence".municipality END,
-        latitude=CASE WHEN ${share} THEN ${geo.latitude??null} ELSE "AgentPresence".latitude END,
-        longitude=CASE WHEN ${share} THEN ${geo.longitude??null} ELSE "AgentPresence".longitude END,
-        timezone=CASE WHEN ${share} THEN ${geo.timezone??null} ELSE "AgentPresence".timezone END,
-        "locationSharingEnabled"="AgentPresence"."locationSharingEnabled" OR ${share},"locationUpdatedAt"=CASE WHEN ${share} THEN CURRENT_TIMESTAMP ELSE "AgentPresence"."locationUpdatedAt" END,"updatedAt"=CURRENT_TIMESTAMP
+        "countryCode"=CASE WHEN ${share} THEN ${geo.countryCode??null} ELSE NULL END,
+        "regionCode"=CASE WHEN ${share} THEN ${geo.regionCode??null} ELSE NULL END,
+        municipality=CASE WHEN ${share} THEN ${geo.municipality??null} ELSE NULL END,
+        latitude=CASE WHEN ${share} THEN ${geo.latitude??null} ELSE NULL END,
+        longitude=CASE WHEN ${share} THEN ${geo.longitude??null} ELSE NULL END,
+        timezone=CASE WHEN ${share} THEN ${geo.timezone??null} ELSE NULL END,
+        "locationSharingEnabled"=${share},"locationUpdatedAt"=CASE WHEN ${share} THEN CURRENT_TIMESTAMP ELSE "AgentPresence"."locationUpdatedAt" END,"updatedAt"=CURRENT_TIMESTAMP
     `;
     await this.prisma.$executeRaw`
       INSERT INTO "AgentAvailabilityEvent" (id,"organizationId","userId","sessionKey",availability,"acceptingAssignments",source,"countryCode","regionCode",municipality)
@@ -126,7 +126,7 @@ export class OperationsService {
   async listAgents(user:AuthenticatedUser){
     const rows=await this.prisma.$queryRaw<any[]>`
       SELECT u.id,u.email,u."firstName",u."lastName",u.role::text AS role,u."isActive",
-        p.availability,p."acceptingAssignments",p."lastHeartbeatAt",p."availableSince",p."countryCode",p."regionCode",p.municipality,p.latitude,p.longitude,p.timezone,p."locationSharingEnabled",
+        p.availability,p."acceptingAssignments",p."lastHeartbeatAt",p."availableSince",\n        CASE WHEN p."locationSharingEnabled" THEN upper(p."countryCode") ELSE NULL END "countryCode",\n        CASE WHEN p."locationSharingEnabled" THEN p."regionCode" ELSE NULL END "regionCode",\n        CASE WHEN p."locationSharingEnabled" THEN p.municipality ELSE NULL END municipality,\n        CASE WHEN p."locationSharingEnabled" THEN round(p.latitude::numeric,2)::float8 ELSE NULL END latitude,\n        CASE WHEN p."locationSharingEnabled" THEN round(p.longitude::numeric,2)::float8 ELSE NULL END longitude,\n        CASE WHEN p."locationSharingEnabled" THEN p.timezone ELSE NULL END timezone,p."locationSharingEnabled",
         COALESCE(s.sessions,0)::int AS "connectionCount",COALESCE(s.seconds,0)::bigint AS "totalConnectedSeconds",s."lastLoginAt",
         COALESCE(c.assigned,0)::int AS "conversationAssignments",COALESCE(c.resolved,0)::int AS "resolvedProblems",
         COALESCE(t.assigned,0)::int AS "taskAssignments",COALESCE(t.completed,0)::int AS "completedTasks",
@@ -216,3 +216,4 @@ export class OperationsService {
     return{days,summary:s,highIntentVisitors:highIntent,geographies,visitors:scored,recommendations,strategy:config};
   }
 }
+
