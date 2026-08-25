@@ -1,1 +1,4 @@
-Production redeploy requested on 2026-08-22 after PR #80 Meta Business Login callback fix. Expected main includes dedicated Graph API v26 callback handling, encrypted Page token persistence, and safe Meta error diagnostics.
+KHE Booth 0.3.1 production API release trigger.
+Release source: merged PR #109 at e0d6aab254b7eb07af771aa2dc638d1580d73a3f.
+Purpose: deploy API changes, Prisma migrations, notifications mailbox, Event Ready telemetry, operations/globe intelligence, profile/recovery and release readiness updates.
+Requested: 2026-08-24.
