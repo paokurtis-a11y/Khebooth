@@ -47,6 +47,11 @@ function iso2(properties: CountryProps) { return String(properties.ISO_A2_EH || 
 function localizedCountry(properties: CountryProps, language: Language) { const key = `NAME_${language.toUpperCase()}` as keyof CountryProps; return String(properties[key] || properties.NAME_EN || properties.ADMIN || ''); }
 function displayName(agent: AgentPoint) { return [agent.firstName, agent.lastName].filter(Boolean).join(' ') || agent.email; }
 function activate(event: React.KeyboardEvent, action: () => void) { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); action(); } }
+function coordinateValue(value: number | null | undefined, minimum: number, maximum: number) {
+  if (value === null || value === undefined) return null;
+  const coordinate = Number(value);
+  return Number.isFinite(coordinate) && coordinate >= minimum && coordinate <= maximum ? coordinate : null;
+}
 
 export function OperationsGlobe({ agents }: { agents: AgentPoint[] }) {
   const [rotation, setRotation] = useState(0);
@@ -208,20 +213,18 @@ export function OperationsGlobe({ agents }: { agents: AgentPoint[] }) {
   const filteredRelations = useMemo(() => relationRecords.filter((item) => status !== 'risk' || item.slaRisk), [relationRecords, status]);
 
   const agentLocations = useMemo(() => filteredAgents.flatMap((agent) => {
-    const longitude = Number(agent.longitude), latitude = Number(agent.latitude); if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return [];
+    const longitude = coordinateValue(agent.longitude, -180, 180), latitude = coordinateValue(agent.latitude, -90, 90);
+    if (longitude === null || latitude === null) return [];
     const point = project(longitude, latitude); return point.visible ? [{ item: agent, ...point }] : [];
   }), [filteredAgents, project]);
   const clientLocations = useMemo(() => filteredClients.flatMap((client) => {
-    let longitude = Number(client.lastLongitude), latitude = Number(client.lastLatitude), estimated = false;
-    if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) {
-      const feature = client.lastCountryCode ? countryByCode.get(client.lastCountryCode.toUpperCase()) : undefined;
-      longitude = Number(feature?.properties.LABEL_X); latitude = Number(feature?.properties.LABEL_Y); estimated = true;
-    }
-    if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return [];
-    const point = project(longitude, latitude); return point.visible ? [{ item: { ...client, estimated, longitude, latitude }, ...point }] : [];
-  }), [countryByCode, filteredClients, project]);
+    const longitude = coordinateValue(client.lastLongitude, -180, 180), latitude = coordinateValue(client.lastLatitude, -90, 90);
+    if (longitude === null || latitude === null) return [];
+    const point = project(longitude, latitude); return point.visible ? [{ item: client, ...point }] : [];
+  }), [filteredClients, project]);
   const growthLocations = useMemo(() => filteredGrowth.flatMap((item) => {
-    const longitude = Number(item.longitude), latitude = Number(item.latitude); if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return [];
+    const longitude = coordinateValue(item.longitude, -180, 180), latitude = coordinateValue(item.latitude, -90, 90);
+    if (longitude === null || latitude === null) return [];
     const point = project(longitude, latitude); return point.visible ? [{ item, ...point }] : [];
   }), [filteredGrowth, project]);
   const agentClusters = useMemo(() => clusterProjectedPoints(agentLocations, viewportWidth < 600 ? 35 : 27), [agentLocations, viewportWidth]);
@@ -234,7 +237,8 @@ export function OperationsGlobe({ agents }: { agents: AgentPoint[] }) {
     return filteredRelations.flatMap((item) => { const agent = agentMap.get(item.agentId), client = clientMap.get(item.clientId); return agent && client ? [{ item, agent, client }] : []; });
   }, [agentLocations, clientLocations, filteredRelations]);
 
-  const hiddenCount = filteredAgents.filter((item) => !Number.isFinite(Number(item.latitude)) || !Number.isFinite(Number(item.longitude))).length + filteredClients.filter((item) => !item.lastCountryCode && (!Number.isFinite(Number(item.lastLatitude)) || !Number.isFinite(Number(item.lastLongitude)))).length;
+  const hiddenCount = filteredAgents.filter((item) => coordinateValue(item.latitude, -90, 90) === null || coordinateValue(item.longitude, -180, 180) === null).length
+    + filteredClients.filter((item) => coordinateValue(item.lastLatitude, -90, 90) === null || coordinateValue(item.lastLongitude, -180, 180) === null).length;
   const showAgents = mode === 'agents' || mode === 'relations' || mode === 'all';
   const showClients = mode === 'clients' || mode === 'relations' || mode === 'all';
   const showRelations = mode === 'relations' || mode === 'all';
