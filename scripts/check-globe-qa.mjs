@@ -8,9 +8,11 @@ const cameraPath = new URL('../apps/web/components/globe-camera.ts', import.meta
 const performancePath = new URL('../apps/web/components/globe-performance.ts', import.meta.url);
 const servicePath = new URL('../apps/api/src/operations/globe-intelligence.service.ts', import.meta.url);
 const operationsServicePath = new URL('../apps/api/src/operations/operations.service.ts', import.meta.url);
+const weatherRoutePath = new URL('../apps/web/app/api/globe-weather/route.ts', import.meta.url);
 const component = readFileSync(componentPath, 'utf8');
 const service = readFileSync(servicePath, 'utf8');
 const operationsService = readFileSync(operationsServicePath, 'utf8');
+const weatherRoute = readFileSync(weatherRoutePath, 'utf8');
 const cameraSource = readFileSync(cameraPath, 'utf8');
 const performanceSource = readFileSync(performancePath, 'utf8');
 
@@ -36,6 +38,15 @@ for (const marker of [
   'onWheel={handleWheel}',
   'touch-action:none',
   'zt.gesture',
+  'contactActions(agent.email, agent.phone)',
+  'contactActions(client.email, client.phone)',
+  'href={contact.href}',
+  'WEATHER_BATCH_SIZE',
+  'weatherMarkers.map',
+  'setWeatherPlaying',
+  'Weather data by Open‑Meteo.com',
+  'managedAccount',
+  "mode === 'growth' || mode === 'all'",
 ]) assert.ok(component.includes(marker), `Globe QA marker missing: ${marker}`);
 
 for (const marker of ['GLOBE_ZOOM_SCALES', 'municipality: 7', 'projectGlobePoint', 'easeCamera', 'clampGlobeScale', 'zoomLevelForScale']) {
@@ -53,13 +64,25 @@ for (const marker of [
   'locationSharingEnabled',
   'consent=TRUE',
   'CACHE_TTL_MS',
+  "row.subscriptionPlan === 'BUSINESS' || row.subscriptionPlan === 'ENTERPRISE'",
+  'SELF_AND_ASSIGNED_AGENTS',
+  'c.id=${managedClientId}::uuid',
+  'requester."managedClientId"=${managedClientId}::uuid',
 ]) assert.ok(service.includes(marker), `Globe API QA marker missing: ${marker}`);
 
 for (const marker of [
   '"locationSharingEnabled"=EXCLUDED."locationSharingEnabled"',
   'ELSE NULL END latitude',
   'round(p.latitude::numeric,2)',
+  'u.id,u.email,u.phone',
+  'Historique complet réservé à l’organisation KHE',
+  'requester."managedClientId"=${scope.managedClientId}::uuid',
 ]) assert.ok(operationsService.includes(marker), `Globe privacy QA marker missing: ${marker}`);
+
+for (const marker of ['MAX_LOCATIONS = 40', 'OPEN_METEO_API_KEY', "process.env.VERCEL_ENV !== 'preview'", 'revalidate:CACHE_SECONDS']) {
+  assert.ok(weatherRoute.includes(marker), `Globe weather proxy QA marker missing: ${marker}`);
+}
+assert.ok(service.includes('c.id,c.name,c.email,c.phone'), 'Globe contacts QA: client phone must be loaded by the protected overview');
 
 const transpiled = ts.transpileModule(performanceSource, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
