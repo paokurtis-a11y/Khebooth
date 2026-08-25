@@ -1,15 +1,38 @@
 'use client';
 
 const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
-const API_URL = configuredApiUrl
-  ? configuredApiUrl.replace(/\/$/, '')
-  : process.env.NODE_ENV === 'production'
-    ? 'https://khebooth-api.vercel.app/api'
-    : 'http://localhost:3001/api';
+const VERCEL_WEB_PREVIEW_PREFIX = 'khebooth-git-';
+const VERCEL_TEAM_PREVIEW_SUFFIX = '-paokurtis-1101s-projects.vercel.app';
 const TOKEN_KEY = 'khe_booth_access_token';
 const USER_KEY = 'khe_booth_user';
 
 export type SessionUser = { id: string; email: string; role: string };
+
+function resolveBranchPreviewApiUrl() {
+  if (typeof window === 'undefined') return null;
+
+  const hostname = window.location.hostname.toLowerCase();
+  if (
+    !hostname.startsWith(VERCEL_WEB_PREVIEW_PREFIX) ||
+    !hostname.endsWith(VERCEL_TEAM_PREVIEW_SUFFIX)
+  ) {
+    return null;
+  }
+
+  const branchAndTeamHostname = hostname.slice(VERCEL_WEB_PREVIEW_PREFIX.length);
+  return `https://khebooth-api-git-${branchAndTeamHostname}/api`;
+}
+
+function resolveApiUrl() {
+  const branchPreviewApiUrl = resolveBranchPreviewApiUrl();
+  if (branchPreviewApiUrl) return branchPreviewApiUrl;
+
+  if (configuredApiUrl) return configuredApiUrl.replace(/\/$/, '');
+
+  return process.env.NODE_ENV === 'production'
+    ? 'https://khebooth-api.vercel.app/api'
+    : 'http://localhost:3001/api';
+}
 
 export function getAccessToken() {
   if (typeof window === 'undefined') return null;
@@ -47,7 +70,7 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
   headers.set('Content-Type', 'application/json');
   if (token) headers.set('Authorization', `Bearer ${token}`);
 
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await fetch(`${resolveApiUrl()}${path}`, {
     ...init,
     headers,
     cache: 'no-store',
