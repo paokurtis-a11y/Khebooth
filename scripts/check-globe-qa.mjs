@@ -19,7 +19,14 @@ for (const marker of [
   'clusterProjectedPoints',
   'aria-live="polite"',
   'mode=${mode}&window=${windowKey}',
+  'coordinateValue(agent.longitude, -180, 180)',
+  'coordinateValue(client.lastLongitude, -180, 180)',
 ]) assert.ok(component.includes(marker), `Globe QA marker missing: ${marker}`);
+
+assert.ok(
+  !component.includes('feature?.properties.LABEL_X); latitude = Number(feature?.properties.LABEL_Y)'),
+  'Globe QA: a missing client coordinate must never fall back to an invented country point',
+);
 
 for (const marker of [
   "mode === 'all' && role !== UserRole.OWNER",
