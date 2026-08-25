@@ -15,7 +15,10 @@ Ce contrôle traduit le cahier des charges fonctionnel du 24 août 2026 en exige
 ## Scénarios de recette obligatoires
 
 - OWNER en Suisse : la Suisse est colorée en or et la vue `Tout` est disponible.
-- ADMIN : l’onglet `Tout` est absent et un appel direct `mode=all` retourne 403.
+- ADMIN interne KHE : l’onglet `Tout` est absent et un appel direct `mode=all` retourne 403.
+- Compte géré BUSINESS/ENTERPRISE actif, payé et non expiré : accès à sa propre fiche, à ses relations et uniquement aux agents réellement affectés à ses conversations.
+- Compte géré BUSINESS/ENTERPRISE : les modes Growth et `Tout`, les autres clients et l’historique complet des agents restent inaccessibles.
+- Compte BUSINESS/ENTERPRISE inactif, impayé ou expiré : l’API Globe retourne 403.
 - Agent disponible avec zone partagée : point vert sélectionnable au clavier.
 - Client connecté : losange cyan avec plan, stations et état de synchronisation.
 - Relation active : courbe cliquable uniquement si l’assignation existe côté serveur.
@@ -29,3 +32,7 @@ Ce contrôle traduit le cahier des charges fonctionnel du 24 août 2026 en exige
 - Pincer, double-toucher ou utiliser la molette : zoom continu borné entre la vue mondiale et la commune.
 - Toucher un agent, client, point Growth ou relation : fiche visible ; touches répétées : continent → pays → commune.
 - Couche vide : l'information reste discrète sous le globe et ne masque jamais la carte.
+- Fiche agent/client/relation : e-mail et téléphone ouvrent la messagerie ou l'appel ; OWNER/ADMIN internes voient l’organisation, un compte BUSINESS/ENTERPRISE ne voit que son périmètre géré.
+- Couche météo : activation, masquage, pause/reprise des animations, rotation et zoom restent fluides sur iPhone.
+- Météo mondiale : les coordonnées représentatives sont chargées par lots de 40, mises en cache 10 minutes et seules les zones visibles sont dessinées.
+- Avant production : configurer `OPEN_METEO_API_URL` et `OPEN_METEO_API_KEY` avec une licence commerciale, ou une instance Open-Meteo auto-hébergée.
