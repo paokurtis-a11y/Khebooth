@@ -21,6 +21,9 @@ for (const marker of [
   'mode=${mode}&window=${windowKey}',
   'coordinateValue(agent.longitude, -180, 180)',
   'coordinateValue(client.lastLongitude, -180, 180)',
+  'normalizeOverview(data)',
+  'data.features.filter(validCountry)',
+  'media.addListener?.(updateMotion)',
 ]) assert.ok(component.includes(marker), `Globe QA marker missing: ${marker}`);
 
 assert.ok(
