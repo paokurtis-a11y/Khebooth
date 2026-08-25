@@ -27,6 +27,7 @@ Ce contrôle traduit le cahier des charges fonctionnel du 24 août 2026 en exige
 - Absence de consentement ou de zone : aucun point n’est inventé.
 - Natural Earth indisponible : océan, grille, points et message de fallback restent utilisables.
 - 1 200 points proches : nombre de nœuds SVG réduit par clustering, sans perte d’élément.
+- Zone dense : toucher un groupe ouvre une liste défilante des agents ou clients ; chaque ligne ouvre ensuite la fiche individuelle et ses moyens de contact.
 - Mobile 320 px et tablette portrait : filtres déroulants, panneau de détail et contrôles restent accessibles.
 - Glisser sur le globe : rotation horizontale et verticale sans ouvrir accidentellement une fiche.
 - Pincer, double-toucher ou utiliser la molette : zoom continu borné entre la vue mondiale et la commune.
