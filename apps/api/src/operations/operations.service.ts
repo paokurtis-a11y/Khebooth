@@ -24,6 +24,11 @@ type StrategyConfig = {
   autoPromotionEnabled:boolean; ownerApprovalForPaidCampaigns:boolean; strategyNotes:string|null; updatedAt:Date;
 };
 
+type OperationsAccessScope = {
+  organizationId: string;
+  managedClientId: string | null;
+};
+
 const AGENT_ROLES = new Set(['OWNER','ADMIN','OPERATOR']);
 
 @Injectable()
@@ -34,6 +39,20 @@ export class OperationsService {
   private sessionKey(value:unknown){const key=String(value??'').trim().slice(0,160);if(key.length<8)throw new BadRequestException('Session invalide');return key;}
   private safeSurface(value:unknown){const surface=String(value??'WEB_PORTAL').toUpperCase();return ['WEB_PORTAL','MOBILE_APP','ADMIN'].includes(surface)?surface:'WEB_PORTAL';}
   private geoValue(share:boolean,value:string|number|null|undefined){return share?value??null:null;}
+
+  private async accessScope(user:AuthenticatedUser):Promise<OperationsAccessScope>{
+    const rows=await this.prisma.$queryRaw<Array<{managedClientId:string|null;clientOrganizationId:string|null;subscriptionPlan:string|null;subscriptionStatus:string|null;paymentStatus:string|null;subscriptionEndsAt:Date|null}>>`
+      SELECT u."managedClientId",c."organizationId" AS "clientOrganizationId",c."subscriptionPlan",c."subscriptionStatus",c."paymentStatus",c."subscriptionEndsAt"
+      FROM "User" u LEFT JOIN "Client" c ON c.id=u."managedClientId"
+      WHERE u.id=${user.id}::uuid AND u."organizationId"=${user.organizationId}::uuid AND u."isActive"=TRUE LIMIT 1
+    `;
+    const row=rows[0];
+    if(!row?.managedClientId)return{organizationId:user.organizationId,managedClientId:null};
+    const eligiblePlan=row.subscriptionPlan==='BUSINESS'||row.subscriptionPlan==='ENTERPRISE';
+    const expired=Boolean(row.subscriptionEndsAt&&new Date(row.subscriptionEndsAt).getTime()<=Date.now());
+    if(!eligiblePlan||row.subscriptionStatus!=='ACTIVE'||row.paymentStatus!=='PAID'||expired||!row.clientOrganizationId)throw new ForbiddenException('Accès opérations réservé aux comptes BUSINESS ou ENTERPRISE actifs et payés');
+    return{organizationId:row.clientOrganizationId,managedClientId:row.managedClientId};
+  }
 
   async heartbeat(user:AuthenticatedUser, body:Record<string,unknown>, geo:GeoContext, userAgent?:string|null){
     const sessionKey=this.sessionKey(body.sessionKey);const surface=this.safeSurface(body.surface);const share=body.shareApproximateLocation===true;
@@ -124,9 +143,16 @@ export class OperationsService {
   }
 
   async listAgents(user:AuthenticatedUser){
+    const scope=await this.accessScope(user);
     const rows=await this.prisma.$queryRaw<any[]>`
-      SELECT u.id,u.email,u."firstName",u."lastName",u.role::text AS role,u."isActive",
-        p.availability,p."acceptingAssignments",p."lastHeartbeatAt",p."availableSince",\n        CASE WHEN p."locationSharingEnabled" THEN upper(p."countryCode") ELSE NULL END "countryCode",\n        CASE WHEN p."locationSharingEnabled" THEN p."regionCode" ELSE NULL END "regionCode",\n        CASE WHEN p."locationSharingEnabled" THEN p.municipality ELSE NULL END municipality,\n        CASE WHEN p."locationSharingEnabled" THEN round(p.latitude::numeric,2)::float8 ELSE NULL END latitude,\n        CASE WHEN p."locationSharingEnabled" THEN round(p.longitude::numeric,2)::float8 ELSE NULL END longitude,\n        CASE WHEN p."locationSharingEnabled" THEN p.timezone ELSE NULL END timezone,p."locationSharingEnabled",
+      SELECT u.id,u.email,u.phone,u."firstName",u."lastName",u.role::text AS role,u."isActive",
+        p.availability,p."acceptingAssignments",p."lastHeartbeatAt",p."availableSince",
+        CASE WHEN p."locationSharingEnabled" THEN upper(p."countryCode") ELSE NULL END "countryCode",
+        CASE WHEN p."locationSharingEnabled" THEN p."regionCode" ELSE NULL END "regionCode",
+        CASE WHEN p."locationSharingEnabled" THEN p.municipality ELSE NULL END municipality,
+        CASE WHEN p."locationSharingEnabled" THEN round(p.latitude::numeric,2)::float8 ELSE NULL END latitude,
+        CASE WHEN p."locationSharingEnabled" THEN round(p.longitude::numeric,2)::float8 ELSE NULL END longitude,
+        CASE WHEN p."locationSharingEnabled" THEN p.timezone ELSE NULL END timezone,p."locationSharingEnabled",
         COALESCE(s.sessions,0)::int AS "connectionCount",COALESCE(s.seconds,0)::bigint AS "totalConnectedSeconds",s."lastLoginAt",
         COALESCE(c.assigned,0)::int AS "conversationAssignments",COALESCE(c.resolved,0)::int AS "resolvedProblems",
         COALESCE(t.assigned,0)::int AS "taskAssignments",COALESCE(t.completed,0)::int AS "completedTasks",
@@ -138,14 +164,27 @@ export class OperationsService {
       LEFT JOIN LATERAL (SELECT count(*) FILTER(WHERE "assignedToUserId"=u.id) assigned,count(*) FILTER(WHERE "assignedToUserId"=u.id AND status='DONE') completed FROM "SupportTask" WHERE "organizationId"=u."organizationId") t ON TRUE
       LEFT JOIN LATERAL (SELECT count(*) FILTER(WHERE "agentUserId"=u.id AND status='FAILED') failed FROM "SupportAssignmentAttempt" WHERE "organizationId"=u."organizationId") a ON TRUE
       LEFT JOIN LATERAL (SELECT count(*) reviews,round(avg(rating)::numeric,2)::float8 rating FROM "SupportFeedback" WHERE "agentUserId"=u.id) f ON TRUE
-      WHERE u."organizationId"=${user.organizationId}::uuid AND u."isActive"=TRUE AND u.role IN ('OWNER','ADMIN','OPERATOR')
+      WHERE u."organizationId"=${scope.organizationId}::uuid AND u."isActive"=TRUE AND u.role IN ('OWNER','ADMIN','OPERATOR')
+        AND (${scope.managedClientId}::uuid IS NULL OR EXISTS (
+          SELECT 1 FROM "SupportConversation" assigned
+          JOIN "User" requester ON requester.id=assigned."requesterUserId"
+          WHERE assigned."assignedToUserId"=u.id AND requester."managedClientId"=${scope.managedClientId}::uuid
+        ))
       ORDER BY COALESCE(p."acceptingAssignments",FALSE) DESC,p."lastHeartbeatAt" DESC NULLS LAST,u.email ASC
     `;
-    return rows.map(row=>({...row,online:Boolean(row.lastHeartbeatAt&&Date.now()-new Date(row.lastHeartbeatAt).getTime()<90000),available:Boolean(row.acceptingAssignments&&row.availability==='AVAILABLE'&&row.lastHeartbeatAt&&Date.now()-new Date(row.lastHeartbeatAt).getTime()<90000),totalConnectedSeconds:Number(row.totalConnectedSeconds||0),averageRating:row.averageRating===null?null:Number(row.averageRating)}));
+    return rows.map(row=>{
+      const result={...row,online:Boolean(row.lastHeartbeatAt&&Date.now()-new Date(row.lastHeartbeatAt).getTime()<90000),available:Boolean(row.acceptingAssignments&&row.availability==='AVAILABLE'&&row.lastHeartbeatAt&&Date.now()-new Date(row.lastHeartbeatAt).getTime()<90000),totalConnectedSeconds:Number(row.totalConnectedSeconds||0),averageRating:row.averageRating===null?null:Number(row.averageRating)};
+      if(scope.managedClientId){
+        for(const key of ['connectionCount','totalConnectedSeconds','lastLoginAt','conversationAssignments','resolvedProblems','taskAssignments','completedTasks','failedAssignments','reviewCount','averageRating'])delete result[key];
+      }
+      return result;
+    });
   }
 
   async agentHistory(user:AuthenticatedUser,agentId:string){
-    const exists=await this.prisma.$queryRaw<Array<{id:string}>>`SELECT id FROM "User" WHERE id=${agentId}::uuid AND "organizationId"=${user.organizationId}::uuid AND role IN ('OWNER','ADMIN','OPERATOR') LIMIT 1`;
+    const scope=await this.accessScope(user);
+    if(scope.managedClientId)throw new ForbiddenException('Historique complet réservé à l’organisation KHE');
+    const exists=await this.prisma.$queryRaw<Array<{id:string}>>`SELECT id FROM "User" WHERE id=${agentId}::uuid AND "organizationId"=${scope.organizationId}::uuid AND role IN ('OWNER','ADMIN','OPERATOR') LIMIT 1`;
     if(!exists[0])throw new NotFoundException('Agent introuvable');
     const [sessions,availability,assignments,feedback]=await Promise.all([
       this.prisma.$queryRaw<any[]>`SELECT id,"sessionKey",surface,"startedAt","lastSeenAt","endedAt","pageViews",actions,"countryCode","regionCode",municipality,timezone FROM "UserActivitySession" WHERE "userId"=${agentId}::uuid ORDER BY "startedAt" DESC LIMIT 100`,
@@ -216,4 +255,3 @@ export class OperationsService {
     return{days,summary:s,highIntentVisitors:highIntent,geographies,visitors:scored,recommendations,strategy:config};
   }
 }
-
