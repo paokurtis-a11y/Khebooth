@@ -4,12 +4,14 @@ import vm from 'node:vm';
 import ts from 'typescript';
 
 const componentPath = new URL('../apps/web/components/operations-globe.tsx', import.meta.url);
+const cameraPath = new URL('../apps/web/components/globe-camera.ts', import.meta.url);
 const performancePath = new URL('../apps/web/components/globe-performance.ts', import.meta.url);
 const servicePath = new URL('../apps/api/src/operations/globe-intelligence.service.ts', import.meta.url);
 const operationsServicePath = new URL('../apps/api/src/operations/operations.service.ts', import.meta.url);
 const component = readFileSync(componentPath, 'utf8');
 const service = readFileSync(servicePath, 'utf8');
 const operationsService = readFileSync(operationsServicePath, 'utf8');
+const cameraSource = readFileSync(cameraPath, 'utf8');
 const performanceSource = readFileSync(performancePath, 'utf8');
 
 for (const marker of [
@@ -21,8 +23,13 @@ for (const marker of [
   'mode=${mode}&window=${windowKey}',
   'coordinateValue(agent.longitude, -180, 180)',
   'coordinateValue(client.lastLongitude, -180, 180)',
-  'normalizeOverview(data)',
-  'data.features.filter(validCountry)',
+  'advanceFocus',
+  'toggleAutoRotation',
+  "zoomLevel==='municipality'",
+  'GLOBE_ZOOM_SCALES.municipality',
+  'motionOverrideRef.current = true',
+  'normalizeOverview',
+  'Array.isArray(data.features)',
   'media.addListener?.(updateMotion)',
 ]) assert.ok(component.includes(marker), `Globe QA marker missing: ${marker}`);
 
@@ -52,6 +59,27 @@ const module = { exports: {} };
 vm.runInNewContext(`(function(module,exports){${transpiled}\n})(module,module.exports);`, { module });
 const { clusterProjectedPoints, labelBudget } = module.exports;
 
+const cameraTranspiled = ts.transpileModule(cameraSource, {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+}).outputText;
+const cameraModule = { exports: {} };
+vm.runInNewContext(`(function(module,exports){${cameraTranspiled}\n})(module,module.exports);`, { module:cameraModule });
+const { GLOBE_ZOOM_SCALES, continentCamera, easeCamera, projectGlobePoint, zoomLevelAt } = cameraModule.exports;
+
+assert.equal(zoomLevelAt('world', 1), 'continent');
+assert.equal(zoomLevelAt('continent', 1), 'country');
+assert.equal(zoomLevelAt('country', 1), 'municipality');
+assert.equal(zoomLevelAt('municipality', 1), 'municipality');
+assert.equal(zoomLevelAt('world', -1), 'world');
+assert.equal(continentCamera('Europe', { longitude:0, latitude:0, scale:1 }).scale, GLOBE_ZOOM_SCALES.continent);
+assert.equal(continentCamera('Europe', { longitude:0, latitude:0, scale:1 }).latitude, 50);
+const centered = projectGlobePoint(7.45, 46.95, { longitude:7.45, latitude:46.95, scale:GLOBE_ZOOM_SCALES.municipality }, 260, 218);
+assert.ok(centered.visible, 'Focused municipality must remain on the visible hemisphere');
+assert.ok(Math.abs(centered.x - 260) < 0.001 && Math.abs(centered.y - 260) < 0.001, 'Focused target must project to the globe center');
+const midway = easeCamera({ longitude:170, latitude:0, scale:1 }, { longitude:-170, latitude:50, scale:7 }, 0.5);
+assert.ok(midway.scale > 1 && midway.scale < 7, 'Camera easing must interpolate scale');
+assert.ok(Math.abs(midway.longitude) > 170, 'Camera easing must use the short path around the antimeridian');
+
 const points = Array.from({ length: 1200 }, (_, index) => ({
   item: { id: index },
   x: 100 + (index % 20) * 0.5,
@@ -65,4 +93,4 @@ assert.equal(labelBudget(320), 12);
 assert.equal(labelBudget(768), 22);
 assert.equal(labelBudget(1440), 32);
 
-console.log('Globe KHE 2.0 QA: permissions, privacy, accessibility and 1,200-point clustering verified.');
+console.log('Globe KHE 2.0 QA: permissions, privacy, accessibility, hierarchical camera and 1,200-point clustering verified.');
