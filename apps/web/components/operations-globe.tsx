@@ -20,6 +20,7 @@ type CountryProps = { ADMIN?: string; CONTINENT?: string; LABELRANK?: number; LA
 type Geometry = { type: 'Polygon' | 'MultiPolygon'; coordinates: number[][][] | number[][][][] };
 type Country = { type: 'Feature'; properties: CountryProps; geometry: Geometry };
 type WorldData = { type: 'FeatureCollection'; features: Country[] };
+type MediaQueryListCompat = MediaQueryList & { addListener?: (listener: (event: MediaQueryListEvent) => void) => void; removeListener?: (listener: (event: MediaQueryListEvent) => void) => void };
 type Selected = { key: string; title: string; subtitle: string; details: string[] } | null;
 
 type Copy = {
@@ -43,6 +44,38 @@ const copy: Record<Language, Copy> = {
 const stageColors: Record<Stage, string> = { visitor:'#718096',engaged:'#5aa6c9',lead:'#d8ae45',prospect:'#ef943f',client:'#7bd89b' };
 function readLanguage(): Language { if (typeof window === 'undefined') return 'fr'; const value = window.localStorage.getItem('khe.web.language'); return value && value in copy ? value as Language : 'fr'; }
 function rings(geometry: Geometry): number[][][] { return geometry.type === 'Polygon' ? geometry.coordinates as number[][][] : (geometry.coordinates as number[][][][]).flat(); }
+function validCountry(value: unknown): value is Country {
+  if (!value || typeof value !== 'object') return false;
+  const feature = value as Partial<Country>;
+  return Boolean(feature.properties && feature.geometry && (feature.geometry.type === 'Polygon' || feature.geometry.type === 'MultiPolygon') && Array.isArray(feature.geometry.coordinates));
+}
+function normalizeOverview(value: unknown): GlobeOverview {
+  const raw = value && typeof value === 'object' ? value as Partial<GlobeOverview> : {};
+  const rawGrowth = raw.growth && typeof raw.growth === 'object' ? raw.growth : null;
+  const rawSummary = rawGrowth?.summary && typeof rawGrowth.summary === 'object' ? rawGrowth.summary : null;
+  const stage = (item: Partial<Geo>, name: Stage) => Number(item.stages?.[name] ?? 0);
+  const geographies = Array.isArray(rawGrowth?.geographies) ? rawGrowth.geographies.filter((item): item is Geo => Boolean(item && typeof item === 'object')).map((item) => ({
+    ...item,
+    events: Number(item.events ?? 0), visitors: Number(item.visitors ?? 0),
+    dominantStage: (['visitor','engaged','lead','prospect','client'] as Stage[]).includes(item.dominantStage) ? item.dominantStage : 'visitor',
+    stages: { visitor:stage(item,'visitor'),engaged:stage(item,'engaged'),lead:stage(item,'lead'),prospect:stage(item,'prospect'),client:stage(item,'client') },
+  })) : [];
+  return {
+    generatedAt: typeof raw.generatedAt === 'string' ? raw.generatedAt : new Date().toISOString(),
+    mode: raw.mode ?? 'agents', window: raw.window ?? 'real-time',
+    capabilities: raw.capabilities && typeof raw.capabilities === 'object' ? { canViewAll:Boolean(raw.capabilities.canViewAll) } : { canViewAll:false },
+    clients: Array.isArray(raw.clients) ? raw.clients : [], relations: Array.isArray(raw.relations) ? raw.relations : [],
+    growth: {
+      enabled: rawGrowth?.enabled !== false,
+      disabledReason: typeof rawGrowth?.disabledReason === 'string' ? rawGrowth.disabledReason : null,
+      geographies,
+      summary: {
+        visits:Number(rawSummary?.visits ?? 0),visitors:Number(rawSummary?.visitors ?? 0),planSelections:Number(rawSummary?.planSelections ?? 0),
+        checkouts:Number(rawSummary?.checkouts ?? 0),conversions:Number(rawSummary?.conversions ?? 0),
+      },
+    },
+  };
+}
 function iso2(properties: CountryProps) { return String(properties.ISO_A2_EH || properties.ISO_A2 || '').toUpperCase(); }
 function localizedCountry(properties: CountryProps, language: Language) { const key = `NAME_${language.toUpperCase()}` as keyof CountryProps; return String(properties[key] || properties.NAME_EN || properties.ADMIN || ''); }
 function displayName(agent: AgentPoint) { return [agent.firstName, agent.lastName].filter(Boolean).join(' ') || agent.email; }
@@ -76,25 +109,36 @@ export function OperationsGlobe({ agents }: { agents: AgentPoint[] }) {
   const lastFrameRef = useRef(0);
   const t = copy[language];
   const size = 520, center = size / 2, radius = 218;
-  const clients = overview?.clients ?? [];
-  const growth = overview?.growth.geographies ?? [];
-  const relationRecords = overview?.relations ?? [];
+  const clients = Array.isArray(overview?.clients) ? overview.clients : [];
+  const growth = Array.isArray(overview?.growth?.geographies) ? overview.growth.geographies : [];
+  const relationRecords = Array.isArray(overview?.relations) ? overview.relations : [];
   const isOwner = role === 'OWNER';
 
   useEffect(() => {
     setLanguage(readLanguage());
-    const media = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)') as MediaQueryListCompat;
     const updateMotion = () => { setReducedMotion(media.matches); if (media.matches) setPlaying(false); };
     const updateWidth = () => setViewportWidth(window.innerWidth);
     const updateLanguage = (event: Event) => { const detail = (event as CustomEvent<string>).detail; if (detail && detail in copy) setLanguage(detail as Language); };
     updateMotion(); updateWidth();
-    media.addEventListener('change', updateMotion); window.addEventListener('resize', updateWidth); window.addEventListener('khe-language-changed', updateLanguage);
-    return () => { media.removeEventListener('change', updateMotion); window.removeEventListener('resize', updateWidth); window.removeEventListener('khe-language-changed', updateLanguage); };
+    if (typeof media.addEventListener === 'function') media.addEventListener('change', updateMotion);
+    else media.addListener?.(updateMotion);
+    window.addEventListener('resize', updateWidth); window.addEventListener('khe-language-changed', updateLanguage);
+    return () => {
+      if (typeof media.removeEventListener === 'function') media.removeEventListener('change', updateMotion);
+      else media.removeListener?.(updateMotion);
+      window.removeEventListener('resize', updateWidth); window.removeEventListener('khe-language-changed', updateLanguage);
+    };
   }, []);
 
   useEffect(() => {
     let active = true;
-    fetch(WORLD_SOURCE, { cache: 'force-cache' }).then((response) => { if (!response.ok) throw new Error('world map'); return response.json() as Promise<WorldData>; }).then((data) => { if (active) setWorld(data); }).catch(() => { if (active) setWorldError(true); });
+    fetch(WORLD_SOURCE, { cache: 'force-cache' }).then(async (response) => {
+      if (!response.ok) throw new Error('world map');
+      const data = await response.json() as Partial<WorldData>;
+      if (!Array.isArray(data.features)) throw new Error('world map');
+      return { type:'FeatureCollection' as const, features:data.features.filter(validCountry) };
+    }).then((data) => { if (active) setWorld(data); }).catch(() => { if (active) setWorldError(true); });
     return () => { active = false; };
   }, []);
 
@@ -116,7 +160,7 @@ export function OperationsGlobe({ agents }: { agents: AgentPoint[] }) {
     if (!quiet) setLoading(true);
     try {
       const data = await apiRequest<GlobeOverview>(`/operations/globe/overview?mode=${mode}&window=${windowKey}`);
-      setOverview(data); setError('');
+      setOverview(normalizeOverview(data)); setError('');
     } catch (loadError) {
       if (!quiet) setError(loadError instanceof Error ? loadError.message : t.noData);
     } finally { if (!quiet) setLoading(false); }
@@ -284,7 +328,7 @@ export function OperationsGlobe({ agents }: { agents: AgentPoint[] }) {
         {showAgents ? agentClusters.map((cluster) => { const agent=cluster.items[0],action=()=>toggleSelected({key:`agent:${agent.id}`,title:cluster.items.length>1?`${cluster.items.length} ${t.cluster}`:displayName(agent),subtitle:agent.available?t.available:agent.online?t.online:t.offline,details:cluster.items.length>1?cluster.items.slice(0,5).map(displayName):[[agent.municipality,agent.regionCode,agent.countryCode].filter(Boolean).join(' · '),agent.email].filter(Boolean)}); return <g key={cluster.key} transform={`translate(${cluster.x} ${cluster.y})`} role="button" tabIndex={0} aria-label={displayName(agent)} className="clickable" filter="url(#glow)" onClick={action} onKeyDown={(event)=>activate(event,action)}><circle r={cluster.items.length>1?9:agent.available?7:agent.online?5.5:4.5} fill={agent.available?'#6fe09a':agent.online?'#e0b94d':'#7c8794'} stroke="#fff" strokeWidth="1.2"/>{cluster.items.length>1?<text textAnchor="middle" y="3" className="cluster-count">{cluster.items.length}</text>:agent.available?<circle r="12" fill="none" stroke="rgba(111,224,154,.5)"/>:null}</g>; }) : null}
         <circle cx={center} cy={center} r={radius} fill="url(#shine)" pointerEvents="none"/>
       </g><circle cx={center} cy={center} r={radius} fill="none" stroke="rgba(255,220,131,.25)" strokeWidth="7" opacity=".22"/>
-    </svg>{loading?<div className="globe-message">{t.loading}</div>:null}{worldError?<div className="globe-message fallback">{t.unavailable}</div>:null}{!loading&&layerCount===0?<div className="globe-message">{overview?.growth.enabled===false&&showGrowth?overview.growth.disabledReason||t.noData:t.noData}</div>:null}</div>
+    </svg>{loading?<div className="globe-message">{t.loading}</div>:null}{worldError?<div className="globe-message fallback">{t.unavailable}</div>:null}{!loading&&layerCount===0?<div className="globe-message">{overview?.growth?.enabled===false&&showGrowth?overview.growth.disabledReason||t.noData:t.noData}</div>:null}</div>
     {error?<p className="globe-error" role="alert">{error}</p>:null}
     {selected?<aside className="globe-detail" aria-live="polite" aria-label={t.details}><div><strong>{selected.title}</strong><div className="detail-subtitle">{selected.subtitle}</div></div><div className="detail-lines">{selected.details.map((line,index)=><span key={`${line}-${index}`}>{line}</span>)}</div><button type="button" onClick={()=>setSelected(null)} aria-label={t.close}>×</button></aside>:null}
     <div className="globe-controls"><label><span>{t.rotate}</span><input aria-label={t.rotate} type="range" min={-180} max={180} value={rotation} onChange={(event)=>{setPlaying(false);setRotation(Number(event.target.value));}}/></label><button type="button" className="button secondary" disabled={reducedMotion} onClick={()=>setPlaying((value)=>!value)}>{playing?`Ⅱ ${t.stop}`:`▶ ${t.auto}`}</button></div>
