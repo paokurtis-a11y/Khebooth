@@ -22,6 +22,18 @@ export const GLOBE_ZOOM_SCALES: Record<GlobeZoomLevel, number> = {
   municipality: 7,
 };
 
+export function clampGlobeScale(value: number) {
+  return Math.max(GLOBE_ZOOM_SCALES.world, Math.min(GLOBE_ZOOM_SCALES.municipality, value));
+}
+
+export function zoomLevelForScale(scale: number): GlobeZoomLevel {
+  const value = clampGlobeScale(scale);
+  if (value < (GLOBE_ZOOM_SCALES.world + GLOBE_ZOOM_SCALES.continent) / 2) return 'world';
+  if (value < (GLOBE_ZOOM_SCALES.continent + GLOBE_ZOOM_SCALES.country) / 2) return 'continent';
+  if (value < (GLOBE_ZOOM_SCALES.country + GLOBE_ZOOM_SCALES.municipality) / 2) return 'country';
+  return 'municipality';
+}
+
 const CONTINENT_CENTERS: Record<string, [number, number]> = {
   africa: [20, 4],
   asia: [88, 34],

@@ -10,7 +10,7 @@ Ce contrôle traduit le cahier des charges fonctionnel du 24 août 2026 en exige
 | 3 — Relations | Une seule couleur et aucune information SLA | Relations serveur réelles uniquement, canal/priorité/SLA, ligne rouge en risque et fiche accessible | Tests de contrat + contrôle UI |
 | 4 — Growth | Points orange uniformes et résumé non affiché | Étapes Visiteur/Engagé/Lead/Prospect/Client, agrégats consentis et pseudonymisés, KPI de conversion | Test de confidentialité + build |
 | 5 — Performance | Rechargement de toutes les couches, aucun clustering, rotation par intervalle | Chargement par couche, cache 10 s, clustering grille, limite de labels, animation `requestAnimationFrame` | Test synthétique de 1 200 points |
-| 6 — QA | Pas de test Globe, éléments SVG inaccessibles au clavier | Focus clavier, rôles ARIA, mouvement réduit, états vide/erreur, matrice desktop/tablette/mobile | CI lint/test/build |
+| 6 — QA | Pas de test Globe, éléments SVG inaccessibles au clavier | Focus clavier, rôles ARIA, mouvement réduit, états vide/erreur non bloquants, gestes tactiles 360°, matrice desktop/tablette/mobile | CI lint/test/build |
 
 ## Scénarios de recette obligatoires
 
@@ -25,3 +25,7 @@ Ce contrôle traduit le cahier des charges fonctionnel du 24 août 2026 en exige
 - Natural Earth indisponible : océan, grille, points et message de fallback restent utilisables.
 - 1 200 points proches : nombre de nœuds SVG réduit par clustering, sans perte d’élément.
 - Mobile 320 px et tablette portrait : filtres déroulants, panneau de détail et contrôles restent accessibles.
+- Glisser sur le globe : rotation horizontale et verticale sans ouvrir accidentellement une fiche.
+- Pincer, double-toucher ou utiliser la molette : zoom continu borné entre la vue mondiale et la commune.
+- Toucher un agent, client, point Growth ou relation : fiche visible ; touches répétées : continent → pays → commune.
+- Couche vide : l'information reste discrète sous le globe et ne masque jamais la carte.

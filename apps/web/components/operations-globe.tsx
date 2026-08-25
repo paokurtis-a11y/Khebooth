@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiRequest } from '@/lib/api';
-import { GLOBE_ZOOM_SCALES, continentCamera, easeCamera, normalizeLongitude, projectGlobePoint, zoomLevelAt, type GlobeCamera, type GlobeZoomLevel } from './globe-camera';
+import { GLOBE_ZOOM_SCALES, clampGlobeScale, clampLatitude, continentCamera, easeCamera, normalizeLongitude, projectGlobePoint, zoomLevelAt, zoomLevelForScale, type GlobeCamera, type GlobeZoomLevel } from './globe-camera';
 import { clusterProjectedPoints, labelBudget } from './globe-performance';
 
 type Language = 'fr' | 'en' | 'de' | 'it' | 'es' | 'pt';
@@ -24,7 +24,9 @@ type WorldData = { type: 'FeatureCollection'; features: Country[] };
 type MediaQueryListCompat = MediaQueryList & { addListener?: (listener: (event: MediaQueryListEvent) => void) => void; removeListener?: (listener: (event: MediaQueryListEvent) => void) => void };
 type Selected = { key: string; title: string; subtitle: string; details: string[] } | null;
 type FocusTarget = { key: string; title: string; longitude: number; latitude: number; countryCode?: string | null; municipality?: string | null };
-type CameraCopy = { world:string; continent:string; country:string; municipality:string; back:string; reset:string; zoomIn:string; zoomOut:string; explore:string; reduced:string };
+type CameraCopy = { world:string; continent:string; country:string; municipality:string; back:string; reset:string; zoomIn:string; zoomOut:string; explore:string; gesture:string; reduced:string };
+type PointerSnapshot = { x: number; y: number; pointerType: string; interactive: boolean };
+type GlobeInteraction = { pointers: Map<number, PointerSnapshot>; previousCenter: { x: number; y: number } | null; previousDistance: number; moved: boolean; suppressClick: boolean; lastTouchTapAt: number };
 
 type Copy = {
   agents: string; clients: string; relations: string; growth: string; all: string; filters: string; status: string; geography: string; period: string;
@@ -46,12 +48,12 @@ const copy: Record<Language, Copy> = {
 
 const stageColors: Record<Stage, string> = { visitor:'#718096',engaged:'#5aa6c9',lead:'#d8ae45',prospect:'#ef943f',client:'#7bd89b' };
 const cameraCopy: Record<Language, CameraCopy> = {
-  fr:{world:'Monde',continent:'Continent',country:'Pays',municipality:'Commune',back:'Retour',reset:'Vue mondiale',zoomIn:'Zoom avant',zoomOut:'Zoom arrière',explore:'Touchez plusieurs fois un point : continent → pays → commune.',reduced:'Rotation arrêtée par le réglage Réduire les animations. Vous pouvez la lancer manuellement.'},
-  en:{world:'World',continent:'Continent',country:'Country',municipality:'Municipality',back:'Back',reset:'World view',zoomIn:'Zoom in',zoomOut:'Zoom out',explore:'Tap a point repeatedly: continent → country → municipality.',reduced:'Rotation is paused by Reduce Motion. You can start it manually.'},
-  de:{world:'Welt',continent:'Kontinent',country:'Land',municipality:'Gemeinde',back:'Zurück',reset:'Weltansicht',zoomIn:'Vergrößern',zoomOut:'Verkleinern',explore:'Punkt mehrfach antippen: Kontinent → Land → Gemeinde.',reduced:'Die Rotation ist durch Bewegung reduzieren pausiert. Sie kann manuell gestartet werden.'},
-  it:{world:'Mondo',continent:'Continente',country:'Paese',municipality:'Comune',back:'Indietro',reset:'Vista mondo',zoomIn:'Ingrandisci',zoomOut:'Riduci',explore:'Tocca più volte un punto: continente → paese → comune.',reduced:'La rotazione è sospesa da Riduci movimento. Puoi avviarla manualmente.'},
-  es:{world:'Mundo',continent:'Continente',country:'País',municipality:'Municipio',back:'Atrás',reset:'Vista mundial',zoomIn:'Acercar',zoomOut:'Alejar',explore:'Toca varias veces un punto: continente → país → municipio.',reduced:'La rotación está pausada por Reducir movimiento. Puedes iniciarla manualmente.'},
-  pt:{world:'Mundo',continent:'Continente',country:'País',municipality:'Município',back:'Voltar',reset:'Vista mundial',zoomIn:'Aumentar',zoomOut:'Diminuir',explore:'Toque várias vezes num ponto: continente → país → município.',reduced:'A rotação está pausada por Reduzir movimento. Pode iniciá-la manualmente.'},
+  fr:{world:'Monde',continent:'Continent',country:'Pays',municipality:'Commune',back:'Retour',reset:'Vue mondiale',zoomIn:'Zoom avant',zoomOut:'Zoom arrière',explore:'Touchez un point pour sa fiche, puis retouchez-le : continent → pays → commune.',gesture:'Glissez dans toutes les directions · pincez ou double-touchez pour zoomer.',reduced:'Rotation arrêtée par le réglage Réduire les animations. Vous pouvez la lancer manuellement.'},
+  en:{world:'World',continent:'Continent',country:'Country',municipality:'Municipality',back:'Back',reset:'World view',zoomIn:'Zoom in',zoomOut:'Zoom out',explore:'Tap a point for its card, then tap again: continent → country → municipality.',gesture:'Drag in every direction · pinch or double-tap to zoom.',reduced:'Rotation is paused by Reduce Motion. You can start it manually.'},
+  de:{world:'Welt',continent:'Kontinent',country:'Land',municipality:'Gemeinde',back:'Zurück',reset:'Weltansicht',zoomIn:'Vergrößern',zoomOut:'Verkleinern',explore:'Punkt für die Karte antippen, dann erneut: Kontinent → Land → Gemeinde.',gesture:'In alle Richtungen ziehen · zum Zoomen aufziehen oder doppeltippen.',reduced:'Die Rotation ist durch Bewegung reduzieren pausiert. Sie kann manuell gestartet werden.'},
+  it:{world:'Mondo',continent:'Continente',country:'Paese',municipality:'Comune',back:'Indietro',reset:'Vista mondo',zoomIn:'Ingrandisci',zoomOut:'Riduci',explore:'Tocca un punto per la scheda, poi ancora: continente → paese → comune.',gesture:'Trascina in ogni direzione · pizzica o tocca due volte per zoomare.',reduced:'La rotazione è sospesa da Riduci movimento. Puoi avviarla manualmente.'},
+  es:{world:'Mundo',continent:'Continente',country:'País',municipality:'Municipio',back:'Atrás',reset:'Vista mundial',zoomIn:'Acercar',zoomOut:'Alejar',explore:'Toca un punto para su ficha y vuelve a tocar: continente → país → municipio.',gesture:'Arrastra en todas direcciones · pellizca o toca dos veces para acercar.',reduced:'La rotación está pausada por Reducir movimiento. Puedes iniciarla manualmente.'},
+  pt:{world:'Mundo',continent:'Continente',country:'País',municipality:'Município',back:'Voltar',reset:'Vista mundial',zoomIn:'Aumentar',zoomOut:'Diminuir',explore:'Toque num ponto para a ficha e toque novamente: continente → país → município.',gesture:'Arraste em todas as direções · belisque ou toque duas vezes para ampliar.',reduced:'A rotação está pausada por Reduzir movimento. Pode iniciá-la manualmente.'},
 };
 function readLanguage(): Language { if (typeof window === 'undefined') return 'fr'; const value = window.localStorage.getItem('khe.web.language'); return value && value in copy ? value as Language : 'fr'; }
 function rings(geometry: Geometry): number[][][] { return geometry.type === 'Polygon' ? geometry.coordinates as number[][][] : (geometry.coordinates as number[][][][]).flat(); }
@@ -96,6 +98,15 @@ function coordinateValue(value: number | null | undefined, minimum: number, maxi
   const coordinate = Number(value);
   return Number.isFinite(coordinate) && coordinate >= minimum && coordinate <= maximum ? coordinate : null;
 }
+function pointerCenter(pointers: Map<number, PointerSnapshot>) {
+  const values = Array.from(pointers.values());
+  if (!values.length) return null;
+  return values.reduce((sum, point) => ({ x:sum.x + point.x / values.length, y:sum.y + point.y / values.length }), { x:0, y:0 });
+}
+function pointerDistance(pointers: Map<number, PointerSnapshot>) {
+  const [first, second] = Array.from(pointers.values());
+  return first && second ? Math.hypot(second.x - first.x, second.y - first.y) : 0;
+}
 
 export function OperationsGlobe({ agents }: { agents: AgentPoint[] }) {
   const [camera, setCamera] = useState<GlobeCamera>({ longitude:0, latitude:0, scale:GLOBE_ZOOM_SCALES.world });
@@ -118,6 +129,7 @@ export function OperationsGlobe({ agents }: { agents: AgentPoint[] }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [viewportWidth, setViewportWidth] = useState(1000);
+  const [interacting, setInteracting] = useState(false);
   const ownerFocused = useRef(false);
   const frameRef = useRef<number | null>(null);
   const cameraFrameRef = useRef<number | null>(null);
@@ -125,6 +137,7 @@ export function OperationsGlobe({ agents }: { agents: AgentPoint[] }) {
   const motionOverrideRef = useRef(false);
   const reducedMotionRef = useRef(false);
   const lastFrameRef = useRef(0);
+  const interactionRef = useRef<GlobeInteraction>({ pointers:new Map(), previousCenter:null, previousDistance:0, moved:false, suppressClick:false, lastTouchTapAt:0 });
   const t = copy[language];
   const zt = cameraCopy[language];
   const size = 520, center = size / 2, radius = 218;
@@ -331,6 +344,98 @@ export function OperationsGlobe({ agents }: { agents: AgentPoint[] }) {
     animateCamera({ ...cameraRef.current, scale:GLOBE_ZOOM_SCALES[nextLevel] }, nextLevel, zt[nextLevel]);
   }, [animateCamera, cameraForTarget, focusTarget, labelForTarget, zoomLevel, zt]);
 
+  const setManualCamera = useCallback((nextCamera: GlobeCamera) => {
+    if (cameraFrameRef.current !== null) {
+      window.cancelAnimationFrame(cameraFrameRef.current);
+      cameraFrameRef.current = null;
+    }
+    setPlaying(false);
+    const next = { ...nextCamera, longitude:normalizeLongitude(nextCamera.longitude), latitude:clampLatitude(nextCamera.latitude), scale:clampGlobeScale(nextCamera.scale) };
+    const nextLevel = zoomLevelForScale(next.scale);
+    cameraRef.current = next; setCamera(next); setZoomLevel(nextLevel);
+    if (nextLevel === 'world' && !focusTarget) setZoomLabel('');
+  }, [focusTarget]);
+
+  const handlePointerDown = useCallback((event: React.PointerEvent<SVGSVGElement>) => {
+    const interaction = interactionRef.current;
+    if (interaction.pointers.size === 0) interaction.moved = false;
+    const interactive = event.target instanceof Element && Boolean(event.target.closest('[role="button"]'));
+    interaction.pointers.set(event.pointerId, { x:event.clientX, y:event.clientY, pointerType:event.pointerType, interactive });
+    interaction.previousCenter = pointerCenter(interaction.pointers);
+    interaction.previousDistance = pointerDistance(interaction.pointers);
+    setPlaying(false); setInteracting(true);
+  }, []);
+
+  const handlePointerMove = useCallback((event: React.PointerEvent<SVGSVGElement>) => {
+    const interaction = interactionRef.current;
+    if (!interaction.pointers.has(event.pointerId)) return;
+    const previousCenter = interaction.previousCenter;
+    const previousDistance = interaction.previousDistance;
+    const pointer = interaction.pointers.get(event.pointerId)!;
+    interaction.pointers.set(event.pointerId, { ...pointer, x:event.clientX, y:event.clientY });
+    const centerPoint = pointerCenter(interaction.pointers);
+    if (!previousCenter || !centerPoint) return;
+    const deltaX = centerPoint.x - previousCenter.x, deltaY = centerPoint.y - previousCenter.y;
+    const distance = pointerDistance(interaction.pointers);
+    const current = cameraRef.current;
+    if (interaction.pointers.size >= 2 && previousDistance > 0 && distance > 0) {
+      if (Math.abs(distance - previousDistance) > 1 || Math.abs(deltaX) + Math.abs(deltaY) > 2) interaction.moved = true;
+      setManualCamera({
+        longitude:current.longitude - deltaX * .34 / current.scale,
+        latitude:current.latitude + deltaY * .28 / current.scale,
+        scale:current.scale * distance / previousDistance,
+      });
+      interaction.previousDistance = distance;
+    } else if (Math.abs(deltaX) + Math.abs(deltaY) > 1) {
+      interaction.moved = true;
+      setManualCamera({
+        ...current,
+        longitude:current.longitude - deltaX * .42 / current.scale,
+        latitude:current.latitude + deltaY * .34 / current.scale,
+      });
+    }
+    if (interaction.moved) {
+      try { if (!event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.setPointerCapture(event.pointerId); } catch { /* Pointer capture is optional on older mobile browsers. */ }
+    }
+    interaction.previousCenter = centerPoint;
+  }, [setManualCamera]);
+
+  const handlePointerEnd = useCallback((event: React.PointerEvent<SVGSVGElement>) => {
+    const interaction = interactionRef.current;
+    const pointer = interaction.pointers.get(event.pointerId);
+    const moved = interaction.moved;
+    interaction.pointers.delete(event.pointerId);
+    try { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); } catch { /* Older mobile browsers may release it themselves. */ }
+    if (!moved && pointer?.pointerType === 'touch' && !pointer.interactive && interaction.pointers.size === 0) {
+      const now = window.performance.now();
+      if (now - interaction.lastTouchTapAt < 340) { interaction.lastTouchTapAt = 0; zoomBy(1); }
+      else interaction.lastTouchTapAt = now;
+    }
+    if (moved) {
+      interaction.suppressClick = true;
+      window.setTimeout(() => { interaction.suppressClick = false; }, 0);
+    }
+    interaction.previousCenter = pointerCenter(interaction.pointers);
+    interaction.previousDistance = pointerDistance(interaction.pointers);
+    if (interaction.pointers.size === 0) { interaction.moved = false; setInteracting(false); }
+  }, [zoomBy]);
+
+  const handleWheel = useCallback((event: React.WheelEvent<SVGSVGElement>) => {
+    event.preventDefault();
+    const factor = Math.exp(-event.deltaY * .0015);
+    setManualCamera({ ...cameraRef.current, scale:cameraRef.current.scale * factor });
+  }, [setManualCamera]);
+
+  const handleDoubleClick = useCallback((event: React.MouseEvent<SVGSVGElement>) => {
+    if (event.target instanceof Element && event.target.closest('[role="button"]')) return;
+    event.preventDefault(); zoomBy(1);
+  }, [zoomBy]);
+
+  const suppressGestureClick = useCallback((event: React.MouseEvent<SVGSVGElement>) => {
+    if (!interactionRef.current.suppressClick) return;
+    event.preventDefault(); event.stopPropagation();
+  }, []);
+
   const resetView = useCallback((resumeRotation = false) => {
     setCountry('all'); setSelected(null); setFocusTarget(null);
     animateCamera({ longitude:0, latitude:0, scale:GLOBE_ZOOM_SCALES.world }, 'world', '', () => {
@@ -436,23 +541,24 @@ export function OperationsGlobe({ agents }: { agents: AgentPoint[] }) {
       </div>
     </div>
     {showGrowth && overview?.growth ? <div className="kpis" aria-label={t.growth}><span>{overview.growth.summary.visitors} {t.visitor}</span><span>{overview.growth.summary.planSelections} {t.lead}</span><span>{overview.growth.summary.checkouts} {t.prospect}</span><span>{overview.growth.summary.conversions} {t.client}</span><span>{t.conversion} {overview.growth.summary.checkouts ? Math.round(overview.growth.summary.conversions / overview.growth.summary.checkouts * 100) : 0}%</span></div> : null}
-    <div className="globe-stage"><div className="globe-halo"/><svg viewBox={`0 0 ${size} ${size}`} width="100%" className="world-globe" role="img" aria-label="KHE Global Intelligence Globe 2.0">
+    <div className="globe-stage"><div className="globe-halo"/><svg viewBox={`0 0 ${size} ${size}`} width="100%" className={`world-globe ${interacting?'interacting':''}`} role="img" aria-label="KHE Global Intelligence Globe 2.0" onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerEnd} onPointerCancel={handlePointerEnd} onClickCapture={suppressGestureClick} onDoubleClick={handleDoubleClick} onWheel={handleWheel}>
       <defs><radialGradient id="ocean" cx="37%" cy="30%"><stop offset="0" stopColor="#203446"/><stop offset=".55" stopColor="#0f1b26"/><stop offset="1" stopColor="#05090d"/></radialGradient><radialGradient id="shine" cx="28%" cy="20%"><stop offset="0" stopColor="rgba(255,255,255,.24)"/><stop offset=".55" stopColor="rgba(255,255,255,.02)"/><stop offset="1" stopColor="rgba(255,255,255,0)"/></radialGradient><clipPath id="earth-clip"><circle cx={center} cy={center} r={radius}/></clipPath><filter id="glow"><feGaussianBlur stdDeviation="3" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
       <circle cx={center} cy={center} r={radius} fill="url(#ocean)" stroke="rgba(218,177,76,.72)" strokeWidth="2.4"/>
       <g clipPath="url(#earth-clip)"><g className="geo-grid" fill="none" stroke="rgba(143,166,187,.13)" strokeWidth=".8"><ellipse cx={center} cy={center} rx={radius*.72} ry={radius}/><ellipse cx={center} cy={center} rx={radius*.36} ry={radius}/><line x1={center-radius} y1={center} x2={center+radius} y2={center}/><ellipse cx={center} cy={center-radius*.49} rx={radius*.87} ry={radius*.25}/><ellipse cx={center} cy={center+radius*.49} rx={radius*.87} ry={radius*.25}/></g>
         {countryShapes.map(({ feature, index, paths }) => paths.map((path, pathIndex) => { const code = iso2(feature.properties), action = () => selectCountry(feature); return <path key={`${index}-${pathIndex}`} d={path} className={`country ${code === ownerCountryCode ? 'owner-country' : ''} ${code === country ? 'selected-country' : ''}`} role={pathIndex === 0 ? 'button' : undefined} tabIndex={pathIndex === 0 ? 0 : -1} aria-label={pathIndex === 0 ? localizedCountry(feature.properties, language) : undefined} onClick={action} onKeyDown={(event) => activate(event, action)}/>; }))}
         {showRelations ? relations.map(({ item, agent, client }) => { const middleX=(agent.x+client.x)/2,middleY=Math.min(agent.y,client.y)-36,path=`M${agent.x.toFixed(1)},${agent.y.toFixed(1)} Q${middleX.toFixed(1)},${middleY.toFixed(1)} ${client.x.toFixed(1)},${client.y.toFixed(1)}`,title=`${displayName(agent.item)} ↔ ${client.item.name}`,action=()=>advanceFocus({key:`relation:${item.id}`,title,longitude:Number(client.item.lastLongitude),latitude:Number(client.item.lastLatitude),countryCode:client.item.lastCountryCode,municipality:client.item.lastMunicipality},{key:`relation:${item.id}`,title,subtitle:item.slaRisk?t.risk:t.support,details:[item.subject,item.status,item.channel,new Date(item.lastMessageAt).toLocaleString()]}); return <path key={item.id} d={path} className={`relation-line ${item.slaRisk?'risk':''}`} role="button" tabIndex={0} aria-label={`${t.relations}: ${displayName(agent.item)} ${client.item.name}`} onClick={action} onKeyDown={(event)=>activate(event,action)}/>; }) : null}
         {labels.map((label) => <text key={`${label.code}-${label.x}`} x={label.x} y={label.y} textAnchor="middle" className={`country-label rank-${Math.min(8,label.rank)} ${label.code===ownerCountryCode?'owner-label':''}`}>{label.code===ownerCountryCode?'★ ':''}{label.name}</text>)}
-        {showGrowth ? growthClusters.map((cluster) => { const representative=cluster.items[0],count=cluster.items.reduce((sum,item)=>sum+item.visitors,0),title=[representative.municipality,representative.regionCode,representative.countryCode].filter(Boolean).join(' · ')||t.growth,key=`growth:${representative.countryCode||'world'}:${representative.municipality||representative.regionCode||cluster.key}`,action=()=>advanceFocus({key,title,longitude:Number(representative.longitude),latitude:Number(representative.latitude),countryCode:representative.countryCode,municipality:representative.municipality},{key,title,subtitle:`${count} ${t.visitor}`,details:Object.entries(representative.stages).map(([stage,value])=>`${t[stage as Stage]}: ${value}`)}); return <g key={cluster.key} transform={`translate(${cluster.x} ${cluster.y})`} role="button" tabIndex={0} aria-label={`${count} ${t.visitor}`} className="clickable" onClick={action} onKeyDown={(event)=>activate(event,action)}><circle r={Math.min(16,6+Math.sqrt(Math.max(1,count))*1.4)} fill={stageColors[representative.dominantStage]} opacity=".82" stroke="#fff1c2" strokeWidth="1.1"/><circle r={Math.min(22,10+Math.sqrt(Math.max(1,count))*1.8)} fill="none" stroke={stageColors[representative.dominantStage]} opacity=".35"/><text textAnchor="middle" y="3" className="cluster-count">{count}</text></g>; }) : null}
-        {showClients ? clientClusters.map((cluster) => { const client=cluster.items[0],key=`client:${client.id}`,title=cluster.items.length>1?`${cluster.items.length} ${t.cluster}`:client.name,action=()=>advanceFocus({key,title,longitude:Number(client.lastLongitude),latitude:Number(client.lastLatitude),countryCode:client.lastCountryCode,municipality:client.lastMunicipality},{key,title,subtitle:client.online?t.online:t.offline,details:cluster.items.length>1?cluster.items.slice(0,12).map((item)=>item.name):[[client.lastMunicipality,client.lastRegionCode,client.lastCountryCode].filter(Boolean).join(' · '),`${client.subscriptionPlan||'—'} · ${client.engagementScore??0}/100`,`${client.activeEventCount||0} ${t.activeEvent} · ${client.stationSessionCount||0} ${t.stations}`,`${t.capture}: ${client.captureOnline?t.online:t.offline} · ${t.sharing}: ${client.sharingOnline?t.online:t.offline}`,`${client.mediaCount||0} ${t.media} · ${client.pendingMediaCount||0} ${t.pending} · ${client.failedMediaCount||0} ${t.failed}`].filter((line):line is string=>Boolean(line))}); return <g key={cluster.key} transform={`translate(${cluster.x} ${cluster.y}) rotate(45)`} role="button" tabIndex={0} aria-label={client.name} className="clickable" onClick={action} onKeyDown={(event)=>activate(event,action)}><rect x={cluster.items.length>1?-8:-6} y={cluster.items.length>1?-8:-6} width={cluster.items.length>1?16:12} height={cluster.items.length>1?16:12} rx="2" fill={client.regular?'#c39cff':client.online?'#54d7e7':'#7f8dc0'} stroke="#fff" strokeWidth="1.1"/><circle r={cluster.items.length>1?14:client.online?11:9} fill="none" stroke="rgba(84,215,231,.4)"/>{cluster.items.length>1?<text transform="rotate(-45)" textAnchor="middle" y="3" className="cluster-count">{cluster.items.length}</text>:null}</g>; }) : null}
-        {showAgents ? agentClusters.map((cluster) => { const agent=cluster.items[0],key=`agent:${agent.id}`,title=cluster.items.length>1?`${cluster.items.length} ${t.cluster}`:displayName(agent),action=()=>advanceFocus({key,title,longitude:Number(agent.longitude),latitude:Number(agent.latitude),countryCode:agent.countryCode,municipality:agent.municipality},{key,title,subtitle:agent.available?t.available:agent.online?t.online:t.offline,details:cluster.items.length>1?cluster.items.slice(0,12).map(displayName):[[agent.municipality,agent.regionCode,agent.countryCode].filter(Boolean).join(' · '),agent.email].filter((line):line is string=>Boolean(line))}); return <g key={cluster.key} transform={`translate(${cluster.x} ${cluster.y})`} role="button" tabIndex={0} aria-label={displayName(agent)} className="clickable" filter="url(#glow)" onClick={action} onKeyDown={(event)=>activate(event,action)}><circle r={cluster.items.length>1?9:agent.available?7:agent.online?5.5:4.5} fill={agent.available?'#6fe09a':agent.online?'#e0b94d':'#7c8794'} stroke="#fff" strokeWidth="1.2"/>{cluster.items.length>1?<text textAnchor="middle" y="3" className="cluster-count">{cluster.items.length}</text>:agent.available?<circle r="12" fill="none" stroke="rgba(111,224,154,.5)"/>:null}</g>; }) : null}
+        {showGrowth ? growthClusters.map((cluster) => { const representative=cluster.items[0],count=cluster.items.reduce((sum,item)=>sum+item.visitors,0),title=[representative.municipality,representative.regionCode,representative.countryCode].filter(Boolean).join(' · ')||t.growth,key=`growth:${representative.countryCode||'world'}:${representative.municipality||representative.regionCode||cluster.key}`,action=()=>advanceFocus({key,title,longitude:Number(representative.longitude),latitude:Number(representative.latitude),countryCode:representative.countryCode,municipality:representative.municipality},{key,title,subtitle:`${count} ${t.visitor}`,details:Object.entries(representative.stages).map(([stage,value])=>`${t[stage as Stage]}: ${value}`)}); return <g key={cluster.key} transform={`translate(${cluster.x} ${cluster.y})`} role="button" tabIndex={0} aria-label={`${count} ${t.visitor}`} className="clickable growth-marker" onClick={action} onKeyDown={(event)=>activate(event,action)}><circle r={Math.min(16,6+Math.sqrt(Math.max(1,count))*1.4)} fill={stageColors[representative.dominantStage]} opacity=".82" stroke="#fff1c2" strokeWidth="1.1"/><circle className="marker-ring" r={Math.min(22,10+Math.sqrt(Math.max(1,count))*1.8)} fill="none" stroke={stageColors[representative.dominantStage]} opacity=".35"/><text textAnchor="middle" y="3" className="cluster-count">{count}</text></g>; }) : null}
+        {showClients ? clientClusters.map((cluster) => { const client=cluster.items[0],key=`client:${client.id}`,title=cluster.items.length>1?`${cluster.items.length} ${t.cluster}`:client.name,action=()=>advanceFocus({key,title,longitude:Number(client.lastLongitude),latitude:Number(client.lastLatitude),countryCode:client.lastCountryCode,municipality:client.lastMunicipality},{key,title,subtitle:client.online?t.online:t.offline,details:cluster.items.length>1?cluster.items.slice(0,12).map((item)=>item.name):[[client.lastMunicipality,client.lastRegionCode,client.lastCountryCode].filter(Boolean).join(' · '),`${client.subscriptionPlan||'—'} · ${client.engagementScore??0}/100`,`${client.activeEventCount||0} ${t.activeEvent} · ${client.stationSessionCount||0} ${t.stations}`,`${t.capture}: ${client.captureOnline?t.online:t.offline} · ${t.sharing}: ${client.sharingOnline?t.online:t.offline}`,`${client.mediaCount||0} ${t.media} · ${client.pendingMediaCount||0} ${t.pending} · ${client.failedMediaCount||0} ${t.failed}`].filter((line):line is string=>Boolean(line))}); return <g key={cluster.key} transform={`translate(${cluster.x} ${cluster.y}) rotate(45)`} role="button" tabIndex={0} aria-label={client.name} className="clickable client-marker" onClick={action} onKeyDown={(event)=>activate(event,action)}><rect x={cluster.items.length>1?-8:-6} y={cluster.items.length>1?-8:-6} width={cluster.items.length>1?16:12} height={cluster.items.length>1?16:12} rx="2" fill={client.regular?'#c39cff':client.online?'#54d7e7':'#7f8dc0'} stroke="#fff" strokeWidth="1.1"/><circle className="marker-ring" r={cluster.items.length>1?14:client.online?11:9} fill="none" stroke="rgba(84,215,231,.4)"/>{cluster.items.length>1?<text transform="rotate(-45)" textAnchor="middle" y="3" className="cluster-count">{cluster.items.length}</text>:null}</g>; }) : null}
+        {showAgents ? agentClusters.map((cluster) => { const agent=cluster.items[0],key=`agent:${agent.id}`,title=cluster.items.length>1?`${cluster.items.length} ${t.cluster}`:displayName(agent),action=()=>advanceFocus({key,title,longitude:Number(agent.longitude),latitude:Number(agent.latitude),countryCode:agent.countryCode,municipality:agent.municipality},{key,title,subtitle:agent.available?t.available:agent.online?t.online:t.offline,details:cluster.items.length>1?cluster.items.slice(0,12).map(displayName):[[agent.municipality,agent.regionCode,agent.countryCode].filter(Boolean).join(' · '),agent.email].filter((line):line is string=>Boolean(line))}); return <g key={cluster.key} transform={`translate(${cluster.x} ${cluster.y})`} role="button" tabIndex={0} aria-label={displayName(agent)} className="clickable agent-marker" filter="url(#glow)" onClick={action} onKeyDown={(event)=>activate(event,action)}><circle r={cluster.items.length>1?9:agent.available?7:agent.online?5.5:4.5} fill={agent.available?'#6fe09a':agent.online?'#e0b94d':'#7c8794'} stroke="#fff" strokeWidth="1.2"/>{cluster.items.length>1?<text textAnchor="middle" y="3" className="cluster-count">{cluster.items.length}</text>:agent.available?<circle className="marker-ring" r="12" fill="none" stroke="rgba(111,224,154,.5)"/>:null}</g>; }) : null}
         <circle cx={center} cy={center} r={radius} fill="url(#shine)" pointerEvents="none"/>
       </g><circle cx={center} cy={center} r={radius} fill="none" stroke="rgba(255,220,131,.25)" strokeWidth="7" opacity=".22"/>
-    </svg>{loading?<div className="globe-message">{t.loading}</div>:null}{worldError?<div className="globe-message fallback">{t.unavailable}</div>:null}{!loading&&layerCount===0?<div className="globe-message">{overview?.growth?.enabled===false&&showGrowth?overview.growth.disabledReason||t.noData:t.noData}</div>:null}</div>
+    </svg>{loading?<div className="globe-message">{t.loading}</div>:null}{worldError?<div className="globe-message fallback">{t.unavailable}</div>:null}</div>
+    {!loading&&layerCount===0?<p className="layer-note" role="status">{overview?.growth?.enabled===false&&showGrowth?overview.growth.disabledReason||t.noData:t.noData}</p>:null}
     {error?<p className="globe-error" role="alert">{error}</p>:null}
     {selected?<aside className="globe-detail" aria-live="polite" aria-label={t.details}><div><strong>{selected.title}</strong><div className="detail-subtitle">{selected.subtitle}</div></div><div className="detail-lines">{selected.details.map((line,index)=><span key={`${line}-${index}`}>{line}</span>)}</div><button type="button" onClick={()=>setSelected(null)} aria-label={t.close}>×</button></aside>:null}
     <div className="zoom-bar" aria-label={zt.explore}>
-      <div className="zoom-copy"><div className="zoom-path"><strong>{zt.world}</strong>{zoomLevel!=='world'?<><span>›</span><strong>{zt[zoomLevel]}</strong></>:null}{zoomLabel?<><span>›</span><b>{zoomLabel}</b></>:null}</div><small>{zt.explore}</small></div>
+      <div className="zoom-copy"><div className="zoom-path"><strong>{zt.world}</strong>{zoomLevel!=='world'?<><span>›</span><strong>{zt[zoomLevel]}</strong></>:null}{zoomLabel?<><span>›</span><b>{zoomLabel}</b></>:null}</div><small>{zt.gesture}<br/>{zt.explore}</small></div>
       <div className="zoom-actions">
         <button type="button" onClick={()=>zoomBy(-1)} disabled={zoomLevel==='world'} aria-label={zt.zoomOut}>−</button>
         <button type="button" onClick={()=>zoomBy(1)} disabled={zoomLevel==='municipality'} aria-label={zt.zoomIn}>+</button>
@@ -464,9 +570,9 @@ export function OperationsGlobe({ agents }: { agents: AgentPoint[] }) {
     <div className="globe-legend"><span><i className="dot owner"/> {t.ownerCurrent}</span><span><i className="dot agent"/> {t.agents}</span><span><i className="diamond"/> {t.clients}</span>{Object.entries(stageColors).map(([stage,color])=><span key={stage}><i className="dot" style={{background:color}}/> {t[stage as Stage]}</span>)}<span><i className="line"/> {t.relations}</span></div>
     <p className="globe-privacy">{t.privacy}{hiddenCount?` · ${hiddenCount} ${t.hidden}`:''}{overview?.generatedAt?` · ${t.refreshed} ${new Date(overview.generatedAt).toLocaleTimeString()}`:''}</p>
     <style jsx>{`
-      .operations-globe{position:relative}.globe-toolbar{display:grid;gap:9px}.modebar,.filters{display:flex;gap:6px;overflow-x:auto;padding:2px}.mode{border:1px solid #39434f;background:#10151b;color:#aeb8c5;border-radius:999px;padding:7px 11px;font-size:10px;font-weight:850;white-space:nowrap;cursor:pointer}.mode.active{background:linear-gradient(135deg,#d9af49,#9e7428);border-color:#efcf79;color:#0b0d0f}.filters label{display:grid;gap:3px;min-width:125px}.filters span{font-size:9px;color:#8793a2;font-weight:850}.filters select{border:1px solid #36404b;background:#0e141a;color:#dfe6ed;border-radius:9px;padding:7px;font-size:10px}.kpis{display:flex;gap:7px;flex-wrap:wrap;margin:9px 0 0}.kpis span{padding:5px 8px;border:1px solid rgba(210,173,79,.2);border-radius:999px;color:#c5cfda;font-size:9px}.globe-stage{position:relative;display:grid;place-items:center;isolation:isolate;min-height:300px;overflow:hidden;border-radius:22px}.globe-halo{position:absolute;width:78%;aspect-ratio:1;border-radius:50%;background:radial-gradient(circle,rgba(210,173,79,.14),transparent 68%);filter:blur(20px)}.world-globe{position:relative;z-index:1;max-width:590px;filter:drop-shadow(0 24px 34px rgba(0,0,0,.42))}.country{fill:rgba(70,87,72,.88);stroke:rgba(217,197,140,.28);stroke-width:.55;cursor:pointer;transition:fill .2s ease}.country:hover,.country:focus{fill:rgba(101,113,91,.98);outline:none}.country.owner-country{fill:#b88a2b;stroke:#ffe186;stroke-width:1.2}.country.selected-country{stroke:#fff1b6;stroke-width:1.7}.country-label{fill:rgba(236,239,236,.76);font-size:6.15px;font-weight:720;paint-order:stroke;stroke:rgba(3,7,10,.8);stroke-width:1.75px;pointer-events:none}.owner-label{fill:#ffe69b;font-size:8px;font-weight:950}.relation-line{fill:none;stroke:#e0b94d;stroke-width:1.8;stroke-dasharray:6 4;filter:drop-shadow(0 0 5px rgba(224,185,77,.7));cursor:pointer;animation:relationFlow 1.4s linear infinite}.relation-line.risk{stroke:#e87575}.relation-line:focus{stroke-width:3;outline:none}.clickable{cursor:pointer;outline:none}.clickable:focus>*:first-child{stroke:#fff4b8;stroke-width:3}.cluster-count{fill:#071019;font-size:7px;font-weight:950;pointer-events:none}.globe-message{position:absolute;z-index:4;padding:8px 12px;border:1px solid rgba(210,173,79,.25);border-radius:999px;background:rgba(7,11,15,.82);color:#cbd3dc;font-size:10px}.globe-message.fallback{top:9px}.globe-error{color:#ff9aa4;font-size:11px;text-align:center}.globe-detail{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr) auto;gap:12px;max-width:590px;margin:8px auto 0;padding:11px 12px;border:1px solid rgba(210,173,79,.28);border-radius:14px;background:linear-gradient(135deg,rgba(25,27,30,.95),rgba(12,16,21,.96))}.globe-detail strong{color:#fff;font-size:12px}.detail-subtitle{color:#d9b75d;font-size:9px;font-weight:850;margin-top:2px}.detail-lines{display:grid;gap:3px;color:#aeb8c5;font-size:9px}.globe-detail button{border:0;background:transparent;color:#a8b3bf;font-size:20px;cursor:pointer}.zoom-bar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;max-width:590px;margin:10px auto 0;padding:9px 10px;border:1px solid rgba(210,173,79,.22);border-radius:13px;background:rgba(13,18,24,.72)}.zoom-copy{min-width:0}.zoom-path{display:flex;align-items:center;gap:6px;overflow:hidden;white-space:nowrap;color:#8d98a7;font-size:9px}.zoom-path strong{color:#d8b75d;text-transform:uppercase;letter-spacing:.05em}.zoom-path b{overflow:hidden;text-overflow:ellipsis;color:#e7edf4}.zoom-copy small{display:block;margin-top:4px;color:#8f9baa;font-size:8.5px;line-height:1.35}.zoom-actions{display:flex;gap:5px}.zoom-actions button{min-width:31px;min-height:31px;border:1px solid #3b4652;border-radius:9px;background:#111820;color:#eef3f7;font-weight:900;cursor:pointer}.zoom-actions button.wide{padding:0 9px;color:#dcb851;font-size:9px}.zoom-actions button:disabled{opacity:.38;cursor:not-allowed}.globe-controls{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:end;max-width:590px;margin:9px auto 0}.globe-controls label{display:grid;gap:5px}.globe-controls label span{font-size:11px;font-weight:850;color:#aeb8c5}.globe-controls input{width:100%;accent-color:#d8ae45}.globe-controls .button{min-height:36px;padding:7px 10px;font-size:10px}.motion-note{text-align:center;color:#aab4c0;font-size:8.5px;line-height:1.4;max-width:590px;margin:6px auto 0}.globe-legend{display:flex;justify-content:center;gap:11px;flex-wrap:wrap;margin-top:12px;color:#aeb8c5;font-size:9px}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:3px}.dot.owner{background:#b88a2b;box-shadow:0 0 7px #eac96c}.dot.agent{background:#6fe09a}.diamond{display:inline-block;width:8px;height:8px;transform:rotate(45deg);margin-right:5px;background:#54d7e7}.line{display:inline-block;width:15px;height:2px;margin:0 4px 2px 0;background:#e0b94d}.globe-privacy{text-align:center;color:#8e99a8;font-size:10px;line-height:1.45;margin:8px auto 0;max-width:650px}@keyframes relationFlow{to{stroke-dashoffset:-20}}
+      .operations-globe{position:relative}.globe-toolbar{display:grid;gap:9px}.modebar,.filters{display:flex;gap:6px;overflow-x:auto;padding:2px}.mode{border:1px solid #39434f;background:#10151b;color:#aeb8c5;border-radius:999px;padding:7px 11px;font-size:10px;font-weight:850;white-space:nowrap;cursor:pointer}.mode.active{background:linear-gradient(135deg,#d9af49,#9e7428);border-color:#efcf79;color:#0b0d0f}.filters label{display:grid;gap:3px;min-width:125px}.filters span{font-size:9px;color:#8793a2;font-weight:850}.filters select{border:1px solid #36404b;background:#0e141a;color:#dfe6ed;border-radius:9px;padding:7px;font-size:10px}.kpis{display:flex;gap:7px;flex-wrap:wrap;margin:9px 0 0}.kpis span{padding:5px 8px;border:1px solid rgba(210,173,79,.2);border-radius:999px;color:#c5cfda;font-size:9px}.globe-stage{position:relative;display:grid;place-items:center;isolation:isolate;min-height:300px;overflow:hidden;border-radius:22px}.globe-halo{position:absolute;width:78%;aspect-ratio:1;border-radius:50%;background:radial-gradient(circle,rgba(210,173,79,.14),transparent 68%);filter:blur(20px);animation:haloBreath 4.8s ease-in-out infinite}.world-globe{position:relative;z-index:1;max-width:590px;filter:drop-shadow(0 24px 34px rgba(0,0,0,.42));touch-action:none;user-select:none;-webkit-user-select:none;cursor:grab}.world-globe.interacting{cursor:grabbing}.country{fill:rgba(70,87,72,.88);stroke:rgba(217,197,140,.28);stroke-width:.55;cursor:pointer;transition:fill .2s ease}.country:hover,.country:focus{fill:rgba(101,113,91,.98);outline:none}.country.owner-country{fill:#b88a2b;stroke:#ffe186;stroke-width:1.2}.country.selected-country{stroke:#fff1b6;stroke-width:1.7}.country-label{fill:rgba(236,239,236,.76);font-size:6.15px;font-weight:720;paint-order:stroke;stroke:rgba(3,7,10,.8);stroke-width:1.75px;pointer-events:none}.owner-label{fill:#ffe69b;font-size:8px;font-weight:950}.relation-line{fill:none;stroke:#e0b94d;stroke-width:1.8;stroke-dasharray:6 4;filter:drop-shadow(0 0 5px rgba(224,185,77,.7));cursor:pointer;animation:relationFlow 1.4s linear infinite}.relation-line.risk{stroke:#e87575}.relation-line:focus{stroke-width:3;outline:none}.clickable{cursor:pointer;outline:none}.clickable:focus>*:first-child{stroke:#fff4b8;stroke-width:3}.marker-ring{transform-box:fill-box;transform-origin:center;animation:markerPulse 2.2s ease-in-out infinite}.cluster-count{fill:#071019;font-size:7px;font-weight:950;pointer-events:none}.globe-message{position:absolute;z-index:4;padding:8px 12px;border:1px solid rgba(210,173,79,.25);border-radius:999px;background:rgba(7,11,15,.82);color:#cbd3dc;font-size:10px}.globe-message.fallback{top:9px}.layer-note{max-width:590px;margin:3px auto 0;padding:5px 9px;color:#8f9baa;font-size:9px;line-height:1.4;text-align:center}.globe-error{color:#ff9aa4;font-size:11px;text-align:center}.globe-detail{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr) auto;gap:12px;max-width:590px;margin:8px auto 0;padding:11px 12px;border:1px solid rgba(210,173,79,.42);border-radius:14px;background:linear-gradient(135deg,rgba(25,27,30,.98),rgba(12,16,21,.98));box-shadow:0 14px 34px rgba(0,0,0,.24);animation:detailReveal .28s ease-out}.globe-detail strong{color:#fff;font-size:12px}.detail-subtitle{color:#d9b75d;font-size:9px;font-weight:850;margin-top:2px}.detail-lines{display:grid;gap:3px;color:#aeb8c5;font-size:9px}.globe-detail button{border:0;background:transparent;color:#a8b3bf;font-size:20px;cursor:pointer}.zoom-bar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;max-width:590px;margin:10px auto 0;padding:9px 10px;border:1px solid rgba(210,173,79,.22);border-radius:13px;background:rgba(13,18,24,.72)}.zoom-copy{min-width:0}.zoom-path{display:flex;align-items:center;gap:6px;overflow:hidden;white-space:nowrap;color:#8d98a7;font-size:9px}.zoom-path strong{color:#d8b75d;text-transform:uppercase;letter-spacing:.05em}.zoom-path b{overflow:hidden;text-overflow:ellipsis;color:#e7edf4}.zoom-copy small{display:block;margin-top:4px;color:#8f9baa;font-size:8.5px;line-height:1.45}.zoom-actions{display:flex;gap:5px}.zoom-actions button{min-width:31px;min-height:31px;border:1px solid #3b4652;border-radius:9px;background:#111820;color:#eef3f7;font-weight:900;cursor:pointer}.zoom-actions button.wide{padding:0 9px;color:#dcb851;font-size:9px}.zoom-actions button:disabled{opacity:.38;cursor:not-allowed}.globe-controls{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:end;max-width:590px;margin:9px auto 0}.globe-controls label{display:grid;gap:5px}.globe-controls label span{font-size:11px;font-weight:850;color:#aeb8c5}.globe-controls input{width:100%;accent-color:#d8ae45}.globe-controls .button{min-height:36px;padding:7px 10px;font-size:10px}.motion-note{text-align:center;color:#aab4c0;font-size:8.5px;line-height:1.4;max-width:590px;margin:6px auto 0}.globe-legend{display:flex;justify-content:center;gap:11px;flex-wrap:wrap;margin-top:12px;color:#aeb8c5;font-size:9px}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:3px}.dot.owner{background:#b88a2b;box-shadow:0 0 7px #eac96c}.dot.agent{background:#6fe09a}.diamond{display:inline-block;width:8px;height:8px;transform:rotate(45deg);margin-right:5px;background:#54d7e7}.line{display:inline-block;width:15px;height:2px;margin:0 4px 2px 0;background:#e0b94d}.globe-privacy{text-align:center;color:#8e99a8;font-size:10px;line-height:1.45;margin:8px auto 0;max-width:650px}@keyframes relationFlow{to{stroke-dashoffset:-20}}@keyframes markerPulse{50%{opacity:.88;transform:scale(1.18)}}@keyframes haloBreath{50%{opacity:.68;transform:scale(1.04)}}@keyframes detailReveal{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
       @media(max-width:600px){.globe-stage{min-height:260px}.country-label{font-size:5.7px}.country-label.rank-5,.country-label.rank-6,.country-label.rank-7,.country-label.rank-8{display:none}.filters{display:grid;grid-template-columns:repeat(3,minmax(110px,1fr));overflow-x:auto}.zoom-bar{grid-template-columns:1fr}.zoom-actions{justify-content:flex-start}.globe-controls{grid-template-columns:1fr}.globe-controls .button{justify-self:start}.globe-detail{grid-template-columns:1fr auto}.detail-lines{grid-column:1/-1}.relation-line{stroke-width:2.3}}
-      @media(prefers-reduced-motion:reduce){.relation-line{animation:none}.country{transition:none}}
+      @media(prefers-reduced-motion:reduce){.relation-line,.marker-ring,.globe-halo,.globe-detail{animation:none}.country{transition:none}}
     `}</style>
   </div>;
 }

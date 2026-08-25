@@ -30,9 +30,15 @@ for (const marker of [
   'normalizeOverview',
   'Array.isArray(data.features)',
   'media.addListener?.(updateMotion)',
+  'onPointerMove={handlePointerMove}',
+  'onPointerCancel={handlePointerEnd}',
+  'onDoubleClick={handleDoubleClick}',
+  'onWheel={handleWheel}',
+  'touch-action:none',
+  'zt.gesture',
 ]) assert.ok(component.includes(marker), `Globe QA marker missing: ${marker}`);
 
-for (const marker of ['GLOBE_ZOOM_SCALES', 'municipality: 7', 'projectGlobePoint', 'easeCamera']) {
+for (const marker of ['GLOBE_ZOOM_SCALES', 'municipality: 7', 'projectGlobePoint', 'easeCamera', 'clampGlobeScale', 'zoomLevelForScale']) {
   assert.ok(cameraSource.includes(marker), `Globe camera QA marker missing: ${marker}`);
 }
 
@@ -67,13 +73,19 @@ const cameraTranspiled = ts.transpileModule(cameraSource, {
 }).outputText;
 const cameraModule = { exports: {} };
 vm.runInNewContext(`(function(module,exports){${cameraTranspiled}\n})(module,module.exports);`, { module:cameraModule });
-const { GLOBE_ZOOM_SCALES, continentCamera, easeCamera, projectGlobePoint, zoomLevelAt } = cameraModule.exports;
+const { GLOBE_ZOOM_SCALES, clampGlobeScale, continentCamera, easeCamera, projectGlobePoint, zoomLevelAt, zoomLevelForScale } = cameraModule.exports;
 
 assert.equal(zoomLevelAt('world', 1), 'continent');
 assert.equal(zoomLevelAt('continent', 1), 'country');
 assert.equal(zoomLevelAt('country', 1), 'municipality');
 assert.equal(zoomLevelAt('municipality', 1), 'municipality');
 assert.equal(zoomLevelAt('world', -1), 'world');
+assert.equal(clampGlobeScale(0.2), GLOBE_ZOOM_SCALES.world);
+assert.equal(clampGlobeScale(20), GLOBE_ZOOM_SCALES.municipality);
+assert.equal(zoomLevelForScale(1), 'world');
+assert.equal(zoomLevelForScale(1.7), 'continent');
+assert.equal(zoomLevelForScale(3.2), 'country');
+assert.equal(zoomLevelForScale(7), 'municipality');
 assert.equal(continentCamera('Europe', { longitude:0, latitude:0, scale:1 }).scale, GLOBE_ZOOM_SCALES.continent);
 assert.equal(continentCamera('Europe', { longitude:0, latitude:0, scale:1 }).latitude, 50);
 const centered = projectGlobePoint(7.45, 46.95, { longitude:7.45, latitude:46.95, scale:GLOBE_ZOOM_SCALES.municipality }, 260, 218);
