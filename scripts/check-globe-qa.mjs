@@ -26,12 +26,15 @@ for (const marker of [
   'advanceFocus',
   'toggleAutoRotation',
   "zoomLevel==='municipality'",
-  'GLOBE_ZOOM_SCALES.municipality',
   'motionOverrideRef.current = true',
   'normalizeOverview',
   'Array.isArray(data.features)',
   'media.addListener?.(updateMotion)',
 ]) assert.ok(component.includes(marker), `Globe QA marker missing: ${marker}`);
+
+for (const marker of ['GLOBE_ZOOM_SCALES', 'municipality: 7', 'projectGlobePoint', 'easeCamera']) {
+  assert.ok(cameraSource.includes(marker), `Globe camera QA marker missing: ${marker}`);
+}
 
 assert.ok(
   !component.includes('feature?.properties.LABEL_X); latitude = Number(feature?.properties.LABEL_Y)'),
