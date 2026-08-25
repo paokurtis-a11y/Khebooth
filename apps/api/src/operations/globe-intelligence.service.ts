@@ -20,6 +20,11 @@ type StrategyThresholds = {
   anonymousAnalyticsEnabled: boolean;
 };
 type CacheEntry = { expiresAt: number; value: Promise<Record<string, unknown>> };
+type GlobeAccessScope = {
+  organizationId: string;
+  managedClientId: string | null;
+  accountPlan: string | null;
+};
 
 const CACHE_TTL_MS = 10_000;
 const DEFAULT_STRATEGY: StrategyThresholds = {
@@ -66,11 +71,15 @@ export class GlobeIntelligenceService {
 
   async overview(user: AuthenticatedUser, mode?: unknown, window?: unknown) {
     const request = parseGlobeRequest(mode, window, user.role);
-    const cacheKey = `${user.organizationId}:${request.mode}:${request.window}`;
+    const scope = await this.accessScope(user);
+    if (scope.managedClientId && (request.mode === 'growth' || request.mode === 'all')) {
+      throw new ForbiddenException('Ce compte peut consulter uniquement sa vue opérationnelle BUSINESS');
+    }
+    const cacheKey = `${scope.organizationId}:${scope.managedClientId ?? 'root'}:${request.mode}:${request.window}`;
     const cached = this.cache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) return cached.value;
 
-    const value = this.buildOverview(user, request).catch((error) => {
+    const value = this.buildOverview(user, request, scope).catch((error) => {
       this.cache.delete(cacheKey);
       throw error;
     });
@@ -80,6 +89,30 @@ export class GlobeIntelligenceService {
       for (const [key, entry] of this.cache) if (entry.expiresAt <= now) this.cache.delete(key);
     }
     return value;
+  }
+
+  private async accessScope(user: AuthenticatedUser): Promise<GlobeAccessScope> {
+    const rows = await this.prisma.$queryRaw<Array<{
+      managedClientId: string | null;
+      clientOrganizationId: string | null;
+      subscriptionPlan: string | null;
+      subscriptionStatus: string | null;
+      paymentStatus: string | null;
+      subscriptionEndsAt: Date | null;
+    }>>`
+      SELECT u."managedClientId",c."organizationId" AS "clientOrganizationId",c."subscriptionPlan",c."subscriptionStatus",c."paymentStatus",c."subscriptionEndsAt"
+      FROM "User" u LEFT JOIN "Client" c ON c.id=u."managedClientId"
+      WHERE u.id=${user.id}::uuid AND u."organizationId"=${user.organizationId}::uuid AND u."isActive"=TRUE
+      LIMIT 1
+    `;
+    const row = rows[0];
+    if (!row?.managedClientId) return { organizationId:user.organizationId, managedClientId:null, accountPlan:null };
+    const eligiblePlan = row.subscriptionPlan === 'BUSINESS' || row.subscriptionPlan === 'ENTERPRISE';
+    const expired = Boolean(row.subscriptionEndsAt && new Date(row.subscriptionEndsAt).getTime() <= Date.now());
+    if (!eligiblePlan || row.subscriptionStatus !== 'ACTIVE' || row.paymentStatus !== 'PAID' || expired || !row.clientOrganizationId) {
+      throw new ForbiddenException('Accès Globe réservé aux comptes BUSINESS ou ENTERPRISE actifs et payés');
+    }
+    return { organizationId:row.clientOrganizationId, managedClientId:row.managedClientId, accountPlan:row.subscriptionPlan };
   }
 
   private async strategy(organizationId: string): Promise<StrategyThresholds> {
@@ -99,9 +132,9 @@ export class GlobeIntelligenceService {
     return { ...DEFAULT_STRATEGY, ...(rows[0] ?? {}) };
   }
 
-  private clients(organizationId: string, windowDays: number) {
+  private clients(organizationId: string, windowDays: number, managedClientId: string | null) {
     return this.prisma.$queryRaw<any[]>`
-      SELECT c.id,c.name,c.email,c."companyName",c."subscriptionPlan",c."subscriptionStatus",c."paymentStatus",
+      SELECT c.id,c.name,c.email,c.phone,c."companyName",c.notes,c."subscriptionPlan",c."subscriptionStatus",c."paymentStatus",
         COALESCE(us.sessions,0)::int AS "connectionCount",COALESCE(us.days,0)::int AS "activeDays",
         COALESCE(us.seconds,0)::bigint AS "totalConnectedSeconds",us."lastSeenAt",us."lastCountryCode",us."lastRegionCode",us."lastMunicipality",us."lastLatitude",us."lastLongitude",
         COALESCE(ev.events,0)::int AS "eventCount",COALESCE(ev.active,0)::int AS "activeEventCount",
@@ -133,12 +166,13 @@ export class GlobeIntelligenceService {
         FROM "MediaAsset" m JOIN "Event" e ON e.id=m."eventId" WHERE e."clientId"=c.id
       ) media ON TRUE
       WHERE c."organizationId"=${organizationId}::uuid AND c."archivedAt" IS NULL
+        AND (${managedClientId}::uuid IS NULL OR c.id=${managedClientId}::uuid)
       ORDER BY COALESCE(us."lastSeenAt",c."createdAt") DESC
       LIMIT 1000
     `;
   }
 
-  private relations(organizationId: string) {
+  private relations(organizationId: string, managedClientId: string | null) {
     return this.prisma.$queryRaw<any[]>`
       SELECT sc.id,sc.status::text AS status,sc.subject,sc."lastMessageAt",sc."createdAt" AS "startedAt",sc."resolvedAt" AS "endedAt",
         sc."assignedToUserId" AS "agentId",requester."managedClientId" AS "clientId",
@@ -147,6 +181,7 @@ export class GlobeIntelligenceService {
         (sc.status='HANDOFF_REQUESTED' OR sc."lastMessageAt"<CURRENT_TIMESTAMP-INTERVAL '15 minutes') AS "slaRisk"
       FROM "SupportConversation" sc JOIN "User" requester ON requester.id=sc."requesterUserId"
       WHERE sc."organizationId"=${organizationId}::uuid AND sc."assignedToUserId" IS NOT NULL AND requester."managedClientId" IS NOT NULL
+        AND (${managedClientId}::uuid IS NULL OR requester."managedClientId"=${managedClientId}::uuid)
         AND sc.status IN ('ASSIGNED','HANDOFF_REQUESTED')
       ORDER BY "slaRisk" DESC,sc."lastMessageAt" DESC
       LIMIT 250
@@ -183,19 +218,19 @@ export class GlobeIntelligenceService {
     `;
   }
 
-  private async buildOverview(user: AuthenticatedUser, request: GlobeRequest): Promise<Record<string, unknown>> {
-    const strategy = await this.strategy(user.organizationId);
+  private async buildOverview(user: AuthenticatedUser, request: GlobeRequest, scope: GlobeAccessScope): Promise<Record<string, unknown>> {
+    const strategy = await this.strategy(scope.organizationId);
     const includeClients = ['clients', 'relations', 'all'].includes(request.mode);
     const includeRelations = ['relations', 'all'].includes(request.mode);
-    const growthEnabled = strategy.enabled && strategy.geoSegmentationEnabled && strategy.anonymousAnalyticsEnabled;
+    const growthEnabled = !scope.managedClientId && strategy.enabled && strategy.geoSegmentationEnabled && strategy.anonymousAnalyticsEnabled;
     const includeGrowth = growthEnabled && ['growth', 'all'].includes(request.mode);
     const windowDays = request.window === 'real-time' ? 1 : request.windowDays;
 
     const [clientRows, relationRows, growthRows, summaryRows] = await Promise.all([
-      includeClients ? this.clients(user.organizationId, windowDays) : Promise.resolve([]),
-      includeRelations ? this.relations(user.organizationId) : Promise.resolve([]),
-      includeGrowth ? this.growth(user.organizationId, windowDays) : Promise.resolve([]),
-      includeGrowth ? this.growthSummary(user.organizationId, windowDays) : Promise.resolve([]),
+      includeClients ? this.clients(scope.organizationId, windowDays, scope.managedClientId) : Promise.resolve([]),
+      includeRelations ? this.relations(scope.organizationId, scope.managedClientId) : Promise.resolve([]),
+      includeGrowth ? this.growth(scope.organizationId, windowDays) : Promise.resolve([]),
+      includeGrowth ? this.growthSummary(scope.organizationId, windowDays) : Promise.resolve([]),
     ]);
 
     const clients = clientRows.map((row) => {
@@ -228,7 +263,12 @@ export class GlobeIntelligenceService {
       generatedAt: new Date().toISOString(),
       mode: request.mode,
       window: request.window,
-      capabilities: { canViewAll: user.role === UserRole.OWNER },
+      capabilities: {
+        canViewAll: user.role === UserRole.OWNER && !scope.managedClientId,
+        managedAccount: Boolean(scope.managedClientId),
+        accountPlan: scope.accountPlan,
+        contactScope: scope.managedClientId ? 'SELF_AND_ASSIGNED_AGENTS' : 'ORGANIZATION',
+      },
       clients,
       relations: relationRows,
       growth: {
