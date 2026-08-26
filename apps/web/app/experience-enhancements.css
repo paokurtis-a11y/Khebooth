@@ -28,6 +28,27 @@
 .marketing-nav :where(select,button){
   color:#2d2519;
 }
+.currency-selector{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  color:#2d2519!important;
+  font-weight:850;
+  white-space:nowrap;
+}
+.currency-selector>span{color:#5b4d38!important}
+.currency-selector select{
+  min-height:40px;
+  padding:7px 32px 7px 11px;
+  border:1px solid rgba(126,92,25,.28);
+  border-radius:11px;
+  color:#211b12!important;
+  background:#fffdf8;
+  font-weight:900;
+  cursor:pointer;
+}
+.currency-selector option{color:#211b12;background:#fffdf8}
+.currency-selector select:focus-visible{outline:3px solid rgba(210,173,79,.35);outline-offset:2px}
 .marketing-ghost{
   color:#2b241a!important;
   border-color:rgba(123,91,28,.28)!important;
@@ -252,6 +273,9 @@
   .marketing-nav{gap:8px!important}
   .marketing-nav-actions{gap:7px!important}
   .marketing-cart-label{display:none}
+  .currency-selector{gap:5px}
+  .currency-selector>span{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+  .currency-selector select{min-width:132px!important;max-width:46vw;padding-inline:8px 24px;font-size:11px}
   .marketing-cart-trigger{width:40px;justify-content:center;padding:7px}
   .marketing-cart-trigger>b{position:absolute;top:-7px;right:-7px}
   .marketing-feature-detail summary{padding:22px;grid-template-columns:auto minmax(0,1fr) auto;gap:11px}
