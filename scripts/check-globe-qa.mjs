@@ -11,12 +11,14 @@ const operationsServicePath = new URL('../apps/api/src/operations/operations.ser
 const weatherRoutePath = new URL('../apps/web/app/api/globe-weather/route.ts', import.meta.url);
 const operationsPagePath = new URL('../apps/web/app/operations/page.tsx', import.meta.url);
 const analyticsBeaconPath = new URL('../apps/web/components/analytics-beacon.tsx', import.meta.url);
+const portalMenuCssPath = new URL('../apps/web/app/portal-menu-enhancements.css', import.meta.url);
 const component = readFileSync(componentPath, 'utf8');
 const service = readFileSync(servicePath, 'utf8');
 const operationsService = readFileSync(operationsServicePath, 'utf8');
 const weatherRoute = readFileSync(weatherRoutePath, 'utf8');
 const operationsPage = readFileSync(operationsPagePath, 'utf8');
 const analyticsBeacon = readFileSync(analyticsBeaconPath, 'utf8');
+const portalMenuCss = readFileSync(portalMenuCssPath, 'utf8');
 const cameraSource = readFileSync(cameraPath, 'utf8');
 const performanceSource = readFileSync(performancePath, 'utf8');
 
@@ -71,10 +73,16 @@ for (const marker of [
   'selectVisitor',
   'vt.privacy',
   'className="clickable live-visitor-marker"',
+  '.modebar{display:grid',
+  'grid-template-columns:repeat(2,minmax(0,1fr))',
 ]) assert.ok(component.includes(marker), `Globe QA marker missing: ${marker}`);
 
 for (const marker of ["type Tab='agents'|'globe'", 'tabGlobeFull', '<OperationsGlobe agents={agents} expanded/>', 'aria-pressed={tab===key}', "type VisitorMetric='visits'", 'visitorMetricRows', 'aria-pressed={visitorMetric===key}', 't.detailAction', 'setVisitorMetric(null)', 'visitor.online', 't.liveNow', 't.leftSite']) {
   assert.ok(operationsPage.includes(marker), `Globe full-screen tab QA marker missing: ${marker}`);
+}
+
+for (const marker of [".portal-nav-submenu[data-open='true']{display:block!important", '-webkit-overflow-scrolling:touch', 'overscroll-behavior:contain']) {
+  assert.ok(portalMenuCss.includes(marker), `Mobile menu QA marker missing: ${marker}`);
 }
 
 for (const marker of ['SESSION_HEARTBEAT', 'SESSION_ENDED', 'pagehide', '30000', "consent!=='accepted'"]) {
