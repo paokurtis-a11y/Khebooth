@@ -3,6 +3,7 @@ import { UserRole } from '@prisma/client';
 import type { AuthenticatedUser } from '../src/auth/auth.types';
 import {
   GlobeIntelligenceService,
+  LIVE_VISITOR_TTL_SECONDS,
   normalizeCountryCode,
   parseGlobeRequest,
   roundCoordinate,
@@ -87,6 +88,45 @@ describe('GlobeIntelligenceService', () => {
     expect(result.growth.geographies).toEqual([]);
   });
 
+  it('returns only consented live promotional sessions as anonymous visitor points', async () => {
+    const seenAt = new Date();
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{
+        enabled:true,
+        geoSegmentationEnabled:true,
+        anonymousAnalyticsEnabled:true,
+      }])
+      .mockResolvedValueOnce([{
+        id:'5f4dcc3b5aa765d61d8327deb882cf99',
+        countryCode:'ch',
+        regionCode:'FR',
+        municipality:'Fribourg',
+        latitude:46.9,
+        longitude:7.4,
+        lastSeenAt:seenAt,
+        pagePath:'/',
+      }]);
+    const prisma = { $queryRaw:query } as unknown as PrismaService;
+    const result = await new GlobeIntelligenceService(prisma).overview(owner, 'visitors', 'real-time') as any;
+
+    expect(LIVE_VISITOR_TTL_SECONDS).toBe(75);
+    expect(result.liveVisitors).toMatchObject({ enabled:true, ttlSeconds:75 });
+    expect(result.liveVisitors.items).toEqual([expect.objectContaining({
+      id:'5f4dcc3b5aa765d61d8327deb882cf99',
+      online:true,
+      source:'PROMOTIONAL_SITE',
+      countryCode:'CH',
+      municipality:'Fribourg',
+      latitude:46.9,
+      longitude:7.4,
+      pagePath:'/',
+    })]);
+    expect(result.clients).toEqual([]);
+    expect(result.growth.geographies).toEqual([]);
+  });
+
   it('uses a short cache to avoid repeating the same aggregated database work', async () => {
     const query = jest.fn().mockResolvedValue([]);
     const prisma = { $queryRaw: query } as unknown as PrismaService;
@@ -110,7 +150,10 @@ describe('GlobeIntelligenceService', () => {
     expect(result.growth.enabled).toBe(false);
   });
 
-  it('rejects Growth and unpaid BUSINESS access', async () => {
+  it('rejects live visitors, Growth and unpaid BUSINESS access', async () => {
+    const visitorPrisma = { $queryRaw:jest.fn().mockResolvedValueOnce([activeBusiness]) } as unknown as PrismaService;
+    await expect(new GlobeIntelligenceService(visitorPrisma).overview(business, 'visitors', 'real-time')).rejects.toThrow(ForbiddenException);
+
     const growthPrisma = { $queryRaw:jest.fn().mockResolvedValueOnce([activeBusiness]) } as unknown as PrismaService;
     await expect(new GlobeIntelligenceService(growthPrisma).overview(business, 'growth', 'real-time')).rejects.toThrow(ForbiddenException);
 
