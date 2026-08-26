@@ -18,6 +18,8 @@ const marketingPagePath = new URL('../apps/web/app/page.tsx', import.meta.url);
 const marketingCartPath = new URL('../apps/web/components/marketing-cart.tsx', import.meta.url);
 const supportCenterPath = new URL('../apps/web/components/support-center-tools.tsx', import.meta.url);
 const currencySelectorPath = new URL('../apps/web/components/currency-selector.tsx', import.meta.url);
+const marketingLanguageSelectorPath = new URL('../apps/web/components/marketing-language-selector.tsx', import.meta.url);
+const marketingI18nPath = new URL('../apps/web/lib/marketing-i18n.ts', import.meta.url);
 const experienceEnhancementsPath = new URL('../apps/web/app/experience-enhancements.css', import.meta.url);
 const portalShellPath = new URL('../apps/web/components/portal-shell.tsx', import.meta.url);
 const globalErrorPath = new URL('../apps/web/app/global-error.tsx', import.meta.url);
@@ -34,6 +36,8 @@ const marketingPageSource = readFileSync(marketingPagePath, 'utf8');
 const marketingCartSource = readFileSync(marketingCartPath, 'utf8');
 const supportCenterSource = readFileSync(supportCenterPath, 'utf8');
 const currencySelectorSource = readFileSync(currencySelectorPath, 'utf8');
+const marketingLanguageSelectorSource = readFileSync(marketingLanguageSelectorPath, 'utf8');
+const marketingI18nSource = readFileSync(marketingI18nPath, 'utf8');
 const experienceEnhancements = readFileSync(experienceEnhancementsPath, 'utf8');
 const portalShellSource = readFileSync(portalShellPath, 'utf8');
 const globalErrorSource = readFileSync(globalErrorPath, 'utf8');
@@ -132,10 +136,10 @@ for (const forbidden of ['|load failed|', '|failed to fetch|', '|network request
   assert.ok(!globalErrorSource.includes(forbidden), `Generic network failures must not trigger chunk recovery: ${forbidden}`);
 }
 
-for (const marker of ['MarketingCart', 'AddToCartButton', 'FEATURE_DETAILS', 'marketing-feature-detail', 'pricing-actions']) {
+for (const marker of ['MarketingCart', 'AddToCartButton', 'getMarketingCopy', 'MarketingLanguageSelector', 'FEATURE_VISUALS', 'feature-motion-shot', 'marketing-feature-detail', 'pricing-plan-details', 'pricing-actions']) {
   assert.ok(marketingPageSource.includes(marker), `Marketing interaction QA marker missing: ${marker}`);
 }
-for (const marker of ['CART_KEY', 'marketing-cart-trigger', 'Continuer vers la souscription', 'Ajouter au panier']) {
+for (const marker of ['CART_KEY', 'marketing-cart-trigger', 'getMarketingCopy(language).cart', 'language:MarketingLanguage', 't.checkout', 't.add']) {
   assert.ok(marketingCartSource.includes(marker), `Marketing cart QA marker missing: ${marker}`);
 }
 for (const marker of ['className="support-tools"', 'className="button secondary support-help"', 'support-bell-wrap', 'support-notification-panel']) {
@@ -147,8 +151,14 @@ for (const marker of ['#fffdf8', '.popular-tag', 'overflow:visible!important', '
 for (const forbidden of ['.operations-world-card', '.support-help-dock', '.support-drag-handle']) {
   assert.ok(!experienceEnhancements.includes(forbidden), `Portal rollback styling must stay removed: ${forbidden}`);
 }
-for (const marker of ['🇨🇭 CHF · Suisse', '🇪🇺 EUR · Zone euro', '🇬🇧 GBP · Royaume-Uni', '🇺🇸 USD · États-Unis', '🇨🇦 CAD · Canada', '🇦🇺 AUD · Australie', 'aria-label="Devise et pays"']) {
+for (const marker of ["CHF:{flag:'🇨🇭'", "EUR:{flag:'🇪🇺'", "GBP:{flag:'🇬🇧'", "USD:{flag:'🇺🇸'", "CAD:{flag:'🇨🇦'", "AUD:{flag:'🇦🇺'", 'data.country[language]', 't.selectors.currencyLong']) {
   assert.ok(currencySelectorSource.includes(marker), `Currency selector QA marker missing: ${marker}`);
+}
+for (const marker of ['MARKETING_LANGUAGES', "query.set('lang',next)", 'document.documentElement.lang=language', 'khe_marketing_language']) {
+  assert.ok(marketingLanguageSelectorSource.includes(marker), `Marketing language selector QA marker missing: ${marker}`);
+}
+for (const marker of ["'fr'|'en'|'de'|'it'|'es'|'pt'", 'COUNTRY_LANGUAGE', 'resolveMarketingLanguage', 'getMarketingPlan', "FR:'fr'", "DE:'de'", "IT:'it'", "ES:'es'", "PT:'pt'", "GB:'en'"]) {
+  assert.ok(marketingI18nSource.includes(marker), `Marketing i18n QA marker missing: ${marker}`);
 }
 
 for (const marker of ['SESSION_HEARTBEAT', 'SESSION_ENDED', 'pagehide', '30000', "consent!=='accepted'"]) {
