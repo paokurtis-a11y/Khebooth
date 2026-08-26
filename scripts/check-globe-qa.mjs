@@ -12,6 +12,7 @@ const weatherRoutePath = new URL('../apps/web/app/api/globe-weather/route.ts', i
 const operationsPagePath = new URL('../apps/web/app/operations/page.tsx', import.meta.url);
 const analyticsBeaconPath = new URL('../apps/web/components/analytics-beacon.tsx', import.meta.url);
 const portalMenuCssPath = new URL('../apps/web/app/portal-menu-enhancements.css', import.meta.url);
+const globalErrorPath = new URL('../apps/web/app/global-error.tsx', import.meta.url);
 const component = readFileSync(componentPath, 'utf8');
 const service = readFileSync(servicePath, 'utf8');
 const operationsService = readFileSync(operationsServicePath, 'utf8');
@@ -19,6 +20,7 @@ const weatherRoute = readFileSync(weatherRoutePath, 'utf8');
 const operationsPage = readFileSync(operationsPagePath, 'utf8');
 const analyticsBeacon = readFileSync(analyticsBeaconPath, 'utf8');
 const portalMenuCss = readFileSync(portalMenuCssPath, 'utf8');
+const globalErrorSource = readFileSync(globalErrorPath, 'utf8');
 const cameraSource = readFileSync(cameraPath, 'utf8');
 const performanceSource = readFileSync(performancePath, 'utf8');
 
@@ -83,6 +85,10 @@ for (const marker of ["type Tab='agents'|'globe'", 'tabGlobeFull', '<OperationsG
 
 for (const marker of [".portal-nav-submenu[data-open='true']{display:block!important", '-webkit-overflow-scrolling:touch', 'overscroll-behavior:contain']) {
   assert.ok(portalMenuCss.includes(marker), `Mobile menu QA marker missing: ${marker}`);
+}
+
+for (const marker of ['load failed', "url.searchParams.has('_khe_reload')", "console.error('[khe:web:global-error]'", 'window.location.replace(url.toString())']) {
+  assert.ok(globalErrorSource.includes(marker), `Safari recovery QA marker missing: ${marker}`);
 }
 
 for (const marker of ['SESSION_HEARTBEAT', 'SESSION_ENDED', 'pagehide', '30000', "consent!=='accepted'"]) {
