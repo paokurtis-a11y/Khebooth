@@ -14,6 +14,10 @@ const analyticsBeaconPath = new URL('../apps/web/components/analytics-beacon.tsx
 const portalMenuCssPath = new URL('../apps/web/app/portal-menu-enhancements.css', import.meta.url);
 const responsivePlatformPath = new URL('../apps/web/app/responsive-platform.css', import.meta.url);
 const rootLayoutPath = new URL('../apps/web/app/layout.tsx', import.meta.url);
+const marketingPagePath = new URL('../apps/web/app/page.tsx', import.meta.url);
+const marketingCartPath = new URL('../apps/web/components/marketing-cart.tsx', import.meta.url);
+const supportCenterPath = new URL('../apps/web/components/support-center-tools.tsx', import.meta.url);
+const experienceEnhancementsPath = new URL('../apps/web/app/experience-enhancements.css', import.meta.url);
 const portalShellPath = new URL('../apps/web/components/portal-shell.tsx', import.meta.url);
 const globalErrorPath = new URL('../apps/web/app/global-error.tsx', import.meta.url);
 const component = readFileSync(componentPath, 'utf8');
@@ -25,6 +29,10 @@ const analyticsBeacon = readFileSync(analyticsBeaconPath, 'utf8');
 const portalMenuCss = readFileSync(portalMenuCssPath, 'utf8');
 const responsivePlatform = readFileSync(responsivePlatformPath, 'utf8');
 const rootLayoutSource = readFileSync(rootLayoutPath, 'utf8');
+const marketingPageSource = readFileSync(marketingPagePath, 'utf8');
+const marketingCartSource = readFileSync(marketingCartPath, 'utf8');
+const supportCenterSource = readFileSync(supportCenterPath, 'utf8');
+const experienceEnhancements = readFileSync(experienceEnhancementsPath, 'utf8');
 const portalShellSource = readFileSync(portalShellPath, 'utf8');
 const globalErrorSource = readFileSync(globalErrorPath, 'utf8');
 const cameraSource = readFileSync(cameraPath, 'utf8');
@@ -85,7 +93,7 @@ for (const marker of [
   'grid-template-columns:repeat(2,minmax(0,1fr))',
 ]) assert.ok(component.includes(marker), `Globe QA marker missing: ${marker}`);
 
-for (const marker of ["type Tab='agents'|'globe'", 'tabGlobeFull', '<OperationsGlobe agents={agents} expanded/>', 'aria-pressed={tab===key}', "type VisitorMetric='visits'", 'visitorMetricRows', 'aria-pressed={visitorMetric===key}', 't.detailAction', 'setVisitorMetric(null)', 'visitor.online', 't.liveNow', 't.leftSite']) {
+for (const marker of ["type Tab='agents'|'globe'", 'tabGlobeFull', '<OperationsGlobe agents={agents} expanded/>', 'aria-pressed={tab===key}', "type VisitorMetric='visits'", "type ClientMetric='clients'", 'clientMetricRows', 'operation-metric-card', 'operations-world-card', 'visitorMetricRows', 'aria-pressed={visitorMetric===key}', 't.detailAction', 'setVisitorMetric(null)', 'visitor.online', 't.liveNow', 't.leftSite']) {
   assert.ok(operationsPage.includes(marker), `Globe full-screen tab QA marker missing: ${marker}`);
 }
 
@@ -111,12 +119,28 @@ for (const marker of [
 ]) {
   assert.ok(responsivePlatform.includes(marker), `Responsive platform QA marker missing: ${marker}`);
 }
-for (const marker of ["import './responsive-platform.css';", "width: 'device-width'", "viewportFit: 'cover'"]) {
+for (const marker of ["import './responsive-platform.css';", "import './experience-enhancements.css';", "width: 'device-width'", "viewportFit: 'cover'"]) {
   assert.ok(rootLayoutSource.includes(marker), `Responsive viewport QA marker missing: ${marker}`);
 }
 
-for (const marker of ['load failed', "url.searchParams.has('_khe_reload')", "console.error('[khe:web:global-error]'", 'window.location.replace(url.toString())']) {
-  assert.ok(globalErrorSource.includes(marker), `Safari recovery QA marker missing: ${marker}`);
+for (const marker of ["name==='chunkloaderror'", 'failed to load chunk', "url.searchParams.has('_khe_reload')", "console.error('[khe:web:global-error]'", 'window.location.replace(url.toString())', "reset();", 'Une erreur est survenue']) {
+  assert.ok(globalErrorSource.includes(marker), `Browser recovery QA marker missing: ${marker}`);
+}
+for (const forbidden of ['|load failed|', '|failed to fetch|', '|network request failed|']) {
+  assert.ok(!globalErrorSource.includes(forbidden), `Generic network failures must not trigger chunk recovery: ${forbidden}`);
+}
+
+for (const marker of ['MarketingCart', 'AddToCartButton', 'FEATURE_DETAILS', 'marketing-feature-detail', 'pricing-actions']) {
+  assert.ok(marketingPageSource.includes(marker), `Marketing interaction QA marker missing: ${marker}`);
+}
+for (const marker of ['CART_KEY', 'marketing-cart-trigger', 'Continuer vers la souscription', 'Ajouter au panier']) {
+  assert.ok(marketingCartSource.includes(marker), `Marketing cart QA marker missing: ${marker}`);
+}
+for (const marker of ['HELP_POSITION_KEY', 'support-help-dock', 'support-drag-handle', 'onPointerMove={moveDrag}', 'support-bell-wrap']) {
+  assert.ok(supportCenterSource.includes(marker), `Support placement QA marker missing: ${marker}`);
+}
+for (const marker of ['#fffdf8', '.popular-tag', 'overflow:visible!important', '.operations-world-card', '.support-help-dock', '.marketing-cart-panel']) {
+  assert.ok(experienceEnhancements.includes(marker), `Experience styling QA marker missing: ${marker}`);
 }
 
 for (const marker of ['SESSION_HEARTBEAT', 'SESSION_ENDED', 'pagehide', '30000', "consent!=='accepted'"]) {
