@@ -14,14 +14,16 @@ const copy:Record<Language,{tagline:string;sub:string;skip:string;capture:string
   es:{tagline:'Tu evento, nuestra experiencia',sub:'Recuerdos que cobran vida.',skip:'OMITIR',capture:'CAPTURA',create:'CREA',share:'COMPARTE',live:'VIVE'},
   pt:{tagline:'O seu evento, a nossa experiência',sub:'Memórias que ganham vida.',skip:'SALTAR',capture:'CAPTURE',create:'CRIE',share:'PARTILHE',live:'VIVA'},
 };
-function readLanguage():Language{if(typeof window==='undefined')return'fr';const value=window.localStorage.getItem('khe.web.language');return value&&value in copy?value as Language:'fr';}
+function safeGetItem(key:string):string|null{try{return window.localStorage.getItem(key);}catch{return null;}}
+function safeSetItem(key:string,value:string):void{try{window.localStorage.setItem(key,value);}catch{/* Safari private/restricted storage: keep the app usable. */}}
+function readLanguage():Language{if(typeof window==='undefined')return'fr';const value=safeGetItem('khe.web.language');return value&&value in copy?value as Language:'fr';}
 
 export function WebStartupIntro(){
   const pathname=usePathname();const guestShare=pathname?.startsWith('/m/');
   const[visible,setVisible]=useState(false);const[canSkip,setCanSkip]=useState(false);const[language,setLanguage]=useState<Language>('fr');const[fast,setFast]=useState(false);
   const particles=useMemo(()=>Array.from({length:22},(_,i)=>i),[]);const t=copy[language];
   useEffect(()=>{setLanguage(readLanguage());const onLanguage=(event:Event)=>{const detail=(event as CustomEvent<string>).detail;if(detail&&detail in copy)setLanguage(detail as Language);};window.addEventListener('khe-language-changed',onLanguage);return()=>window.removeEventListener('khe-language-changed',onLanguage);},[]);
-  useEffect(()=>{if(guestShare){setVisible(false);return;}const enabled=window.localStorage.getItem(INTRO_ENABLED_KEY)!=='false';if(!enabled){setVisible(false);return;}const seen=window.localStorage.getItem(INTRO_SEEN_KEY)==='1';setFast(seen);setVisible(true);window.localStorage.setItem(INTRO_SEEN_KEY,'1');const duration=seen?1850:5000;const skip=window.setTimeout(()=>setCanSkip(true),seen?450:950);const done=window.setTimeout(()=>setVisible(false),duration);return()=>{window.clearTimeout(skip);window.clearTimeout(done);};},[guestShare]);
+  useEffect(()=>{if(guestShare){setVisible(false);return;}const enabled=safeGetItem(INTRO_ENABLED_KEY)!=='false';if(!enabled){setVisible(false);return;}const seen=safeGetItem(INTRO_SEEN_KEY)==='1';setFast(seen);setVisible(true);safeSetItem(INTRO_SEEN_KEY,'1');const duration=seen?1850:5000;const skip=window.setTimeout(()=>setCanSkip(true),seen?450:950);const done=window.setTimeout(()=>setVisible(false),duration);return()=>{window.clearTimeout(skip);window.clearTimeout(done);};},[guestShare]);
   if(guestShare||!visible)return null;
   return <div className={`khe-startup${fast?' fast':''}`} role="presentation" aria-label="KHE Booth">
     <div className="cinematic-scene"/><div className="scene-wash"/><div className="vignette"/><div className="grain"/>
