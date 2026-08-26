@@ -12,6 +12,8 @@ const weatherRoutePath = new URL('../apps/web/app/api/globe-weather/route.ts', i
 const operationsPagePath = new URL('../apps/web/app/operations/page.tsx', import.meta.url);
 const analyticsBeaconPath = new URL('../apps/web/components/analytics-beacon.tsx', import.meta.url);
 const portalMenuCssPath = new URL('../apps/web/app/portal-menu-enhancements.css', import.meta.url);
+const responsivePlatformPath = new URL('../apps/web/app/responsive-platform.css', import.meta.url);
+const rootLayoutPath = new URL('../apps/web/app/layout.tsx', import.meta.url);
 const portalShellPath = new URL('../apps/web/components/portal-shell.tsx', import.meta.url);
 const globalErrorPath = new URL('../apps/web/app/global-error.tsx', import.meta.url);
 const component = readFileSync(componentPath, 'utf8');
@@ -21,6 +23,8 @@ const weatherRoute = readFileSync(weatherRoutePath, 'utf8');
 const operationsPage = readFileSync(operationsPagePath, 'utf8');
 const analyticsBeacon = readFileSync(analyticsBeaconPath, 'utf8');
 const portalMenuCss = readFileSync(portalMenuCssPath, 'utf8');
+const responsivePlatform = readFileSync(responsivePlatformPath, 'utf8');
+const rootLayoutSource = readFileSync(rootLayoutPath, 'utf8');
 const portalShellSource = readFileSync(portalShellPath, 'utf8');
 const globalErrorSource = readFileSync(globalErrorPath, 'utf8');
 const cameraSource = readFileSync(cameraPath, 'utf8');
@@ -90,6 +94,25 @@ for (const marker of [".portal-nav-group.is-open>.portal-nav-submenu", 'visibili
 }
 for (const marker of ['hidden={!isOpen}', 'aria-hidden={!isOpen}']) {
   assert.ok(portalShellSource.includes(marker), `Mobile menu structure QA marker missing: ${marker}`);
+}
+
+for (const marker of [
+  '-webkit-text-size-adjust:100%',
+  '.content h1{',
+  'font-size:clamp(1.75rem',
+  '@media(max-width:1100px)',
+  '@media(max-width:800px)',
+  '@media(orientation:landscape) and (max-width:1000px) and (max-height:600px)',
+  'grid-template-columns:clamp(250px,36vw,330px) minmax(0,1fr)!important',
+  'height:100dvh!important',
+  '.portal-nav-label',
+  '.operations-globe .modebar',
+  '.marketing-page .hero-copy h1',
+]) {
+  assert.ok(responsivePlatform.includes(marker), `Responsive platform QA marker missing: ${marker}`);
+}
+for (const marker of ["import './responsive-platform.css';", "width: 'device-width'", "viewportFit: 'cover'"]) {
+  assert.ok(rootLayoutSource.includes(marker), `Responsive viewport QA marker missing: ${marker}`);
 }
 
 for (const marker of ['load failed', "url.searchParams.has('_khe_reload')", "console.error('[khe:web:global-error]'", 'window.location.replace(url.toString())']) {
