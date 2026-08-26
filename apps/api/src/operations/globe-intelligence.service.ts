@@ -3,7 +3,7 @@ import { UserRole } from '@prisma/client';
 import type { AuthenticatedUser } from '../auth/auth.types';
 import { PrismaService } from '../prisma/prisma.service';
 
-export const GLOBE_MODES = ['agents', 'clients', 'relations', 'growth', 'all'] as const;
+export const GLOBE_MODES = ['agents', 'clients', 'relations', 'visitors', 'growth', 'all'] as const;
 export const GLOBE_WINDOWS = ['real-time', '1d', '7d', '30d'] as const;
 export type GlobeMode = (typeof GLOBE_MODES)[number];
 export type GlobeWindow = (typeof GLOBE_WINDOWS)[number];
@@ -27,6 +27,7 @@ type GlobeAccessScope = {
 };
 
 const CACHE_TTL_MS = 10_000;
+export const LIVE_VISITOR_TTL_SECONDS = 75;
 const DEFAULT_STRATEGY: StrategyThresholds = {
   enabled: true,
   analysisWindowDays: 30,
@@ -72,7 +73,7 @@ export class GlobeIntelligenceService {
   async overview(user: AuthenticatedUser, mode?: unknown, window?: unknown) {
     const request = parseGlobeRequest(mode, window, user.role);
     const scope = await this.accessScope(user);
-    if (scope.managedClientId && (request.mode === 'growth' || request.mode === 'all')) {
+    if (scope.managedClientId && (request.mode === 'visitors' || request.mode === 'growth' || request.mode === 'all')) {
       throw new ForbiddenException('Ce compte peut consulter uniquement sa vue opérationnelle BUSINESS');
     }
     const cacheKey = `${scope.organizationId}:${scope.managedClientId ?? 'root'}:${request.mode}:${request.window}`;
@@ -188,6 +189,27 @@ export class GlobeIntelligenceService {
     `;
   }
 
+  private liveVisitors(organizationId: string) {
+    return this.prisma.$queryRaw<any[]>`
+      WITH latest_sessions AS (
+        SELECT DISTINCT ON ("sessionId")
+          md5("sessionId") AS id,"eventType",upper(left("countryCode",2)) "countryCode","regionCode",municipality,
+          round(latitude::numeric,1)::float8 latitude,round(longitude::numeric,1)::float8 longitude,
+          "createdAt" AS "lastSeenAt",left(COALESCE(metadata->>'path','/'),160) AS "pagePath"
+        FROM "MarketingAnalyticsEvent"
+        WHERE "organizationId"=${organizationId}::uuid AND consent=TRUE AND "sessionId" IS NOT NULL
+          AND "createdAt">=CURRENT_TIMESTAMP-INTERVAL '5 minutes'
+        ORDER BY "sessionId","createdAt" DESC
+      )
+      SELECT id,"countryCode","regionCode",municipality,latitude,longitude,"lastSeenAt","pagePath"
+      FROM latest_sessions
+      WHERE "eventType"<>'SESSION_ENDED'
+        AND "lastSeenAt">=CURRENT_TIMESTAMP-${LIVE_VISITOR_TTL_SECONDS}*INTERVAL '1 second'
+      ORDER BY "lastSeenAt" DESC
+      LIMIT 500
+    `;
+  }
+
   private growth(organizationId: string, windowDays: number) {
     return this.prisma.$queryRaw<any[]>`
       WITH visitor_stage AS (
@@ -222,13 +244,16 @@ export class GlobeIntelligenceService {
     const strategy = await this.strategy(scope.organizationId);
     const includeClients = ['clients', 'relations', 'all'].includes(request.mode);
     const includeRelations = ['relations', 'all'].includes(request.mode);
-    const growthEnabled = !scope.managedClientId && strategy.enabled && strategy.geoSegmentationEnabled && strategy.anonymousAnalyticsEnabled;
+    const anonymousGeographyEnabled = !scope.managedClientId && strategy.enabled && strategy.geoSegmentationEnabled && strategy.anonymousAnalyticsEnabled;
+    const includeLiveVisitors = anonymousGeographyEnabled && ['visitors', 'all'].includes(request.mode);
+    const growthEnabled = anonymousGeographyEnabled;
     const includeGrowth = growthEnabled && ['growth', 'all'].includes(request.mode);
     const windowDays = request.window === 'real-time' ? 1 : request.windowDays;
 
-    const [clientRows, relationRows, growthRows, summaryRows] = await Promise.all([
+    const [clientRows, relationRows, liveVisitorRows, growthRows, summaryRows] = await Promise.all([
       includeClients ? this.clients(scope.organizationId, windowDays, scope.managedClientId) : Promise.resolve([]),
       includeRelations ? this.relations(scope.organizationId, scope.managedClientId) : Promise.resolve([]),
+      includeLiveVisitors ? this.liveVisitors(scope.organizationId) : Promise.resolve([]),
       includeGrowth ? this.growth(scope.organizationId, windowDays) : Promise.resolve([]),
       includeGrowth ? this.growthSummary(scope.organizationId, windowDays) : Promise.resolve([]),
     ]);
@@ -250,6 +275,18 @@ export class GlobeIntelligenceService {
         engagementScore: Math.min(100, Math.round(connectionCount * 5 + eventCount * 12 + stationSessionCount * 2 + Math.min(30, (seconds / 3600) * 3))),
       };
     });
+    const liveVisitors = liveVisitorRows.map((row) => ({
+      id: String(row.id),
+      online: true,
+      source: 'PROMOTIONAL_SITE',
+      countryCode: normalizeCountryCode(row.countryCode),
+      regionCode: row.regionCode ?? null,
+      municipality: row.municipality ?? null,
+      latitude: roundCoordinate(row.latitude),
+      longitude: roundCoordinate(row.longitude),
+      lastSeenAt: row.lastSeenAt,
+      pagePath: typeof row.pagePath === 'string' ? row.pagePath.slice(0, 160) : '/',
+    }));
     const geographies = growthRows.map((row) => {
       const stages = {
         visitor: Number(row.visitorCount || 0), engaged: Number(row.engagedCount || 0), lead: Number(row.leadCount || 0),
@@ -271,6 +308,11 @@ export class GlobeIntelligenceService {
       },
       clients,
       relations: relationRows,
+      liveVisitors: {
+        enabled: anonymousGeographyEnabled,
+        ttlSeconds: LIVE_VISITOR_TTL_SECONDS,
+        items: liveVisitors,
+      },
       growth: {
         enabled: growthEnabled,
         disabledReason: growthEnabled ? null : 'L’analytics géographique pseudonymisée est désactivée.',
