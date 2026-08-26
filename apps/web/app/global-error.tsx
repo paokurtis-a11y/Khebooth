@@ -11,37 +11,36 @@ const RECOVERY_KEY='khe.web.chunk-recovery.v1';
 
 function isStaleModuleError(error:Error):boolean{
   const message=`${error.name} ${error.message}`.toLowerCase();
-  return /chunkloaderror|loading chunk|dynamically imported module|module script failed|failed to fetch/.test(message);
+  return /chunkloaderror|loading chunk|dynamically imported module|module script|failed to fetch|load failed|network request failed|script error/.test(message);
 }
 
-export default function GlobalError({error,reset}:GlobalErrorProps){
+export default function GlobalError({error}:GlobalErrorProps){
   const[recovering,setRecovering]=useState(false);
   const recoverable=useMemo(()=>isStaleModuleError(error),[error]);
 
   useEffect(()=>{
+    console.error('[khe:web:global-error]',{name:error.name,message:error.message,digest:error.digest,recoverable});
     if(!recoverable)return;
+    const signature=error.message||error.name;
+    const url=new URL(window.location.href);
+    let alreadyAttempted=url.searchParams.has('_khe_reload');
     try{
-      const signature=error.message||error.name;
-      if(window.sessionStorage.getItem(RECOVERY_KEY)===signature)return;
-      window.sessionStorage.setItem(RECOVERY_KEY,signature);
-      setRecovering(true);
-      const url=new URL(window.location.href);
-      url.searchParams.set('_khe_reload',Date.now().toString());
-      window.location.replace(url.toString());
+      if(window.sessionStorage.getItem(RECOVERY_KEY)===signature)alreadyAttempted=true;
+      else window.sessionStorage.setItem(RECOVERY_KEY,signature);
     }catch{
-      // Storage can be unavailable in Safari private/restricted contexts.
+      // The URL marker prevents a reload loop when Safari blocks sessionStorage.
     }
+    if(alreadyAttempted)return;
+    setRecovering(true);
+    url.searchParams.set('_khe_reload',Date.now().toString());
+    window.location.replace(url.toString());
   },[error,recoverable]);
 
   const retry=()=>{
     try{window.sessionStorage.removeItem(RECOVERY_KEY);}catch{}
-    if(recoverable){
-      const url=new URL(window.location.href);
-      url.searchParams.set('_khe_reload',Date.now().toString());
-      window.location.replace(url.toString());
-      return;
-    }
-    reset();
+    const url=new URL(window.location.href);
+    url.searchParams.set('_khe_reload',Date.now().toString());
+    window.location.replace(url.toString());
   };
 
   return(
