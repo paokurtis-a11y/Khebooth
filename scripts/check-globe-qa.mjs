@@ -54,6 +54,14 @@ for (const marker of [
   "mode === 'growth' || mode === 'all'",
   'expanded = false',
   '.operations-globe.expanded .world-globe',
+  'normalizeSearch(searchTerm)',
+  'role="listbox"',
+  'chooseSearchResult',
+  'hasCoordinatePair',
+  'insights.reliability',
+  'coveragePercent',
+  'operationalAlerts',
+  'insights.noAlerts',
 ]) assert.ok(component.includes(marker), `Globe QA marker missing: ${marker}`);
 
 for (const marker of ["type Tab='agents'|'globe'", 'tabGlobeFull', '<OperationsGlobe agents={agents} expanded/>', 'aria-pressed={tab===key}']) {
@@ -147,4 +155,4 @@ assert.equal(labelBudget(320), 12);
 assert.equal(labelBudget(768), 22);
 assert.equal(labelBudget(1440), 32);
 
-console.log('Globe KHE 2.0 QA: permissions, privacy, accessibility, full-screen tab, hierarchical camera and 1,200-point clustering verified.');
+console.log('Globe KHE 2.0 QA: permissions, privacy, accessibility, full-screen tab, search, geographic reliability, operational alerts, hierarchical camera and 1,200-point clustering verified.');
