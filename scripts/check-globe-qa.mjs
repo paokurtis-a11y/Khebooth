@@ -9,10 +9,12 @@ const performancePath = new URL('../apps/web/components/globe-performance.ts', i
 const servicePath = new URL('../apps/api/src/operations/globe-intelligence.service.ts', import.meta.url);
 const operationsServicePath = new URL('../apps/api/src/operations/operations.service.ts', import.meta.url);
 const weatherRoutePath = new URL('../apps/web/app/api/globe-weather/route.ts', import.meta.url);
+const operationsPagePath = new URL('../apps/web/app/operations/page.tsx', import.meta.url);
 const component = readFileSync(componentPath, 'utf8');
 const service = readFileSync(servicePath, 'utf8');
 const operationsService = readFileSync(operationsServicePath, 'utf8');
 const weatherRoute = readFileSync(weatherRoutePath, 'utf8');
+const operationsPage = readFileSync(operationsPagePath, 'utf8');
 const cameraSource = readFileSync(cameraPath, 'utf8');
 const performanceSource = readFileSync(performancePath, 'utf8');
 
@@ -50,7 +52,13 @@ for (const marker of [
   'Weather data by Open‑Meteo.com',
   'managedAccount',
   "mode === 'growth' || mode === 'all'",
+  'expanded = false',
+  '.operations-globe.expanded .world-globe',
 ]) assert.ok(component.includes(marker), `Globe QA marker missing: ${marker}`);
+
+for (const marker of ["type Tab='agents'|'globe'", 'tabGlobeFull', '<OperationsGlobe agents={agents} expanded/>', 'aria-pressed={tab===key}']) {
+  assert.ok(operationsPage.includes(marker), `Globe full-screen tab QA marker missing: ${marker}`);
+}
 
 for (const marker of ['GLOBE_ZOOM_SCALES', 'municipality: 7', 'projectGlobePoint', 'easeCamera', 'clampGlobeScale', 'zoomLevelForScale']) {
   assert.ok(cameraSource.includes(marker), `Globe camera QA marker missing: ${marker}`);
@@ -139,4 +147,4 @@ assert.equal(labelBudget(320), 12);
 assert.equal(labelBudget(768), 22);
 assert.equal(labelBudget(1440), 32);
 
-console.log('Globe KHE 2.0 QA: permissions, privacy, accessibility, hierarchical camera and 1,200-point clustering verified.');
+console.log('Globe KHE 2.0 QA: permissions, privacy, accessibility, full-screen tab, hierarchical camera and 1,200-point clustering verified.');
