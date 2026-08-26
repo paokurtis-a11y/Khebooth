@@ -12,6 +12,7 @@ const weatherRoutePath = new URL('../apps/web/app/api/globe-weather/route.ts', i
 const operationsPagePath = new URL('../apps/web/app/operations/page.tsx', import.meta.url);
 const analyticsBeaconPath = new URL('../apps/web/components/analytics-beacon.tsx', import.meta.url);
 const portalMenuCssPath = new URL('../apps/web/app/portal-menu-enhancements.css', import.meta.url);
+const portalShellPath = new URL('../apps/web/components/portal-shell.tsx', import.meta.url);
 const globalErrorPath = new URL('../apps/web/app/global-error.tsx', import.meta.url);
 const component = readFileSync(componentPath, 'utf8');
 const service = readFileSync(servicePath, 'utf8');
@@ -20,6 +21,7 @@ const weatherRoute = readFileSync(weatherRoutePath, 'utf8');
 const operationsPage = readFileSync(operationsPagePath, 'utf8');
 const analyticsBeacon = readFileSync(analyticsBeaconPath, 'utf8');
 const portalMenuCss = readFileSync(portalMenuCssPath, 'utf8');
+const portalShellSource = readFileSync(portalShellPath, 'utf8');
 const globalErrorSource = readFileSync(globalErrorPath, 'utf8');
 const cameraSource = readFileSync(cameraPath, 'utf8');
 const performanceSource = readFileSync(performancePath, 'utf8');
@@ -83,8 +85,11 @@ for (const marker of ["type Tab='agents'|'globe'", 'tabGlobeFull', '<OperationsG
   assert.ok(operationsPage.includes(marker), `Globe full-screen tab QA marker missing: ${marker}`);
 }
 
-for (const marker of [".portal-nav-submenu[data-open='true']{display:block!important", '-webkit-overflow-scrolling:touch', 'overscroll-behavior:contain']) {
+for (const marker of [".portal-nav-group.is-open>.portal-nav-submenu", 'visibility:visible!important', 'height:auto!important', '.portal-nav-group.is-open>.portal-nav-submenu a{display:grid!important', '-webkit-overflow-scrolling:touch', 'overscroll-behavior:contain']) {
   assert.ok(portalMenuCss.includes(marker), `Mobile menu QA marker missing: ${marker}`);
+}
+for (const marker of ['hidden={!isOpen}', 'aria-hidden={!isOpen}']) {
+  assert.ok(portalShellSource.includes(marker), `Mobile menu structure QA marker missing: ${marker}`);
 }
 
 for (const marker of ['load failed', "url.searchParams.has('_khe_reload')", "console.error('[khe:web:global-error]'", 'window.location.replace(url.toString())']) {
