@@ -1,5 +1,6 @@
 'use client';
 
+import {useEffect} from 'react';
 import {useRouter,useSearchParams} from 'next/navigation';
 import {MARKETING_LANGUAGES,type MarketingLanguage} from '@/lib/marketing-i18n';
 
@@ -9,6 +10,7 @@ const COOKIE_KEY='khe_marketing_language';
 export function MarketingLanguageSelector({language,compact=false,label='Langue'}:{language:MarketingLanguage;compact?:boolean;label?:string}){
   const router=useRouter();
   const params=useSearchParams();
+  useEffect(()=>{document.documentElement.lang=language;},[language]);
   const selectLanguage=(value:string)=>{
     const next=value as MarketingLanguage;
     try{window.localStorage.setItem(STORAGE_KEY,next);}catch{}

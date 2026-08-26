@@ -28,8 +28,8 @@ export function normalizeMarketingLanguage(value?:string|null):MarketingLanguage
 export function resolveMarketingLanguage(input:{requested?:string|null;saved?:string|null;locale?:string|null;country?:string|null}):MarketingLanguage{
   return normalizeMarketingLanguage(input.requested)
     ||normalizeMarketingLanguage(input.saved)
-    ||normalizeMarketingLanguage(input.locale)
     ||COUNTRY_LANGUAGE[(input.country||'').toUpperCase()]
+    ||normalizeMarketingLanguage(input.locale)
     ||'en';
 }
 
@@ -299,5 +299,5 @@ const PLAN_COPY:Record<MarketingLanguage,Record<MarketingPlanCode,{name:string;t
 
 export function getMarketingCopy(language:MarketingLanguage){return MARKETING_COPY[language];}
 export function getMarketingPlan(language:MarketingLanguage,code:string,fallback:{name:string;tagline:string;features:string[]}){
-  return PLAN_COPY[language][code as MarketingPlanCode]||fallback;
+  return PLAN_COPY[language][code.toUpperCase() as MarketingPlanCode]||fallback;
 }
