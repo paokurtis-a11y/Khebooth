@@ -57,6 +57,11 @@ for (const marker of ['GLOBE_ZOOM_SCALES', 'municipality: 7', 'projectGlobePoint
 }
 
 assert.ok(
+  component.includes('@keyframes detailReveal{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}'),
+  'Globe CSS QA: detail animation must close before mobile and weather rules',
+);
+
+assert.ok(
   !component.includes('feature?.properties.LABEL_X); latitude = Number(feature?.properties.LABEL_Y)'),
   'Globe QA: a missing client coordinate must never fall back to an invented country point',
 );
