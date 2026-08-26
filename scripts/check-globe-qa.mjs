@@ -10,11 +10,13 @@ const servicePath = new URL('../apps/api/src/operations/globe-intelligence.servi
 const operationsServicePath = new URL('../apps/api/src/operations/operations.service.ts', import.meta.url);
 const weatherRoutePath = new URL('../apps/web/app/api/globe-weather/route.ts', import.meta.url);
 const operationsPagePath = new URL('../apps/web/app/operations/page.tsx', import.meta.url);
+const analyticsBeaconPath = new URL('../apps/web/components/analytics-beacon.tsx', import.meta.url);
 const component = readFileSync(componentPath, 'utf8');
 const service = readFileSync(servicePath, 'utf8');
 const operationsService = readFileSync(operationsServicePath, 'utf8');
 const weatherRoute = readFileSync(weatherRoutePath, 'utf8');
 const operationsPage = readFileSync(operationsPagePath, 'utf8');
+const analyticsBeacon = readFileSync(analyticsBeaconPath, 'utf8');
 const cameraSource = readFileSync(cameraPath, 'utf8');
 const performanceSource = readFileSync(performancePath, 'utf8');
 
@@ -62,10 +64,21 @@ for (const marker of [
   'coveragePercent',
   'operationalAlerts',
   'insights.noAlerts',
+  "type Mode = 'agents' | 'clients' | 'relations' | 'visitors'",
+  'liveVisitors',
+  'visitorClusters',
+  'showVisitors',
+  'selectVisitor',
+  'vt.privacy',
+  'className="clickable live-visitor-marker"',
 ]) assert.ok(component.includes(marker), `Globe QA marker missing: ${marker}`);
 
-for (const marker of ["type Tab='agents'|'globe'", 'tabGlobeFull', '<OperationsGlobe agents={agents} expanded/>', 'aria-pressed={tab===key}']) {
+for (const marker of ["type Tab='agents'|'globe'", 'tabGlobeFull', '<OperationsGlobe agents={agents} expanded/>', 'aria-pressed={tab===key}', "type VisitorMetric='visits'", 'visitorMetricRows', 'aria-pressed={visitorMetric===key}', 't.detailAction', 'setVisitorMetric(null)']) {
   assert.ok(operationsPage.includes(marker), `Globe full-screen tab QA marker missing: ${marker}`);
+}
+
+for (const marker of ['SESSION_HEARTBEAT', 'SESSION_ENDED', 'pagehide', '30000', "consent!=='accepted'"]) {
+  assert.ok(analyticsBeacon.includes(marker), `Live visitor beacon QA marker missing: ${marker}`);
 }
 
 for (const marker of ['GLOBE_ZOOM_SCALES', 'municipality: 7', 'projectGlobePoint', 'easeCamera', 'clampGlobeScale', 'zoomLevelForScale']) {
@@ -92,6 +105,13 @@ for (const marker of [
   'SELF_AND_ASSIGNED_AGENTS',
   'c.id=${managedClientId}::uuid',
   'requester."managedClientId"=${managedClientId}::uuid',
+  "'visitors', 'growth', 'all'",
+  'LIVE_VISITOR_TTL_SECONDS = 75',
+  'DISTINCT ON ("sessionId")',
+  'md5("sessionId") AS id',
+  '"eventType"<>\'SESSION_ENDED\'',
+  'includeLiveVisitors',
+  "source: 'PROMOTIONAL_SITE'",
 ]) assert.ok(service.includes(marker), `Globe API QA marker missing: ${marker}`);
 
 for (const marker of [
@@ -155,4 +175,4 @@ assert.equal(labelBudget(320), 12);
 assert.equal(labelBudget(768), 22);
 assert.equal(labelBudget(1440), 32);
 
-console.log('Globe KHE 2.0 QA: permissions, privacy, accessibility, full-screen tab, search, geographic reliability, operational alerts, hierarchical camera and 1,200-point clustering verified.');
+console.log('Globe KHE 2.0 QA: permissions, privacy, live promotional visitors, clickable metrics, accessibility, full-screen tab, search, geographic reliability, operational alerts, hierarchical camera and 1,200-point clustering verified.');
