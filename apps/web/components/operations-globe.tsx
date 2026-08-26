@@ -865,7 +865,7 @@ export function OperationsGlobe({ agents, expanded = false }: { agents: AgentPoi
 
   return <div className={`operations-globe ${expanded ? 'expanded' : ''}`} aria-busy={loading}>
     <div className="globe-toolbar" aria-label={t.filters}>
-      <div className="modebar">{modeOptions.map(([key, label]) => <button key={key} type="button" className={mode === key ? 'mode active' : 'mode'} aria-pressed={mode === key} onClick={() => setMode(key)}>{label}</button>)}</div>
+      <div className="modebar" role="tablist" aria-label="Couches du globe">{modeOptions.map(([key, label]) => <button key={key} type="button" role="tab" className={mode === key ? 'mode active' : 'mode'} aria-selected={mode === key} aria-pressed={mode === key} onClick={() => setMode(key)}>{label}</button>)}</div>
       <div className="search-box">
         <label><span>{insights.search}</span><input type="search" value={searchTerm} placeholder={insights.placeholder} autoComplete="off" aria-controls="globe-search-results" aria-expanded={normalizeSearch(searchTerm).length>=2} onChange={(event)=>setSearchTerm(event.target.value)} onKeyDown={(event)=>{if(event.key==='Escape')setSearchTerm('');}}/></label>
         {normalizeSearch(searchTerm).length>=2?<div id="globe-search-results" className="search-results" role="listbox" aria-label={insights.search}>{searchResults.length?searchResults.map((result)=><button key={result.key} type="button" role="option" aria-selected="false" onClick={()=>chooseSearchResult(result)}><strong>{result.label}</strong><span>{result.meta}</span></button>):<p role="status">{insights.noResults}</p>}</div>:null}
