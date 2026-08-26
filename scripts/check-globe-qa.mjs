@@ -73,7 +73,7 @@ for (const marker of [
   'className="clickable live-visitor-marker"',
 ]) assert.ok(component.includes(marker), `Globe QA marker missing: ${marker}`);
 
-for (const marker of ["type Tab='agents'|'globe'", 'tabGlobeFull', '<OperationsGlobe agents={agents} expanded/>', 'aria-pressed={tab===key}', "type VisitorMetric='visits'", 'visitorMetricRows', 'aria-pressed={visitorMetric===key}', 't.detailAction', 'setVisitorMetric(null)']) {
+for (const marker of ["type Tab='agents'|'globe'", 'tabGlobeFull', '<OperationsGlobe agents={agents} expanded/>', 'aria-pressed={tab===key}', "type VisitorMetric='visits'", 'visitorMetricRows', 'aria-pressed={visitorMetric===key}', 't.detailAction', 'setVisitorMetric(null)', 'visitor.online', 't.liveNow', 't.leftSite']) {
   assert.ok(operationsPage.includes(marker), `Globe full-screen tab QA marker missing: ${marker}`);
 }
 
@@ -121,6 +121,8 @@ for (const marker of [
   'u.id,u.email,u.phone',
   'Historique complet réservé à l’organisation KHE',
   'requester."managedClientId"=${scope.managedClientId}::uuid',
+  'live_anonymous',
+  '(l."anonymousId" IS NOT NULL) online',
 ]) assert.ok(operationsService.includes(marker), `Globe privacy QA marker missing: ${marker}`);
 
 for (const marker of ['MAX_LOCATIONS = 40', 'OPEN_METEO_API_KEY', "process.env.VERCEL_ENV !== 'preview'", 'revalidate:CACHE_SECONDS']) {
