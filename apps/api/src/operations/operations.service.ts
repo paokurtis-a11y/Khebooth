@@ -243,7 +243,35 @@ export class OperationsService {
     const [summary,geographies,visitors]=await Promise.all([
       this.prisma.$queryRaw<any[]>`SELECT count(*) FILTER(WHERE "eventType"='PAGE_VIEW')::int visits,count(DISTINCT "anonymousId") FILTER(WHERE "anonymousId" IS NOT NULL)::int visitors,count(*) FILTER(WHERE "eventType"='PLAN_SELECTED')::int "planSelections",count(*) FILTER(WHERE "eventType"='CHECKOUT_STARTED')::int checkouts,count(*) FILTER(WHERE "eventType"='CHECKOUT_COMPLETED')::int conversions FROM "MarketingAnalyticsEvent" WHERE "organizationId"=${user.organizationId}::uuid AND "createdAt">=CURRENT_TIMESTAMP-${days}*INTERVAL '1 day'`,
       this.prisma.$queryRaw<any[]>`SELECT "countryCode","regionCode",municipality,round(avg(latitude)::numeric,4)::float8 latitude,round(avg(longitude)::numeric,4)::float8 longitude,count(*)::int events,count(DISTINCT "anonymousId")::int visitors FROM "MarketingAnalyticsEvent" WHERE "organizationId"=${user.organizationId}::uuid AND consent=TRUE AND "countryCode" IS NOT NULL AND "createdAt">=CURRENT_TIMESTAMP-${days}*INTERVAL '1 day' GROUP BY "countryCode","regionCode",municipality ORDER BY visitors DESC,events DESC LIMIT 100`,
-      this.prisma.$queryRaw<any[]>`SELECT left("anonymousId",8) "visitorKey",count(*)::int events,count(*) FILTER(WHERE "eventType"='PAGE_VIEW')::int visits,count(*) FILTER(WHERE "eventType"='PLAN_SELECTED')::int plans,count(*) FILTER(WHERE "eventType"='CHECKOUT_STARTED')::int checkouts,count(*) FILTER(WHERE "eventType"='CHECKOUT_COMPLETED')::int conversions,max("createdAt") "lastSeenAt",max("countryCode") "countryCode",max("regionCode") "regionCode",max(municipality) municipality FROM "MarketingAnalyticsEvent" WHERE "organizationId"=${user.organizationId}::uuid AND "anonymousId" IS NOT NULL AND "createdAt">=CURRENT_TIMESTAMP-${days}*INTERVAL '1 day' GROUP BY "anonymousId" ORDER BY checkouts DESC,plans DESC,visits DESC LIMIT 100`,
+      this.prisma.$queryRaw<any[]>`
+        WITH visitor_rollup AS (
+          SELECT "anonymousId",left("anonymousId",8) "visitorKey",count(*)::int events,
+            count(*) FILTER(WHERE "eventType"='PAGE_VIEW')::int visits,
+            count(*) FILTER(WHERE "eventType"='PLAN_SELECTED')::int plans,
+            count(*) FILTER(WHERE "eventType"='CHECKOUT_STARTED')::int checkouts,
+            count(*) FILTER(WHERE "eventType"='CHECKOUT_COMPLETED')::int conversions,
+            max("createdAt") "lastSeenAt",max("countryCode") "countryCode",max("regionCode") "regionCode",max(municipality) municipality
+          FROM "MarketingAnalyticsEvent"
+          WHERE "organizationId"=${user.organizationId}::uuid AND "anonymousId" IS NOT NULL
+            AND "createdAt">=CURRENT_TIMESTAMP-${days}*INTERVAL '1 day'
+          GROUP BY "anonymousId"
+        ),
+        latest_sessions AS (
+          SELECT DISTINCT ON ("sessionId") "anonymousId","eventType","createdAt"
+          FROM "MarketingAnalyticsEvent"
+          WHERE "organizationId"=${user.organizationId}::uuid AND consent=TRUE AND "sessionId" IS NOT NULL
+            AND "createdAt">=CURRENT_TIMESTAMP-INTERVAL '5 minutes'
+          ORDER BY "sessionId","createdAt" DESC
+        ),
+        live_anonymous AS (
+          SELECT DISTINCT "anonymousId" FROM latest_sessions
+          WHERE "eventType"<>'SESSION_ENDED' AND "createdAt">=CURRENT_TIMESTAMP-75*INTERVAL '1 second'
+        )
+        SELECT r."visitorKey",r.events,r.visits,r.plans,r.checkouts,r.conversions,r."lastSeenAt",
+          r."countryCode",r."regionCode",r.municipality,(l."anonymousId" IS NOT NULL) online
+        FROM visitor_rollup r LEFT JOIN live_anonymous l ON l."anonymousId"=r."anonymousId"
+        ORDER BY r.checkouts DESC,r.plans DESC,r.visits DESC LIMIT 100
+      `,
     ]);
     const scored=visitors.map(row=>{const score=Math.min(100,Number(row.visits)*8+Number(row.plans)*18+Number(row.checkouts)*35+Number(row.conversions)*50);return{...row,intentScore:score,highIntent:score>=config.highIntentScore};});
     const s=summary[0]??{visits:0,visitors:0,planSelections:0,checkouts:0,conversions:0};const highIntent=scored.filter(v=>v.highIntent).length;
