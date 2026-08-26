@@ -17,6 +17,7 @@ const rootLayoutPath = new URL('../apps/web/app/layout.tsx', import.meta.url);
 const marketingPagePath = new URL('../apps/web/app/page.tsx', import.meta.url);
 const marketingCartPath = new URL('../apps/web/components/marketing-cart.tsx', import.meta.url);
 const supportCenterPath = new URL('../apps/web/components/support-center-tools.tsx', import.meta.url);
+const currencySelectorPath = new URL('../apps/web/components/currency-selector.tsx', import.meta.url);
 const experienceEnhancementsPath = new URL('../apps/web/app/experience-enhancements.css', import.meta.url);
 const portalShellPath = new URL('../apps/web/components/portal-shell.tsx', import.meta.url);
 const globalErrorPath = new URL('../apps/web/app/global-error.tsx', import.meta.url);
@@ -32,6 +33,7 @@ const rootLayoutSource = readFileSync(rootLayoutPath, 'utf8');
 const marketingPageSource = readFileSync(marketingPagePath, 'utf8');
 const marketingCartSource = readFileSync(marketingCartPath, 'utf8');
 const supportCenterSource = readFileSync(supportCenterPath, 'utf8');
+const currencySelectorSource = readFileSync(currencySelectorPath, 'utf8');
 const experienceEnhancements = readFileSync(experienceEnhancementsPath, 'utf8');
 const portalShellSource = readFileSync(portalShellPath, 'utf8');
 const globalErrorSource = readFileSync(globalErrorPath, 'utf8');
@@ -93,7 +95,7 @@ for (const marker of [
   'grid-template-columns:repeat(2,minmax(0,1fr))',
 ]) assert.ok(component.includes(marker), `Globe QA marker missing: ${marker}`);
 
-for (const marker of ["type Tab='agents'|'globe'", 'tabGlobeFull', '<OperationsGlobe agents={agents} expanded/>', 'aria-pressed={tab===key}', "type VisitorMetric='visits'", "type ClientMetric='clients'", 'clientMetricRows', 'operation-metric-card', 'operations-world-card', 'visitorMetricRows', 'aria-pressed={visitorMetric===key}', 't.detailAction', 'setVisitorMetric(null)', 'visitor.online', 't.liveNow', 't.leftSite']) {
+for (const marker of ["type Tab='agents'|'globe'", 'tabGlobeFull', '<OperationsGlobe agents={agents} expanded/>', 'aria-pressed={tab===key}', "type VisitorMetric='visits'", "type ClientMetric='clients'", 'clientMetricRows', '<div className="grid two" style={{alignItems:', 'visitorMetricRows', 'aria-pressed={visitorMetric===key}', 't.detailAction', 'setVisitorMetric(null)', 'visitor.online', 't.liveNow', 't.leftSite']) {
   assert.ok(operationsPage.includes(marker), `Globe full-screen tab QA marker missing: ${marker}`);
 }
 
@@ -136,11 +138,17 @@ for (const marker of ['MarketingCart', 'AddToCartButton', 'FEATURE_DETAILS', 'ma
 for (const marker of ['CART_KEY', 'marketing-cart-trigger', 'Continuer vers la souscription', 'Ajouter au panier']) {
   assert.ok(marketingCartSource.includes(marker), `Marketing cart QA marker missing: ${marker}`);
 }
-for (const marker of ['HELP_POSITION_KEY', 'support-help-dock', 'support-drag-handle', 'onPointerMove={moveDrag}', 'support-bell-wrap']) {
-  assert.ok(supportCenterSource.includes(marker), `Support placement QA marker missing: ${marker}`);
+for (const marker of ['className="support-tools"', 'className="button secondary support-help"', 'support-bell-wrap', 'support-notification-panel']) {
+  assert.ok(supportCenterSource.includes(marker), `Restored support controls QA marker missing: ${marker}`);
 }
-for (const marker of ['#fffdf8', '.popular-tag', 'overflow:visible!important', '.operations-world-card', '.support-help-dock', '.marketing-cart-panel']) {
-  assert.ok(experienceEnhancements.includes(marker), `Experience styling QA marker missing: ${marker}`);
+for (const marker of ['#fffdf8', '.popular-tag', 'overflow:visible!important', '.marketing-cart-panel', '.currency-selector select', 'color:var(--marketing-ink)!important']) {
+  assert.ok(experienceEnhancements.includes(marker), `Promotional styling QA marker missing: ${marker}`);
+}
+for (const forbidden of ['.operations-world-card', '.support-help-dock', '.support-drag-handle']) {
+  assert.ok(!experienceEnhancements.includes(forbidden), `Portal rollback styling must stay removed: ${forbidden}`);
+}
+for (const marker of ['🇨🇭 CHF · Suisse', '🇪🇺 EUR · Zone euro', '🇬🇧 GBP · Royaume-Uni', '🇺🇸 USD · États-Unis', '🇨🇦 CAD · Canada', '🇦🇺 AUD · Australie', 'aria-label="Devise et pays"']) {
+  assert.ok(currencySelectorSource.includes(marker), `Currency selector QA marker missing: ${marker}`);
 }
 
 for (const marker of ['SESSION_HEARTBEAT', 'SESSION_ENDED', 'pagehide', '30000', "consent!=='accepted'"]) {
