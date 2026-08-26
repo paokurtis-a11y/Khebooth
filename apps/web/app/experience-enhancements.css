@@ -1,4 +1,4 @@
-/* KHE Booth experience enhancements: warm marketing, commerce and portal actions. */
+/* KHE Booth experience enhancements: warm marketing and commerce. */
 
 /* Warm white-gold promotional experience. */
 .marketing-page{
@@ -12,8 +12,9 @@
     radial-gradient(circle at 92% 20%,rgba(180,135,44,.13),transparent 32rem),
     linear-gradient(180deg,#fffdf8 0%,#f8f1df 48%,#fffdf9 100%)!important;
 }
-.marketing-page :where(h1,h2,h3,strong){color:var(--marketing-ink)}
-.marketing-page :where(p,.muted){color:var(--marketing-muted)}
+.marketing-page :where(h1,h2,h3,h4,h5,h6,strong,blockquote){color:var(--marketing-ink)!important}
+.marketing-page :where(p,.muted){color:var(--marketing-muted)!important}
+.marketing-page :where(.showcase-copy li,.pricing-card li,.footer-links,.footer-links a){color:#4f463a!important}
 .marketing-nav{
   color:var(--marketing-ink)!important;
   border-color:rgba(151,111,32,.22)!important;
@@ -247,104 +248,6 @@
 .marketing-cart-empty p{margin:0;color:#6d6252!important;line-height:1.55}
 .marketing-cart-empty .marketing-ghost{min-height:42px}
 
-/* Operations page: wide desktop reading, adaptive tablet stacking. */
-.operations-tabbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
-.operations-world-card{margin-bottom:16px}
-.operations-world-copy{display:grid;align-content:start;gap:10px}
-.operations-world-copy h2{margin:2px 0 4px}
-.operations-world-rule{
-  margin-top:12px;
-  padding:16px;
-  border:1px solid rgba(210,173,79,.26);
-  border-radius:15px;
-  background:rgba(210,173,79,.055);
-}
-.operations-world-rule h3{margin:6px 0 8px}
-.operations-world-rule p{margin:0 0 8px}
-.operation-metric-card{
-  appearance:none;
-  width:100%;
-  color:inherit;
-  font:inherit;
-  text-align:left;
-  cursor:pointer;
-}
-.operation-metric-card:hover,.operation-metric-card[aria-pressed='true']{
-  border-color:#d2ad4f!important;
-  box-shadow:0 0 0 2px rgba(210,173,79,.17),0 18px 42px rgba(0,0,0,.20)!important;
-}
-.operation-metric-card .metric-action{margin-top:10px;font-size:11px}
-.operations-client-table-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
-.operations-globe .modebar[role='tablist'] .mode:focus-visible{outline:3px solid rgba(240,212,125,.52);outline-offset:2px}
-
-@media(min-width:1101px){
-  .operations-world-card{
-    display:grid;
-    grid-template-columns:minmax(250px,.48fr) minmax(0,1.52fr);
-    gap:clamp(22px,3vw,48px);
-    align-items:start;
-  }
-  .operations-world-card>.operations-globe{min-width:0}
-}
-@media(min-width:801px) and (max-width:1100px) and (orientation:landscape){
-  .operations-world-card{
-    display:grid;
-    grid-template-columns:minmax(220px,.58fr) minmax(0,1.42fr);
-    gap:22px;
-    align-items:start;
-  }
-}
-
-/* Separate notification and movable help controls. */
-.support-tools{position:static!important;display:block!important;padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important}
-.support-bell-wrap{
-  position:fixed!important;
-  z-index:90;
-  top:calc(14px + env(safe-area-inset-top));
-  right:calc(18px + env(safe-area-inset-right));
-}
-.support-help-dock{
-  position:fixed;
-  z-index:88;
-  right:calc(18px + env(safe-area-inset-right));
-  bottom:calc(18px + env(safe-area-inset-bottom));
-  display:flex;
-  align-items:stretch;
-  gap:5px;
-  padding:5px;
-  border:1px solid #34404d;
-  border-radius:17px;
-  background:rgba(11,15,21,.94);
-  box-shadow:0 18px 44px rgba(0,0,0,.34);
-  backdrop-filter:blur(16px);
-  touch-action:none;
-}
-.support-help-dock.is-positioned{right:auto;bottom:auto}
-.support-help-dock .support-help{
-  display:flex!important;
-  align-items:center;
-  gap:8px;
-  min-height:42px!important;
-  padding:8px 12px!important;
-  white-space:nowrap;
-}
-.support-help-icon{display:grid;place-items:center;width:24px;height:24px;border-radius:9px;background:rgba(214,175,82,.14);font-size:14px}
-.support-help-text{font-size:12px}
-.support-drag-handle{
-  display:grid;
-  place-items:center;
-  width:34px;
-  min-width:34px;
-  border:1px solid #3b4755;
-  border-radius:11px;
-  color:#e7ca74;
-  background:#111820;
-  cursor:grab;
-  touch-action:none;
-}
-.support-drag-handle:active{cursor:grabbing}
-.support-notification-panel{top:50px!important;right:0!important;bottom:auto!important}
-
 @media(max-width:800px){
   .marketing-nav{gap:8px!important}
   .marketing-nav-actions{gap:7px!important}
@@ -354,20 +257,9 @@
   .marketing-feature-detail summary{padding:22px;grid-template-columns:auto minmax(0,1fr) auto;gap:11px}
   .feature-detail-body{padding:0 22px 22px}
   .pricing-grid{padding-top:18px}
-  .support-bell-wrap{top:calc(10px + env(safe-area-inset-top));right:calc(10px + env(safe-area-inset-right))}
-  .support-help-dock{right:calc(10px + env(safe-area-inset-right));bottom:calc(12px + env(safe-area-inset-bottom))}
-  .support-help-dock .support-help{min-height:40px!important;padding:7px 10px!important}
-  .support-drag-handle{width:32px;min-width:32px}
 }
 @media(max-width:520px){
   .marketing-cart-panel{position:fixed;top:calc(66px + env(safe-area-inset-top));right:12px;left:12px;width:auto}
-  .support-help-dock .support-help{width:auto!important;font-size:inherit!important}
-  .support-help-dock .support-help::after{content:none!important}
-  .support-help-text{display:none}
-  .support-help-icon{width:27px;height:27px}
-}
-@media(max-width:900px) and (orientation:portrait){
-  .operations-world-card{display:block}
 }
 @media(prefers-reduced-motion:reduce){
   .feature-expand-icon{transition:none}
