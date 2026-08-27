@@ -3,7 +3,7 @@
     "name": "KHE Booth",
     "slug": "kurtis-hypnotic-events",
     "owner": "kurtis-hypnotic-event",
-    "version": "0.3.1",
+    "version": "0.3.2",
     "scheme": "khebooth",
     "orientation": "default",
     "userInterfaceStyle": "automatic",
