@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { head, issueSignedToken, presignUrl } from '@vercel/blob';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
@@ -102,11 +102,10 @@ export class RecruitmentService {
     const duplicate=await this.prisma.$queryRaw<Array<{id:string}>>`SELECT id FROM "AgentApplication" WHERE "organizationId"=${organizationId}::uuid AND lower(email)=${email} AND status NOT IN ('REJECTED','ACTIVATED') LIMIT 1`;
     if(duplicate[0])throw new BadRequestException('Une candidature active existe déjà pour cette adresse e-mail');
     const accessToken=randomBytes(32).toString('base64url');
-    const accessTokenExpiresAt=new Date(Date.now()+90*86400000);
     const applicationNumber=`KHE-AGT-${new Date().getUTCFullYear()}-${randomBytes(4).toString('hex').toUpperCase()}`;
     const rows=await this.prisma.$queryRaw<ApplicationRow[]>`
-      INSERT INTO "AgentApplication" (id,"organizationId","applicationNumber","accessTokenHash","accessTokenExpiresAt",status,"firstName","lastName",email,phone,street,"addressNumber","postalCode",city,"countryCode","preferredLanguage","experienceYears","boothExperience",motivation,"privacyAcceptedAt","submittedAt","createdAt","updatedAt")
-      VALUES (gen_random_uuid(),${organizationId}::uuid,${applicationNumber},${tokenHash(accessToken)},${accessTokenExpiresAt},'SUBMITTED',${firstName},${lastName},${email},${phone},${street},${addressNumber},${postalCode},${city},${countryCode},${preferredLanguage},${experienceYears},${JSON.stringify(boothExperience)}::jsonb,${motivation},CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+      INSERT INTO "AgentApplication" (id,"organizationId","applicationNumber","accessTokenHash",status,"firstName","lastName",email,phone,street,"addressNumber","postalCode",city,"countryCode","preferredLanguage","experienceYears","boothExperience",motivation,"privacyAcceptedAt","submittedAt","createdAt","updatedAt")
+      VALUES (gen_random_uuid(),${organizationId}::uuid,${applicationNumber},${tokenHash(accessToken)},'SUBMITTED',${firstName},${lastName},${email},${phone},${street},${addressNumber},${postalCode},${city},${countryCode},${preferredLanguage},${experienceYears},${JSON.stringify(boothExperience)}::jsonb,${motivation},CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
       RETURNING *
     `;
     const application=rows[0];
@@ -145,7 +144,11 @@ export class RecruitmentService {
     const application=await this.applicationByToken(rawToken);const pathname=clean(payload.pathname,600);const kind=clean(payload.kind,40).toUpperCase();const contentType=clean(payload.contentType,160).toLowerCase();const byteSize=Math.trunc(Number(payload.byteSize??0));
     const prefix=`organizations/${application.organizationId}/agent-applications/${application.id}/`;
     if(!pathname.startsWith(prefix)||!DOCUMENT_KINDS.has(kind)||!CONTENT_TYPES.has(contentType))throw new BadRequestException('Document invalide');
-    try{const blob=await head(pathname);if(blob.size!==byteSize||blob.contentType!==contentType)throw new BadRequestException('Le document reçu ne correspond pas au fichier annoncé');}catch(error){if(error instanceof BadRequestException)throw error;throw new BadRequestException('Document introuvable après le téléversement');}
+    const blobUrl=clean(payload.blobUrl,2000);let blobLookup=pathname;
+    if(blobUrl){
+      try{const parsed=new URL(blobUrl);const uploadedPath=decodeURIComponent(parsed.pathname.replace(/^\/+/,''));if(parsed.protocol!=='https:'||!parsed.hostname.endsWith('.blob.vercel-storage.com')||uploadedPath!==pathname)throw new Error('invalid blob URL');blobLookup=blobUrl;}catch{throw new BadRequestException('Référence de stockage invalide');}
+    }
+    try{const blob=await head(blobLookup);if(blob.pathname!==pathname||blob.size!==byteSize||blob.contentType!==contentType)throw new BadRequestException('Le document reçu ne correspond pas au fichier annoncé');}catch(error){if(error instanceof BadRequestException)throw error;console.error('[recruitment] document confirmation failed',error instanceof Error?error.message:'blob verification failed');throw new BadRequestException('Document introuvable après le téléversement');}
     const rows=await this.prisma.$queryRaw<any[]>`INSERT INTO "AgentApplicationDocument" (id,"organizationId","applicationId",kind,pathname,"originalFileName","contentType","byteSize",status,"createdAt") VALUES (gen_random_uuid(),${application.organizationId}::uuid,${application.id}::uuid,${kind},${pathname},${clean(payload.originalFileName,240)||'document'},${contentType},${byteSize},'PENDING',CURRENT_TIMESTAMP) ON CONFLICT (pathname) DO UPDATE SET "originalFileName"=EXCLUDED."originalFileName" RETURNING id,kind,"originalFileName","contentType","byteSize",status,"createdAt"`;
     return rows[0];
   }
@@ -175,7 +178,7 @@ export class RecruitmentService {
     const reason=clean(payload.reason,3000)||null;const assignedTo=clean(payload.assignedToUserId,60)||user.id;
     await this.prisma.$executeRaw`UPDATE "AgentApplication" SET status=${status},"assignedToUserId"=${assignedTo}::uuid,"reviewedByUserId"=${user.id}::uuid,"decisionReason"=${reason},"reviewedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE id=${id}::uuid AND "organizationId"=${user.organizationId}::uuid`;
     await this.audit(user,'AGENT_APPLICATION_REVIEW_UPDATED',id,{status});
-    if(status==='CHANGES_REQUESTED')await this.sendEmail(application.email,'Complément demandé pour votre candidature KHE Booth',`<p>Bonjour ${html(application.firstName)},</p><p>L’équipe KHE vous demande un complément :</p><p><strong>${html(reason||'Consultez votre espace candidat.')}</strong></p><p>Utilisez le lien personnel reçu dans l’e-mail de confirmation de votre candidature.</p>`);
+    if(status==='CHANGES_REQUESTED')await this.sendEmail(application.email,'Complément demandé pour votre candidature KHE Booth',`<p>Bonjour ${html(application.firstName)},</p><p>L’équipe KHE vous demande un complément :</p><p><strong>${html(reason||'Consultez votre espace candidat.')}</strong></p><p><a href="${this.candidateUrlForNotice()}">Ouvrir votre lien personnel reçu lors de la candidature</a></p>`);
     return this.staffContext(user,id);
   }
 
@@ -262,6 +265,7 @@ export class RecruitmentService {
   }
 
   private webOrigin(){return (process.env.WEB_ORIGIN||'https://khebooth-rdvo.vercel.app').split(',')[0].trim().replace(/\/$/,'');}
+  private candidateUrlForNotice(){return `${this.webOrigin()}/become-agent`;}
   private async recruitmentEmail(organizationId:string){
     const configured=process.env.KHE_RECRUITMENT_EMAIL?.trim();if(configured)return configured;
     const rows=await this.prisma.$queryRaw<Array<{supportEmail:string|null}>>`SELECT "supportEmail" FROM "MarketingSiteConfig" WHERE "organizationId"=${organizationId}::uuid LIMIT 1`;return rows[0]?.supportEmail||null;
