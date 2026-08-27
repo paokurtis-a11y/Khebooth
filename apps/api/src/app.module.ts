@@ -9,12 +9,13 @@ import { MobileModule } from './mobile/mobile.module';
 import { OperationsModule } from './operations/operations.module';
 import { PresetsModule } from './presets/presets.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { RecruitmentModule } from './recruitment/recruitment.module';
 import { SecurityCenterModule } from './security/security-center.module';
 import { StationsModule } from './stations/stations.module';
 import { SupportModule } from './support/support.module';
 import { TeamModule } from './team/team.module';
 
 @Module({
-  imports:[PrismaModule,HealthModule,AuthModule,ClientsModule,EventsModule,PresetsModule,MarketingModule,CommerceModule,StationsModule,MobileModule,SupportModule,TeamModule,OperationsModule,SecurityCenterModule],
+  imports:[PrismaModule,HealthModule,AuthModule,ClientsModule,EventsModule,PresetsModule,MarketingModule,CommerceModule,StationsModule,MobileModule,SupportModule,TeamModule,OperationsModule,SecurityCenterModule,RecruitmentModule],
 })
 export class AppModule {}

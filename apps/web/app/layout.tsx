@@ -11,6 +11,8 @@ import './portal-menu-enhancements.css';
 import './portal-experience.css';
 import './responsive-platform.css';
 import './experience-enhancements.css';
+import './commercial-journey.css';
+import './recruitment.css';
 
 export const viewport: Viewport = {
   width: 'device-width',

@@ -191,6 +191,15 @@ export class TeamService {
       RETURNING id
     `;
     await this.prisma.$executeRaw`UPDATE "TeamInvitation" SET "acceptedAt" = CURRENT_TIMESTAMP WHERE id = ${invitation.id}::uuid`;
-    return { created: true, userId: users[0]?.id, email: invitation.email };
+    const createdUserId=users[0]?.id;
+    if(createdUserId){
+      const applications=await this.prisma.$queryRaw<Array<{id:string}>>`SELECT id FROM "AgentApplication" WHERE "teamInvitationId"=${invitation.id}::uuid AND "organizationId"=${invitation.organizationId}::uuid LIMIT 1`;
+      if(applications[0]){
+        await this.prisma.$executeRaw`UPDATE "AgentApplication" SET status='ACTIVATED',"invitedUserId"=${createdUserId}::uuid,"activatedAt"=CURRENT_TIMESTAMP,"updatedAt"=CURRENT_TIMESTAMP WHERE id=${applications[0].id}::uuid`;
+        await this.prisma.$executeRaw`INSERT INTO "AgentPresence" ("userId","organizationId",availability,"acceptingAssignments","locationSharingEnabled","createdAt","updatedAt") VALUES (${createdUserId}::uuid,${invitation.organizationId}::uuid,'UNAVAILABLE',FALSE,FALSE,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) ON CONFLICT ("userId") DO NOTHING`;
+        await this.prisma.$executeRaw`INSERT INTO "AppNotification" (id,"organizationId",kind,title,body,"actionUrl","publishedAt","createdAt") VALUES (gen_random_uuid(),${invitation.organizationId}::uuid,'NEWS','Nouvel agent activé',${`${firstName} ${lastName} a créé son compte agent.`},'/operations',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`;
+      }
+    }
+    return { created: true, userId: createdUserId, email: invitation.email };
   }
 }

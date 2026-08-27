@@ -34,6 +34,8 @@ function resolveApiUrl() {
     : 'http://localhost:3001/api';
 }
 
+export function getApiBaseUrl(){return resolveApiUrl();}
+
 export function getAccessToken() {
   if (typeof window === 'undefined') return null;
   return window.localStorage.getItem(TOKEN_KEY);

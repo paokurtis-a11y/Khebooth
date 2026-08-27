@@ -5,7 +5,9 @@ import { AnalyticsBeacon } from '@/components/analytics-beacon';
 import { CurrencySelector } from '@/components/currency-selector';
 import { HowItWorksShowcase } from '@/components/how-it-works-showcase';
 import { AddToCartButton, MarketingCart } from '@/components/marketing-cart';
+import { MarketingCampaignShowcase } from '@/components/marketing-campaign-showcase';
 import { MarketingLanguageSelector } from '@/components/marketing-language-selector';
+import { MarketingNewsTicker } from '@/components/marketing-news-ticker';
 import { PromoStoryReel } from '@/components/promo-story-reel';
 import { getMarketingCopy, getMarketingPlan, resolveMarketingLanguage } from '@/lib/marketing-i18n';
 import { SUBSCRIPTION_CATALOG } from '@/lib/subscriptions';
@@ -13,7 +15,7 @@ import { SUBSCRIPTION_CATALOG } from '@/lib/subscriptions';
 type Market={country:string;region?:string;currency:string;locale:string;unitSystem:'metric'|'imperial';billingUnit:'month'};
 type RegionPolicy={enabled:boolean;showPrices:boolean;showDownload:boolean;showReviews:boolean;showPromoVideo:boolean;forceCurrency?:string;announcement?:string};
 type Plan={code:string;name:string;tagline:string;priceMonthlyChf:number|null;priceMonthlyCents:number|null;currency:string;features:string[];highlighted:boolean};
-type Site={heroTitle:string;heroSubtitle:string;primaryCta:string;appDownloadUrl?:string|null;latestVersion?:string;paymentMethods?:string[];faq?:Array<{question?:string;answer?:string}>;plans:Plan[];market:Market;supportedCurrencies:string[];regionPolicy?:RegionPolicy;media?:Record<string,string>};
+type Site={heroTitle:string;heroSubtitle:string;primaryCta:string;appDownloadUrl?:string|null;supportEmail?:string|null;latestVersion?:string;releaseNotes?:string;paymentMethods?:string[];faq?:Array<{question?:string;answer?:string}>;plans:Plan[];market:Market;supportedCurrencies:string[];regionPolicy?:RegionPolicy;media?:Record<string,string>;socialLinks?:Record<string,string>;announcement?:Record<string,unknown>};
 type Promotion={id:string;name:string;planCode?:string|null;discountPercent:number;endsAt:string;messageTitle?:string|null;messageBody?:string|null}|null;
 type Review={id:string;rating:number;title?:string|null;body:string;displayName:string;verifiedSubscriber:boolean};
 
@@ -29,6 +31,14 @@ const FEATURE_VISUALS=[
   {src:'/marketing/features/marketing.webp',video:'/marketing/features/marketing.mp4',tag:'Station + 360° · MARKETING'},
 ] as const;
 const COUNTRY_FLAGS:Record<string,string>={CH:'🇨🇭',FR:'🇫🇷',DE:'🇩🇪',AT:'🇦🇹',IT:'🇮🇹',ES:'🇪🇸',PT:'🇵🇹',GB:'🇬🇧',US:'🇺🇸',CA:'🇨🇦',AU:'🇦🇺',BE:'🇧🇪',LU:'🇱🇺',LI:'🇱🇮',BR:'🇧🇷',MX:'🇲🇽'};
+const COMMERCIAL_COPY={
+  fr:{agent:'Devenir agent',news:'Nouveautés KHE Booth',contact:'Contact',social:'Réseaux sociaux',apply:'Candidature agent'},
+  en:{agent:'Become an agent',news:'KHE Booth updates',contact:'Contact',social:'Social media',apply:'Agent application'},
+  de:{agent:'Agent werden',news:'KHE Booth Neuigkeiten',contact:'Kontakt',social:'Soziale Netzwerke',apply:'Agentenbewerbung'},
+  it:{agent:'Diventa agente',news:'Novità KHE Booth',contact:'Contatti',social:'Social network',apply:'Candidatura agente'},
+  es:{agent:'Hazte agente',news:'Novedades KHE Booth',contact:'Contacto',social:'Redes sociales',apply:'Candidatura de agente'},
+  pt:{agent:'Tornar-se agente',news:'Novidades KHE Booth',contact:'Contacto',social:'Redes sociais',apply:'Candidatura de agente'},
+} as const;
 
 async function get<T>(path:string,value:T):Promise<T>{try{const response=await fetch(`${API}${path}`,{cache:'no-store'});return response.ok?await response.json() as T:value;}catch{return value;}}
 function money(cents:number,currency:string,locale:string){return new Intl.NumberFormat(locale,{style:'currency',currency,minimumFractionDigits:0,maximumFractionDigits:2}).format(cents/100);}
@@ -54,15 +64,24 @@ export default async function HomePage({searchParams}:{searchParams:Promise<{cur
     const price=applies?Math.round(base!*(100-promo!.discountPercent)/100):base;
     return{code:plan.code,name:plan.name,tagline:plan.tagline,priceLabel:price===null?t.pricing.custom:money(price,market.currency,market.locale)+period(language)};
   });
+  const commercial=COMMERCIAL_COPY[language];
+  const announcementText=typeof site.announcement?.text==='string'?site.announcement.text.trim():'';
+  const newsItems=[
+    announcementText?{label:announcementText,href:'#opportunites'}:null,
+    site.latestVersion&&site.releaseNotes?{label:`KHE Booth ${site.latestVersion} · ${site.releaseNotes}`,href:site.appDownloadUrl||'/download'}:null,
+    promo?{label:`${promo.messageTitle||promo.name} · -${promo.discountPercent}%`,href:'#tarifs'}:null,
+    {label:'Votre événement, notre expertise',href:'#opportunites'},
+    {label:commercial.agent,href:'/become-agent'},
+  ].filter(Boolean) as Array<{label:string;href?:string}>;
   if(!region.enabled)return <main className="marketing-page" lang={language}><header className="marketing-nav"><Link className="marketing-brand" href="/">KHE <span>BOOTH</span></Link><div className="marketing-nav-actions"><MarketingLanguageSelector compact language={language} label={t.selectors.language}/><Link className="marketing-login" href="/login">{t.nav.login}</Link></div></header><section className="marketing-hero marketing-unavailable"><div className="hero-copy"><div className="marketing-kicker"><span/> KHE BOOTH</div><h1>{t.unavailable.title}</h1><p className="hero-lead">{t.unavailable.body}</p><div className="hero-actions"><Link className="marketing-ghost" href="/login">{t.unavailable.login}</Link></div></div></section></main>;
 
   return <main className="marketing-page" lang={language}><AnalyticsBeacon/>
     <header className="marketing-nav">
       <Link className="marketing-brand" href="/">KHE <span>BOOTH</span></Link>
-      <nav className="marketing-nav-links" aria-label="Navigation"><a href="#features">{t.nav.features}</a><a href="#mode-emploi">{t.nav.how}</a>{region.showPrices?<a href="#tarifs">{t.nav.pricing}</a>:null}{region.showReviews?<a href="#avis">{t.nav.reviews}</a>:null}<a href="#faq">{t.nav.faq}</a></nav>
+      <nav className="marketing-nav-links" aria-label="Navigation"><a href="#features">{t.nav.features}</a><a href="#mode-emploi">{t.nav.how}</a>{region.showPrices?<a href="#tarifs">{t.nav.pricing}</a>:null}{region.showReviews?<a href="#avis">{t.nav.reviews}</a>:null}<a href="#faq">{t.nav.faq}</a><Link href="/become-agent">{commercial.agent}</Link></nav>
       <div className="marketing-nav-actions"><MarketingCart language={language} currency={market.currency} plans={planCart}/><CurrencySelector compact language={language} currency={market.currency} supportedCurrencies={site.supportedCurrencies||fallback.supportedCurrencies}/><MarketingLanguageSelector compact language={language} label={t.selectors.language}/><Link className="marketing-login" href="/account/subscription">{t.nav.subscription}</Link><Link className="marketing-login" href="/login">{t.nav.login}</Link></div>
     </header>
-    {region.announcement?<div className="marketing-announcement">{region.announcement}</div>:promo?<div className="marketing-promotion">{promo.messageTitle||promo.name} · -{promo.discountPercent}% · {new Date(promo.endsAt).toLocaleDateString(market.locale)}</div>:null}
+    <MarketingNewsTicker items={newsItems} ariaLabel={commercial.news}/>
 
     <section className="marketing-hero"><div className="hero-glow hero-glow-one"/><div className="hero-copy"><div className="marketing-kicker"><span/> {t.hero.kicker}</div><h1>{t.hero.title}</h1><p className="hero-lead">{t.hero.subtitle}</p><div className="hero-actions">{region.showPrices?<a className="marketing-cta" href="#tarifs">{t.hero.primary}</a>:<a className="marketing-cta" href="#features">{t.hero.primary}</a>}{region.showDownload&&site.appDownloadUrl?<a className="marketing-ghost" href={site.appDownloadUrl}>↓ {t.hero.download}</a>:null}</div><div className="hero-proof"><div><strong>2</strong><span>{t.hero.stations}</span></div><div><strong>1</strong><span>{t.hero.profile}</span></div><div><strong>24/7</strong><span>{t.hero.automation}</span></div></div></div><div className="hero-product"><div className="promo-device promo-device-front"><div className="device-top"><span>KHE BOOTH</span><b>CAPTURE</b></div><div className="capture-preview"><div className="capture-event">{t.hero.experience}</div><div className="capture-title">{t.hero.capture.split('\n').map((line)=><span key={line}>{line}<br/></span>)}</div><div className="capture-ring"><i/></div><div className="capture-controls"><span>9:16</span><span>CLOUD</span><span>QR</span></div></div></div></div></section>
 
@@ -70,6 +89,8 @@ export default async function HomePage({searchParams}:{searchParams:Promise<{cur
     <HowItWorksShowcase media={media} language={language}/>
 
     <section id="features" className="marketing-section"><div className="section-heading centered"><div className="marketing-kicker"><span/> {t.features.kicker}</div><h2>{t.features.title}</h2><p>{t.features.intro}</p></div><div className="marketing-feature-grid">{t.features.items.map((feature,index)=>{const visual=FEATURE_VISUALS[index];return <details className="marketing-feature marketing-feature-detail" key={feature.title}><summary><div className="feature-icon">0{index+1}</div><div className="feature-summary-copy"><h3>{feature.title}</h3><p>{feature.summary}</p></div><span className="feature-expand-icon" aria-hidden="true">+</span></summary><div className="feature-detail-body"><figure className="feature-motion-shot" aria-hidden="true"><video src={visual.video} poster={visual.src} autoPlay muted loop playsInline preload="metadata"/><Image className="feature-motion-poster" src={visual.src} alt="" width={960} height={640} sizes="(max-width: 720px) 92vw, 31vw"/><span className="feature-motion-sheen"/><figcaption>{visual.tag}</figcaption></figure><p>{feature.detail}</p><ul>{feature.benefits.map((benefit)=><li key={benefit}>{benefit}</li>)}</ul><a className="marketing-cta" href="#tarifs">{feature.cta} →</a></div></details>;})}</div></section>
+
+    <MarketingCampaignShowcase language={language} plans={planCart.map((plan)=>({...plan,highlighted:Boolean(localizedPlans.find((item)=>item.code===plan.code)?.highlighted)}))}/>
 
     {region.showPrices?<section id="tarifs" className="marketing-section pricing-section"><div className="section-heading centered"><div className="marketing-kicker"><span/> {t.pricing.kicker}</div><h2>{t.pricing.title}</h2><p>{t.pricing.intro}</p><div className="pricing-market"><span>{t.pricing.currency}: <strong>{market.currency}</strong></span><span>{COUNTRY_FLAGS[market.country]||'🌍'} {t.pricing.country}: <strong>{market.country}</strong></span></div></div><div className="pricing-grid">{localizedPlans.map((plan)=>{
       const base=plan.priceMonthlyCents;
@@ -86,6 +107,6 @@ export default async function HomePage({searchParams}:{searchParams:Promise<{cur
 
     <section className="marketing-final-cta"><div><div className="marketing-kicker"><span/> {t.final.kicker}</div><h2>{t.final.title}</h2><p>{t.final.body}</p></div><div className="final-actions">{region.showPrices?<Link className="marketing-cta" href={`/subscribe?currency=${market.currency}&lang=${language}`}>{t.final.choose}</Link>:null}{region.showDownload&&site.appDownloadUrl?<a className="marketing-ghost" href={site.appDownloadUrl}>{t.final.download}</a>:null}</div></section>
 
-    <footer className="marketing-footer"><div><Link className="marketing-brand" href="/">KHE <span>BOOTH</span></Link><p>{t.footer.solution}</p></div><div className="footer-links"><Link href="/account/subscription">{t.nav.subscription}</Link>{region.showReviews?<Link href="/review">{t.footer.reviews}</Link>:null}<Link href="/login">{t.nav.login}</Link></div><p className="footer-copy">© 2026 KHE Booth</p></footer>
+    <footer id="contact" className="marketing-footer marketing-contact-footer"><div className="footer-brand-column"><Link className="marketing-brand" href="/">KHE <span>BOOTH</span></Link><p>{t.footer.solution}</p><strong>Votre événement, notre expertise</strong></div><div className="footer-contact-column"><h3>{commercial.contact}</h3><p>Kurtis Hypnotic Events · Schmitten FR · Suisse</p>{site.supportEmail?<a href={`mailto:${site.supportEmail}`}>{site.supportEmail}</a>:null}<Link href="/become-agent">{commercial.apply} →</Link></div><div className="footer-social-column"><h3>{commercial.social}</h3><div className="footer-social-links">{Object.entries(site.socialLinks||{}).filter(([,url])=>Boolean(url)).map(([name,url])=><a key={name} href={url} target="_blank" rel="noreferrer">{name}<span>↗</span></a>)}</div></div><div className="footer-links"><Link href="/account/subscription">{t.nav.subscription}</Link>{region.showReviews?<Link href="/review">{t.footer.reviews}</Link>:null}<Link href="/login">{t.nav.login}</Link></div><p className="footer-copy">© 2026 KHE Booth · Kurtis Hypnotic Events</p></footer>
   </main>;
 }
