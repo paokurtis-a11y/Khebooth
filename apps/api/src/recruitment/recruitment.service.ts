@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { head, issueSignedToken, presignUrl } from '@vercel/blob';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
