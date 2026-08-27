@@ -1,8 +1,8 @@
 import * as SecureStore from 'expo-secure-store';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { StationExperienceApi } from '../api/station-api';
-import { SQLiteLocalStore } from '../offline/sqlite-store';
+import type { LocalStore } from '../offline/local-store';
 import { StationLinkHealth } from '../station/station-link-health';
 import { CreativeStudio, type CreativePlan } from '../studio/creative-studio';
 import { EventGuestQrPanel } from './event-guest-qr-panel';
@@ -14,11 +14,11 @@ import { SharingTrashPanel } from './sharing-trash-panel';
 import { SlideToConnect } from './slide-to-connect';
 
 const CREATIVE_PLAN_KEY='khe.creative.plan.v1';
-interface Props{eventName:string;api:StationExperienceApi;stationToken:string;}
-export function SharingStationPanel({eventName,api,stationToken}:Props){
-  const store=useMemo(()=>new SQLiteLocalStore(),[]);const[ready,setReady]=useState(false);const[checking,setChecking]=useState(true);const[error,setError]=useState('');const[optionalWarning,setOptionalWarning]=useState('');const[flowMessage,setFlowMessage]=useState('');const[designEvent,setDesignEvent]=useState<{id:string;name:string}|null>(null);const[activeEventId,setActiveEventId]=useState<string|null>(null);const[activeEventName,setActiveEventName]=useState(eventName);const[healthOpen,setHealthOpen]=useState(false);const designSavedRef=useRef(false);const checkingRef=useRef(false);
+interface Props{eventName:string;api:StationExperienceApi;stationToken:string;store:LocalStore;}
+export function SharingStationPanel({eventName,api,stationToken,store}:Props){
+  const[ready,setReady]=useState(false);const[checking,setChecking]=useState(true);const[error,setError]=useState('');const[optionalWarning,setOptionalWarning]=useState('');const[flowMessage,setFlowMessage]=useState('');const[designEvent,setDesignEvent]=useState<{id:string;name:string}|null>(null);const[activeEventId,setActiveEventId]=useState<string|null>(null);const[activeEventName,setActiveEventName]=useState(eventName);const[healthOpen,setHealthOpen]=useState(false);const designSavedRef=useRef(false);const checkingRef=useRef(false);
   async function initialize(){if(checkingRef.current)return;checkingRef.current=true;setChecking(true);setError('');setOptionalWarning('');try{const manifest=await api.manifest(stationToken);await store.init();setActiveEventId(manifest.event.id);setActiveEventName(manifest.event.name);setReady(true);const optional=await Promise.allSettled([api.control(stationToken),api.listMedia(stationToken),api.clientWorkspace(stationToken)]);const rejected=optional.filter(result=>result.status==='rejected') as PromiseRejectedResult[];if(rejected.length)setOptionalWarning('La régie de base est disponible. Certains services secondaires se reconnectent en arrière-plan.');}catch(cause){setReady(false);setError(cause instanceof Error?cause.message:'Impossible de valider la session SHARING.');}finally{checkingRef.current=false;setChecking(false);}}
-  useEffect(()=>{void initialize();},[api,stationToken]);useEffect(()=>{setActiveEventName(eventName);},[eventName]);
+  useEffect(()=>{void initialize();},[api,stationToken,store]);useEffect(()=>{setActiveEventName(eventName);},[eventName]);
   async function startDesign(eventId:string,eventTitle:string){setFlowMessage(`Événement « ${eventTitle} » créé. Préparez maintenant son design.`);await SecureStore.deleteItemAsync(CREATIVE_PLAN_KEY).catch(()=>undefined);designSavedRef.current=false;setDesignEvent({id:eventId,name:eventTitle});}
   async function publishDesign(plan:CreativePlan){const pending=designEvent;if(!pending)return;await api.markClientEventDesignReady(stationToken,pending.id,plan as unknown as Record<string,unknown>);designSavedRef.current=true;setFlowMessage(`✓ Design « ${pending.name} » enregistré. Les stations vont basculer automatiquement.`);}
   async function closeDesign(){const pending=designEvent;if(!pending)return;if(designSavedRef.current){setDesignEvent(null);return;}const raw=await SecureStore.getItemAsync(CREATIVE_PLAN_KEY);if(!raw){setDesignEvent(null);setFlowMessage(`« ${pending.name} » reste en brouillon.`);return;}try{const plan=JSON.parse(raw) as CreativePlan;await publishDesign({...plan,background:plan.background?{...plan.background,localUri:null}:null});}catch(cause){setFlowMessage(cause instanceof Error?cause.message:'Impossible de valider le design.');}finally{setDesignEvent(null);}}

@@ -1,6 +1,7 @@
 import type { EventManifestContract } from '@khe/contracts';
 import * as SQLite from 'expo-sqlite';
 import type { LocalStore } from './local-store';
+import { isDeadSQLiteNativeHandle, openInitializedSQLiteDatabase } from './sqlite-connection';
 import type {
   LocalMediaRecord,
   OfflineSnapshot,
@@ -14,6 +15,58 @@ type MediaRow = LocalMediaRecord;
 type QueueRow = SyncQueueItem;
 type SharedMediaRow = SharedMediaRecord;
 
+const DATABASE_SCHEMA = `
+  PRAGMA journal_mode = WAL;
+  PRAGMA foreign_keys = ON;
+  CREATE TABLE IF NOT EXISTS app_state (
+    key TEXT PRIMARY KEY NOT NULL,
+    value TEXT NOT NULL,
+    updatedAt TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS manifests (
+    eventId TEXT PRIMARY KEY NOT NULL,
+    value TEXT NOT NULL,
+    updatedAt TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS local_media (
+    localId TEXT PRIMARY KEY NOT NULL,
+    eventId TEXT NOT NULL,
+    idempotencyKey TEXT NOT NULL UNIQUE,
+    contentHash TEXT NOT NULL,
+    byteSize INTEGER NOT NULL,
+    mimeType TEXT NOT NULL,
+    localUri TEXT NOT NULL,
+    capturedAt TEXT NOT NULL,
+    syncState TEXT NOT NULL,
+    remoteId TEXT,
+    uploadedBytes INTEGER NOT NULL DEFAULT 0,
+    acknowledgedAt TEXT,
+    retryCount INTEGER NOT NULL DEFAULT 0,
+    lastError TEXT,
+    updatedAt TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS local_media_event_sync_idx ON local_media(eventId, syncState);
+  CREATE TABLE IF NOT EXISTS sync_queue (
+    localId TEXT PRIMARY KEY NOT NULL,
+    nextAttemptAt TEXT NOT NULL,
+    retryCount INTEGER NOT NULL DEFAULT 0,
+    lastError TEXT,
+    FOREIGN KEY(localId) REFERENCES local_media(localId) ON DELETE RESTRICT
+  );
+  CREATE TABLE IF NOT EXISTS shared_media (
+    id TEXT PRIMARY KEY NOT NULL,
+    eventId TEXT NOT NULL,
+    localId TEXT NOT NULL,
+    contentHash TEXT NOT NULL,
+    byteSize INTEGER NOT NULL,
+    mimeType TEXT NOT NULL,
+    capturedAt TEXT,
+    acknowledgedAt TEXT NOT NULL,
+    cachedAt TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS shared_media_event_idx ON shared_media(eventId, acknowledgedAt);
+`;
+
 export class SQLiteLocalStore implements LocalStore {
   private db: SQLite.SQLiteDatabase | null = null;
   private initPromise: Promise<void> | null = null;
@@ -25,58 +78,11 @@ export class SQLiteLocalStore implements LocalStore {
     if (this.initPromise) return this.initPromise;
 
     this.initPromise = (async () => {
-      const db = await SQLite.openDatabaseAsync(this.databaseName);
-      await db.execAsync(`
-        PRAGMA journal_mode = WAL;
-        PRAGMA foreign_keys = ON;
-        CREATE TABLE IF NOT EXISTS app_state (
-          key TEXT PRIMARY KEY NOT NULL,
-          value TEXT NOT NULL,
-          updatedAt TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS manifests (
-          eventId TEXT PRIMARY KEY NOT NULL,
-          value TEXT NOT NULL,
-          updatedAt TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS local_media (
-          localId TEXT PRIMARY KEY NOT NULL,
-          eventId TEXT NOT NULL,
-          idempotencyKey TEXT NOT NULL UNIQUE,
-          contentHash TEXT NOT NULL,
-          byteSize INTEGER NOT NULL,
-          mimeType TEXT NOT NULL,
-          localUri TEXT NOT NULL,
-          capturedAt TEXT NOT NULL,
-          syncState TEXT NOT NULL,
-          remoteId TEXT,
-          uploadedBytes INTEGER NOT NULL DEFAULT 0,
-          acknowledgedAt TEXT,
-          retryCount INTEGER NOT NULL DEFAULT 0,
-          lastError TEXT,
-          updatedAt TEXT NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS local_media_event_sync_idx ON local_media(eventId, syncState);
-        CREATE TABLE IF NOT EXISTS sync_queue (
-          localId TEXT PRIMARY KEY NOT NULL,
-          nextAttemptAt TEXT NOT NULL,
-          retryCount INTEGER NOT NULL DEFAULT 0,
-          lastError TEXT,
-          FOREIGN KEY(localId) REFERENCES local_media(localId) ON DELETE RESTRICT
-        );
-        CREATE TABLE IF NOT EXISTS shared_media (
-          id TEXT PRIMARY KEY NOT NULL,
-          eventId TEXT NOT NULL,
-          localId TEXT NOT NULL,
-          contentHash TEXT NOT NULL,
-          byteSize INTEGER NOT NULL,
-          mimeType TEXT NOT NULL,
-          capturedAt TEXT,
-          acknowledgedAt TEXT NOT NULL,
-          cachedAt TEXT NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS shared_media_event_idx ON shared_media(eventId, acknowledgedAt);
-      `);
+      const db = await openInitializedSQLiteDatabase(
+        (name, options) => SQLite.openDatabaseAsync(name, options),
+        this.databaseName,
+        DATABASE_SCHEMA,
+      );
       this.db = db;
     })();
 
@@ -94,21 +100,15 @@ export class SQLiteLocalStore implements LocalStore {
   }
 
   private isRecoverableNativeError(error: unknown): boolean {
-    const message = error instanceof Error ? error.message : String(error);
-    return /NativeDatabase|prepareAsync|NullPointerException|database.*(?:closed|unavailable)/i.test(message);
+    return isDeadSQLiteNativeHandle(error);
   }
 
   private async resetDatabase(): Promise<void> {
-    const current = this.db;
+    // Do not close a poisoned native handle: expo-sqlite's Android regression
+    // can double-close it during runtime teardown. Detach it and open a truly
+    // new connection instead.
     this.db = null;
     this.initPromise = null;
-    if (current) {
-      try {
-        await current.closeAsync();
-      } catch {
-        // The native handle may already be invalid. Reopening the same file is the recovery path.
-      }
-    }
     await this.init();
   }
 
