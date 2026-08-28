@@ -65,8 +65,8 @@ export function PortalShell({children}:Readonly<{children:React.ReactNode}>){
   },[language,menu,text,user,x]);
   const activeHref=useMemo(()=>navGroups.flatMap(group=>group.items).filter(item=>pathMatches(pathname,item.href)).sort((a,b)=>b.href.length-a.href.length)[0]?.href,[navGroups,pathname]);
   const activeGroupId=useMemo(()=>navGroups.find(group=>group.items.some(item=>item.href===activeHref))?.id,[activeHref,navGroups]);
-  useEffect(()=>{if(!activeGroupId)return;setOpenGroups(previous=>{if(previous.includes(activeGroupId))return previous;const next=[...previous,activeGroupId];persistOpenGroups(next);return next;});},[activeGroupId]);
-  const toggleGroup=(id:string)=>setOpenGroups(previous=>{const next=previous.includes(id)?previous.filter(value=>value!==id):[...previous,id];persistOpenGroups(next);return next;});
+  useEffect(()=>{if(!activeGroupId)return;setOpenGroups(previous=>{const isMobile=window.matchMedia('(max-width: 800px)').matches;if(isMobile){if(previous.length===1&&previous[0]===activeGroupId)return previous;const next=[activeGroupId];persistOpenGroups(next);return next;}if(previous.includes(activeGroupId))return previous;const next=[...previous,activeGroupId];persistOpenGroups(next);return next;});},[activeGroupId]);
+  const toggleGroup=(id:string)=>setOpenGroups(previous=>{const isMobile=typeof window!=='undefined'&&window.matchMedia('(max-width: 800px)').matches;const next=previous.includes(id)?previous.filter(value=>value!==id):isMobile?[id]:[...previous,id];persistOpenGroups(next);return next;});
   const closeAllGroups=()=>{setOpenGroups([]);persistOpenGroups([]);};
   const closeMobileMenu=()=>{if(typeof window!=='undefined'&&window.matchMedia('(max-width: 800px)').matches)setMenuVisible(false);};
   if(!ready)return <main className="login"><div className="muted">{text.loading}</div></main>;if(user&&user.termsAccepted===false)return <WebTermsGate onAccepted={()=>setUser({...user,termsAccepted:true})}/>;
