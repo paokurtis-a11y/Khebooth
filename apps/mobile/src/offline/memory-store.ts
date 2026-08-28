@@ -2,6 +2,7 @@ import type { EventManifestContract } from '@khe/contracts';
 import type { LocalStore } from './local-store';
 import type {
   LocalMediaRecord,
+  LocalRenderJob,
   OfflineSnapshot,
   PersistedStationContext,
   SharedMediaRecord,
@@ -13,6 +14,7 @@ export class MemoryLocalStore implements LocalStore {
   private readonly manifests = new Map<string, EventManifestContract>();
   private readonly media = new Map<string, LocalMediaRecord>();
   private readonly queue = new Map<string, SyncQueueItem>();
+  private readonly renderJobs = new Map<string, LocalRenderJob>();
   private readonly sharedMedia = new Map<string, SharedMediaRecord[]>();
 
   async init(): Promise<void> {}
@@ -79,6 +81,29 @@ export class MemoryLocalStore implements LocalStore {
     this.queue.delete(localId);
   }
 
+  async upsertRenderJob(job: LocalRenderJob): Promise<void> {
+    this.renderJobs.set(job.localId, structuredClone(job));
+  }
+
+  async getRenderJob(localId: string): Promise<LocalRenderJob | null> {
+    const job = this.renderJobs.get(localId);
+    return job ? structuredClone(job) : null;
+  }
+
+  async listRenderJobs(eventId: string): Promise<LocalRenderJob[]> {
+    return [...this.renderJobs.values()]
+      .filter((job) => job.eventId === eventId)
+      .sort((a, b) => b.capturedAt.localeCompare(a.capturedAt))
+      .map((job) => structuredClone(job));
+  }
+
+  async listPendingRenderJobs(eventId: string): Promise<LocalRenderJob[]> {
+    return [...this.renderJobs.values()]
+      .filter((job) => job.eventId === eventId && job.state !== 'READY')
+      .sort((a, b) => a.capturedAt.localeCompare(b.capturedAt))
+      .map((job) => structuredClone(job));
+  }
+
   async replaceSharedMedia(eventId: string, media: SharedMediaRecord[]): Promise<void> {
     this.sharedMedia.set(eventId, structuredClone(media));
   }
@@ -94,6 +119,7 @@ export class MemoryLocalStore implements LocalStore {
       pendingMedia: await this.listPendingMedia(eventId),
       queue: await this.listQueue(),
       sharedMedia: await this.listSharedMedia(eventId),
+      renderJobs: await this.listRenderJobs(eventId),
     };
   }
 }

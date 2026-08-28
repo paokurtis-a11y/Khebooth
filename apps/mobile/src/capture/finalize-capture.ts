@@ -1,12 +1,12 @@
 import type { AspectRatio } from '@khe/contracts';
 import { Directory, File, Paths } from 'expo-file-system';
 import type { LocalStore } from '../offline/local-store';
-import type { LocalMediaRecord } from '../offline/types';
+import type { LocalMediaRecord, LocalRenderJob } from '../offline/types';
 import type { CreativePlan } from '../studio/creative-studio';
-import { renderFinalMedia } from '../studio/media-renderer';
+import { renderFinalMedia, type FinalMediaRenderResult } from '../studio/media-renderer';
 import { planCaptureRender, renderSummary, updateCaptureRenderJob } from '../studio/render-plan';
 
-export interface FinalizeCaptureInput {
+export interface StageCaptureInput {
   eventId: string;
   sourceUri: string;
   mimeType: 'image/jpeg' | 'video/mp4';
@@ -16,66 +16,149 @@ export interface FinalizeCaptureInput {
   store: LocalStore;
 }
 
-export interface FinalizedCapture {
-  media: LocalMediaRecord;
+export interface StagedCapture {
+  localId: string;
   rawUri: string;
-  renderSummary: string;
-  encoder: string;
+  byteSize: number;
+  capturedAt: string;
 }
 
-function makeLocalId() {
+export interface RenderDrainResult {
+  attempted: number;
+  rendered: number;
+  failed: number;
+  completed: Array<{ media: LocalMediaRecord; renderSummary: string; encoder: string }>;
+}
+
+type MediaRenderer = (input: Parameters<typeof renderFinalMedia>[0]) => Promise<FinalMediaRenderResult>;
+
+function makeLocalId(): string {
   return `media-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 }
 
-export async function finalizeCapture(input: FinalizeCaptureInput): Promise<FinalizedCapture> {
+function retryDelayMs(attemptCount: number): number {
+  return Math.min(60_000, 2_000 * 2 ** Math.max(0, attemptCount - 1));
+}
+
+export async function stageCapture(input: StageCaptureInput): Promise<StagedCapture> {
   const localId = makeLocalId();
   const capturedAt = new Date().toISOString();
   const rawDirectory = new Directory(Paths.document, 'captures-raw', input.eventId);
   rawDirectory.create({ idempotent: true, intermediates: true });
   const source = new File(input.sourceUri);
   if (!source.exists || source.size <= 0) throw new Error('Le média brut est introuvable après la capture.');
+
   const raw = new File(rawDirectory, `${localId}-raw.${input.extension}`);
   source.copy(raw);
   if (!raw.exists || raw.size <= 0 || !raw.md5) throw new Error('Le média brut n’a pas pu être sécurisé localement.');
 
-  const renderJob = await planCaptureRender(input.eventId, localId, raw.uri, input.plan);
-  await updateCaptureRenderJob(localId, { state: 'RENDERING', error: null });
+  const renderPlan = await planCaptureRender(input.eventId, localId, raw.uri, input.plan);
+  const job: LocalRenderJob = {
+    localId,
+    eventId: input.eventId,
+    sourceUri: raw.uri,
+    mimeType: input.mimeType,
+    extension: input.extension,
+    aspectRatio: input.aspectRatio,
+    capturedAt,
+    state: 'CAPTURED',
+    attemptCount: 0,
+    nextAttemptAt: capturedAt,
+    lastError: null,
+    renderPlan,
+    updatedAt: capturedAt,
+  };
+  await input.store.upsertRenderJob(job);
+  return { localId, rawUri: raw.uri, byteSize: raw.size, capturedAt };
+}
 
-  try {
-    const rendered = await renderFinalMedia({
-      eventId: input.eventId,
-      localId,
-      sourceUri: raw.uri,
-      mimeType: input.mimeType,
-      aspectRatio: input.aspectRatio,
-      plan: input.plan,
-      selectedMusic: renderJob.selectedMusic,
+export class CaptureRenderQueue {
+  private running = false;
+
+  constructor(
+    private readonly store: LocalStore,
+    private readonly renderer: MediaRenderer = renderFinalMedia,
+  ) {}
+
+  async drain(eventId: string, now = new Date()): Promise<RenderDrainResult> {
+    if (this.running) return { attempted: 0, rendered: 0, failed: 0, completed: [] };
+    this.running = true;
+    const result: RenderDrainResult = { attempted: 0, rendered: 0, failed: 0, completed: [] };
+    try {
+      await this.store.init();
+      const jobs = (await this.store.listPendingRenderJobs(eventId))
+        .filter((job) => new Date(job.nextAttemptAt).getTime() <= now.getTime());
+      for (const job of jobs) {
+        result.attempted += 1;
+        try {
+          const completed = await this.renderOne(job, now);
+          result.rendered += 1;
+          result.completed.push(completed);
+        } catch (error) {
+          result.failed += 1;
+          await this.recordFailure(job, error, now);
+        }
+      }
+      return result;
+    } finally {
+      this.running = false;
+    }
+  }
+
+  private async renderOne(job: LocalRenderJob, now: Date): Promise<RenderDrainResult['completed'][number]> {
+    const renderingPlan = { ...job.renderPlan, state: 'RENDERING' as const, error: null };
+    await this.store.upsertRenderJob({ ...job, state: 'RENDERING', renderPlan: renderingPlan, updatedAt: now.toISOString() });
+    await updateCaptureRenderJob(job.localId, { state: 'RENDERING', error: null });
+
+    const rendered = await this.renderer({
+      eventId: job.eventId,
+      localId: job.localId,
+      sourceUri: job.sourceUri,
+      mimeType: job.mimeType,
+      aspectRatio: job.aspectRatio,
+      plan: job.renderPlan.plan,
+      selectedMusic: job.renderPlan.selectedMusic,
     });
-    await updateCaptureRenderJob(localId, { state: 'READY', outputUri: rendered.outputUri, encoder: rendered.encoder, error: null });
-
+    const readyAt = new Date().toISOString();
+    const readyPlan = { ...renderingPlan, state: 'READY' as const, outputUri: rendered.outputUri, encoder: rendered.encoder, error: null };
     const media: LocalMediaRecord = {
-      localId,
-      eventId: input.eventId,
-      idempotencyKey: `${input.eventId}:${localId}`,
+      localId: job.localId,
+      eventId: job.eventId,
+      idempotencyKey: `${job.eventId}:${job.localId}:final`,
       contentHash: rendered.contentHash,
       byteSize: rendered.byteSize,
-      mimeType: input.mimeType,
+      mimeType: job.mimeType,
       localUri: rendered.outputUri,
-      capturedAt,
+      capturedAt: job.capturedAt,
       syncState: 'QUEUED',
       remoteId: null,
       uploadedBytes: 0,
       acknowledgedAt: null,
       retryCount: 0,
       lastError: null,
-      updatedAt: capturedAt,
+      updatedAt: readyAt,
     };
-    await input.store.upsertMedia(media);
-    await input.store.enqueue({ localId, nextAttemptAt: capturedAt, retryCount: 0, lastError: null });
-    return { media, rawUri: raw.uri, renderSummary: renderSummary(renderJob), encoder: rendered.encoder };
-  } catch (error) {
+    await this.store.upsertMedia(media);
+    await this.store.enqueue({ localId: job.localId, nextAttemptAt: readyAt, retryCount: 0, lastError: null });
+    await this.store.upsertRenderJob({ ...job, state: 'READY', lastError: null, renderPlan: readyPlan, updatedAt: readyAt });
+    await updateCaptureRenderJob(job.localId, { state: 'READY', outputUri: rendered.outputUri, encoder: rendered.encoder, error: null });
+    return { media, renderSummary: renderSummary(readyPlan), encoder: rendered.encoder };
+  }
+
+  private async recordFailure(job: LocalRenderJob, error: unknown, now: Date): Promise<void> {
+    const attemptCount = job.attemptCount + 1;
     const message = error instanceof Error ? error.message : 'Rendu final KHE impossible.';
-    await updateCaptureRenderJob(localId, { state: 'FAILED', error: message });
-    throw new Error(`${message} L’original brut reste conservé sur cette tablette : ${raw.uri}`);
+    const nextAttemptAt = new Date(now.getTime() + retryDelayMs(attemptCount)).toISOString();
+    const failedPlan = { ...job.renderPlan, state: 'FAILED' as const, error: message };
+    await this.store.upsertRenderJob({
+      ...job,
+      state: 'FAILED',
+      attemptCount,
+      nextAttemptAt,
+      lastError: message,
+      renderPlan: failedPlan,
+      updatedAt: now.toISOString(),
+    });
+    await updateCaptureRenderJob(job.localId, { state: 'FAILED', error: message });
   }
 }

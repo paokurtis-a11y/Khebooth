@@ -1,14 +1,13 @@
 {
   "name": "@khe/mobile",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "private": true,
   "main": "src/main.tsx",
   "scripts": {
     "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "postinstall": "node scripts/prepare-expo-camera-android.mjs && node scripts/prepare-ffmpeg-new-arch.mjs",
-    "prepare:camera-native": "node scripts/prepare-expo-camera-android.mjs",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "postinstall": "node scripts/prepare-ffmpeg-new-arch.mjs",
     "prepare:ffmpeg-native": "node scripts/prepare-ffmpeg-new-arch.mjs",
     "lint": "tsc -p tsconfig.json --noEmit",
     "build": "tsc -p tsconfig.build.json",

@@ -102,7 +102,7 @@ export function StationLinkHealth({ mode, eventId, eventName, api, stationToken,
     <View style={styles.header}>
       <View style={styles.headerCopy}>
         <Text style={styles.eyebrow}>KHE LINK HEALTH · {mode}</Text>
-        <Text style={styles.title}>Liaison & synchronisation</Text>
+        <Text style={styles.title} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.62}>Liaison & synchronisation</Text>
         <Text style={styles.subtitle}>{eventName}</Text>
       </View>
       {onClose ? <Pressable style={styles.closeButton} onPress={onClose}><Text style={styles.closeText}>Fermer</Text></Pressable> : null}
@@ -159,11 +159,11 @@ const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#101010' },
   content: { padding: 18, paddingBottom: 44, gap: 14 },
   header: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' },
-  headerCopy: { flex: 1 },
+  headerCopy: { flex: 1, minWidth: 0 },
   eyebrow: { color: '#d7b24c', fontWeight: '900', fontSize: 11, letterSpacing: 1.4 },
-  title: { color: '#fff', fontSize: 27, lineHeight: 33, fontWeight: '900', marginTop: 4 },
+  title: { color: '#fff', fontSize: 25, lineHeight: 31, fontWeight: '900', marginTop: 4 },
   subtitle: { color: '#aeb7c0', fontSize: 14, marginTop: 3 },
-  closeButton: { borderWidth: 1, borderColor: '#49515a', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
+  closeButton: { flexShrink: 0, borderWidth: 1, borderColor: '#49515a', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
   closeText: { color: '#fff', fontWeight: '800', fontSize: 12 },
   loading: { minHeight: 180, justifyContent: 'center', alignItems: 'center', gap: 10 },
   muted: { color: '#9da7b0' },

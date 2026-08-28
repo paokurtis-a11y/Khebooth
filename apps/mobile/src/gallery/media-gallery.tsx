@@ -6,7 +6,7 @@ import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Tex
 import { HttpStationApi } from '../api/station-api';
 import { API_BASE_URL } from '../config';
 import type { LocalStore } from '../offline/local-store';
-import type { LocalMediaRecord } from '../offline/types';
+import type { LocalMediaRecord, LocalRenderJob } from '../offline/types';
 import { SecureStoreCredentialVault } from '../security/secure-store-vault';
 import { shareMediaNatively } from '../sharing/native-share';
 import { StationLinkHealth } from '../station/station-link-health';
@@ -25,8 +25,8 @@ function isPhoto(media: LocalMediaRecord): boolean {
   return media.mimeType.startsWith('image/');
 }
 
-function SelectedVideo({ media }: { media: LocalMediaRecord }) {
-  const player = useVideoPlayer(media.localUri);
+function SelectedVideo({ uri }: { uri: string }) {
+  const player = useVideoPlayer(uri);
   return <VideoView player={player} style={styles.viewerMedia} nativeControls contentFit="contain" surfaceType="textureView" />;
 }
 
@@ -47,7 +47,9 @@ export function MediaGallery({ eventId, eventName, store, onClose }: MediaGaller
   const [sharing, setSharing] = useState(false);
   const [rescuing,setRescuing]=useState(false);
   const [media, setMedia] = useState<LocalMediaRecord[]>([]);
+  const [renderJobs,setRenderJobs]=useState<LocalRenderJob[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [showOriginal,setShowOriginal]=useState(false);
   const [filter, setFilter] = useState<MediaFilter>('ALL');
   const [message, setMessage] = useState('');
   const [healthOpen,setHealthOpen]=useState(false);
@@ -56,8 +58,9 @@ export function MediaGallery({ eventId, eventName, store, onClose }: MediaGaller
   async function readMedia(showLoading=false,clearMessage=false):Promise<void>{
     if(showLoading)setLoading(true);
     try{
-      const items=await store.listMedia(eventId);
+      const[items,jobs]=await Promise.all([store.listMedia(eventId),store.listRenderJobs(eventId)]);
       setMedia(items);
+      setRenderJobs(jobs);
       setSelectedId((current)=>current&&items.some((item)=>item.localId===current)?current:items[0]?.localId??null);
       if(clearMessage)setMessage('');
     }catch(error){
@@ -75,9 +78,10 @@ export function MediaGallery({ eventId, eventName, store, onClose }: MediaGaller
       if(cancelled)return;
       if(showLoading)setLoading(true);
       try{
-        const items=await store.listMedia(eventId);
+        const[items,jobs]=await Promise.all([store.listMedia(eventId),store.listRenderJobs(eventId)]);
         if(cancelled)return;
         setMedia(items);
+        setRenderJobs(jobs);
         setSelectedId((current)=>current&&items.some((item)=>item.localId===current)?current:items[0]?.localId??null);
         if(clearMessage)setMessage('');
       }catch(error){
@@ -96,16 +100,22 @@ export function MediaGallery({ eventId, eventName, store, onClose }: MediaGaller
     [filter, media],
   );
   const selected = useMemo(() => media.find((item) => item.localId === selectedId) ?? null, [media, selectedId]);
+  const selectedJob=useMemo(()=>renderJobs.find((job)=>job.localId===selectedId)??null,[renderJobs,selectedId]);
+  const selectedUri=selected&&showOriginal&&selectedJob?selectedJob.sourceUri:selected?.localUri??null;
   const photoCount = media.filter(isPhoto).length;
   const videoCount = media.length - photoCount;
   const pendingCount = media.filter((item) => item.syncState !== 'SYNCED').length;
   const failedCount=media.filter((item)=>item.syncState==='FAILED').length;
+  const renderingCount=renderJobs.filter((job)=>job.state==='CAPTURED'||job.state==='RENDERING').length;
+  const renderFailedCount=renderJobs.filter((job)=>job.state==='FAILED').length;
 
   useEffect(() => {
     if (filteredMedia.length && !filteredMedia.some((item) => item.localId === selectedId)) {
       setSelectedId(filteredMedia[0]?.localId ?? null);
     }
   }, [filteredMedia, selectedId]);
+
+  useEffect(()=>setShowOriginal(false),[selectedId]);
 
   async function openHealth():Promise<void>{
     const token=await vault.getStationToken();
@@ -196,7 +206,10 @@ export function MediaGallery({ eventId, eventName, store, onClose }: MediaGaller
           <View style={styles.summaryCard}><Text style={styles.summaryNumber}>{videoCount}</Text><Text style={styles.summaryLabel}>vidéos</Text></View>
           <View style={styles.summaryCard}><Text style={styles.summaryNumber}>{photoCount}</Text><Text style={styles.summaryLabel}>photos</Text></View>
           <View style={[styles.summaryCard,failedCount>0&&styles.summaryCardWarning]}><Text style={styles.summaryNumber}>{pendingCount}</Text><Text style={styles.summaryLabel}>{failedCount>0?`${failedCount} échec(s) • à synchroniser`:'à synchroniser'}</Text></View>
+          <View style={[styles.summaryCard,renderFailedCount>0&&styles.summaryCardWarning]}><Text style={styles.summaryNumber}>{renderingCount}</Text><Text style={styles.summaryLabel}>{renderFailedCount?`${renderFailedCount} reprise(s) • Studio`:'rendu(s) Studio'}</Text></View>
         </View>
+
+        {renderingCount||renderFailedCount?<View style={styles.pipelineCard}><Text style={styles.pipelineTitle}>{renderFailedCount?'STUDIO • REPRISE AUTOMATIQUE':'STUDIO • RENDU AUTOMATIQUE'}</Text><Text style={styles.pipelineText}>{renderingCount} Moment{renderingCount===1?'':'s'} en traitement. Les originaux sont sécurisés et les rendus finaux apparaissent automatiquement ici, puis sur SHARING.</Text>{renderJobs.filter((job)=>job.state==='FAILED').slice(0,2).map((job)=><Text key={job.localId} style={styles.pipelineError} numberOfLines={2}>• {job.lastError||'Rendu momentanément indisponible'} — nouvelle tentative automatique</Text>)}</View>:null}
 
         <View style={styles.filters}>
           {(['ALL', 'VIDEO', 'PHOTO'] as const).map((candidate) => (
@@ -210,18 +223,19 @@ export function MediaGallery({ eventId, eventName, store, onClose }: MediaGaller
         {loading ? <View style={styles.center}><ActivityIndicator /><Text>Chargement…</Text></View> : null}
 
         {!loading && filteredMedia.length === 0 ? (
-          <View style={styles.empty}><Text style={styles.emptyIcon}>✦</Text><Text style={styles.emptyTitle}>Aucun moment pour ce filtre</Text><Text style={styles.muted}>Les prochaines captures apparaîtront ici immédiatement.</Text></View>
+          <View style={styles.empty}><Text style={styles.emptyIcon}>✦</Text><Text style={styles.emptyTitle}>{renderingCount?'Rendu Studio en cours':'Aucun moment pour ce filtre'}</Text><Text style={styles.muted}>{renderingCount?'L’original est déjà sécurisé. Le rendu final apparaîtra automatiquement dès qu’il sera vérifié.':'Les prochaines captures apparaîtront ici immédiatement.'}</Text></View>
         ) : null}
 
         {selected ? (
           <View style={[styles.workspace, landscape && styles.workspaceLandscape]}>
             <View style={styles.viewerCard}>
+              {selectedJob?<View style={styles.versionSwitch}><Pressable style={[styles.versionButton,!showOriginal&&styles.versionButtonActive]} onPress={()=>setShowOriginal(false)}><Text style={[styles.versionText,!showOriginal&&styles.versionTextActive]}>RENDU FINAL</Text></Pressable><Pressable style={[styles.versionButton,showOriginal&&styles.versionButtonActive]} onPress={()=>setShowOriginal(true)}><Text style={[styles.versionText,showOriginal&&styles.versionTextActive]}>ORIGINAL</Text></Pressable></View>:null}
               {isPhoto(selected)
-                ? <Image source={{ uri: selected.localUri }} style={styles.viewerMedia} resizeMode="contain" />
-                : <SelectedVideo key={selected.localId} media={selected} />}
+                ? <Image source={{ uri: selectedUri??selected.localUri }} style={styles.viewerMedia} resizeMode="contain" />
+                : <SelectedVideo key={`${selected.localId}-${showOriginal?'original':'final'}`} uri={selectedUri??selected.localUri} />}
               <View style={styles.viewerMeta}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.viewerTitle}>{isPhoto(selected) ? 'Photo' : 'Vidéo'} sélectionnée</Text>
+                  <Text style={styles.viewerTitle}>{isPhoto(selected) ? 'Photo' : 'Vidéo'} • {showOriginal?'Original sécurisé':'Rendu final'}</Text>
                   <Text style={styles.viewerMuted}>{new Date(selected.capturedAt).toLocaleString()} • {Math.max(1, Math.round(selected.byteSize / 1024 / 1024))} Mo</Text>
                 </View>
                 <View style={[styles.state, selected.syncState === 'SYNCED' && styles.stateSynced,selected.syncState==='FAILED'&&styles.stateFailed]}><Text style={styles.stateText}>{selected.syncState}</Text></View>
@@ -281,6 +295,10 @@ const styles = StyleSheet.create({
   summaryCardWarning:{borderColor:'#c6762a',backgroundColor:'#fff8ee'},
   summaryNumber: { fontSize: 24, fontWeight: '900', color: KHE_RED },
   summaryLabel: { color: '#6c6258', fontWeight: '700' },
+  pipelineCard:{backgroundColor:'#18150f',borderWidth:1,borderColor:KHE_GOLD,borderRadius:16,padding:14,gap:5},
+  pipelineTitle:{color:KHE_GOLD,fontSize:11,fontWeight:'900',letterSpacing:1},
+  pipelineText:{color:'#fff',fontSize:12,lineHeight:18},
+  pipelineError:{color:'#ffd1b5',fontSize:10,lineHeight:15},
   filters: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   filter: { borderRadius: 999, paddingHorizontal: 15, paddingVertical: 10, backgroundColor: '#fff', borderWidth: 1, borderColor: '#ddd' },
   filterActive: { backgroundColor: KHE_RED, borderColor: KHE_RED },
@@ -296,6 +314,11 @@ const styles = StyleSheet.create({
   workspace: { gap: 16 },
   workspaceLandscape: { flexDirection: 'row', alignItems: 'flex-start' },
   viewerCard: { flex: 1.2, backgroundColor: KHE_BLACK, borderRadius: 24, padding: 12, gap: 12 },
+  versionSwitch:{flexDirection:'row',gap:7,backgroundColor:'#171719',borderRadius:12,padding:5},
+  versionButton:{flex:1,borderRadius:9,paddingVertical:9,alignItems:'center'},
+  versionButtonActive:{backgroundColor:KHE_GOLD},
+  versionText:{color:'#aaa',fontSize:10,fontWeight:'900',letterSpacing:.7},
+  versionTextActive:{color:'#17120a'},
   viewerMedia: { width: '100%', height: 340, borderRadius: 18, backgroundColor: '#000' },
   viewerMeta: { flexDirection: 'row', gap: 10, alignItems: 'center' },
   viewerTitle: { color: '#fff', fontWeight: '900', fontSize: 18 },

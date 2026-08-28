@@ -6,6 +6,8 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Alert, Animated, Pressable, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { HttpStationApi } from './api/station-api';
 import { CameraCapture } from './capture/camera-capture';
+import type { StagedCapture } from './capture/finalize-capture';
+import { useCaptureRenderQueue } from './capture/use-capture-render-queue';
 import { API_BASE_URL } from './config';
 import { t } from './experience/i18n';
 import { LanguageAndRegion, UserGuide, getDeviceLocaleInfo, languageLabel, loadLanguagePreference, type AppLanguage } from './experience/user-guide-and-language';
@@ -13,7 +15,7 @@ import { MediaGallery } from './gallery/media-gallery';
 import { APP_VERSION, AboutAndTerms, TermsGate, fetchReleaseInfo, type ReleaseInfo } from './legal/legal-and-info';
 import { StationNotificationCenter } from './notifications/station-notification-center';
 import { SQLiteLocalStore } from './offline/sqlite-store';
-import type { LocalMediaRecord, PersistedStationContext } from './offline/types';
+import type { PersistedStationContext } from './offline/types';
 import { UserProfile } from './profile/user-profile';
 import { EventReadyScreen } from './readiness/event-ready-screen';
 import { SecurePasswordField } from './security/secure-password-field';
@@ -93,6 +95,11 @@ function App() {
   const [securityOptionsHidden, setSecurityOptionsHidden] = useState(false);
 
   useCaptureSync(api, store, vault, station?.mode === 'CAPTURE' && Boolean(stationToken));
+  const renderStatus = useCaptureRenderQueue(
+    store,
+    station?.session.eventId ?? null,
+    station?.mode === 'CAPTURE' && Boolean(stationToken),
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -241,8 +248,8 @@ function App() {
     return Boolean(expected && expected === password);
   }
 
-  function handleCaptured(media: LocalMediaRecord, format: AspectRatio): void {
-    setMessage(`Capture ${format} conservée localement (${Math.max(1, Math.round(media.byteSize / 1024 / 1024))} Mo) et placée en attente de synchronisation.`);
+  function handleCaptured(capture: StagedCapture, format: AspectRatio): void {
+    setMessage(`Original ${format} sécurisé (${Math.max(1, Math.round(capture.byteSize / 1024 / 1024))} Mo). Studio produit automatiquement le rendu final.`);
   }
 
   function enableEventScreen():void{
@@ -262,7 +269,7 @@ function App() {
   if (settingsOpen) return <BackPage language={appLanguage} onBack={() => setSettingsOpen(false)}><SettingsScreen language={appLanguage} onClose={() => {setSettingsOpen(false);returnToMenu();}} /></BackPage>;
   if (studioOpen && station && stationToken) return <BackPage language={appLanguage} onBack={() => setStudioOpen(false)}><CreativeStudio api={api} stationToken={stationToken} eventId={station.session.eventId} onSaved={(plan)=>api.markClientEventDesignReady(stationToken,station.session.eventId,plan as unknown as Record<string,unknown>)} onClose={() => {setStudioOpen(false);returnToMenu();}} /></BackPage>;
   if (profileOpen) return <BackPage language={appLanguage} onBack={() => setProfileOpen(false)}><UserProfile onClose={() => {setProfileOpen(false);returnToMenu();}} /></BackPage>;
-  if (cameraOpen && station?.mode === 'CAPTURE' && stationToken) return <BackPage language={appLanguage} onBack={() => setCameraOpen(false)}><CameraCapture eventId={station.session.eventId} store={store} api={api} stationToken={stationToken} onClose={() => setCameraOpen(false)} onCaptured={handleCaptured} /></BackPage>;
+  if (cameraOpen && station?.mode === 'CAPTURE' && stationToken) return <BackPage language={appLanguage} onBack={() => setCameraOpen(false)}><CameraCapture eventId={station.session.eventId} store={store} api={api} stationToken={stationToken} renderStatus={renderStatus} onClose={() => setCameraOpen(false)} onCaptured={handleCaptured} /></BackPage>;
   if (galleryOpen && station?.mode === 'CAPTURE') return <BackPage language={appLanguage} onBack={() => setGalleryOpen(false)}><MediaGallery eventId={station.session.eventId} eventName={eventName ?? station.session.eventId} store={store} onClose={() => setGalleryOpen(false)} /></BackPage>;
 
   const menuItemStyle=(section:MenuSection)=>[styles.menuItem,activeMenu===section&&styles.menuItemActive];
