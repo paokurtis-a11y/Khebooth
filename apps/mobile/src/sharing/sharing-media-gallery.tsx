@@ -22,7 +22,8 @@ interface SharingMediaGalleryProps {
   stationToken: string;
 }
 
-const AUTO_SYNC_INTERVAL_MS = 2_000;
+const AUTO_SYNC_INTERVAL_MS = 5_000;
+const BACKGROUND_DOWNLOAD_BATCH = 3;
 const DEFAULT_BUSINESS_SETTINGS: SharingBusinessSettingsContract = {
   socialLinks: {},
   galleryLayout: 'MASONRY',
@@ -104,6 +105,8 @@ export function SharingMediaGallery({ eventName, api, stationToken }: SharingMed
   const [trashItems, setTrashItems] = useState<SharingTrashItem[]>([]);
   const refreshingRef = useRef(false);
   const receivedIdsRef = useRef(new Set<string>());
+  const knownRemoteIdsRef = useRef<Set<string> | null>(null);
+  const hasLoadedRef = useRef(false);
 
   const columns = Math.max(1, landscape ? businessSettings.landscapeColumns : businessSettings.portraitColumns);
   const cardWidth = `${Math.max(22, Math.floor(100 / columns) - 2)}%` as `${number}%`;
@@ -151,7 +154,7 @@ export function SharingMediaGallery({ eventName, api, stationToken }: SharingMed
   async function refresh(manual = false): Promise<void> {
     if (refreshingRef.current) return;
     refreshingRef.current = true;
-    if (media.length === 0) setLoading(true);
+    if (!hasLoadedRef.current) setLoading(true);
     try {
       const items = await api.listMedia(stationToken);
       const synced = items.filter((item) => item.syncState === 'SYNCED' && Boolean(item.acknowledgedAt)).sort((left, right) => {
@@ -160,26 +163,30 @@ export function SharingMediaGallery({ eventName, api, stationToken }: SharingMed
         return rightTime - leftTime;
       });
       setMedia(synced);
-      let newlyReceived = 0;
+      const previousRemoteIds = knownRemoteIdsRef.current;
+      const newRemoteItems = previousRemoteIds ? synced.filter((item) => !previousRemoteIds.has(item.id)) : [];
+      knownRemoteIdsRef.current = new Set(synced.map((item) => item.id));
+      let downloadedInBackground = 0;
       for (const item of synced) {
+        if (downloadedInBackground >= BACKGROUND_DOWNLOAD_BATCH) break;
         if (receivedIdsRef.current.has(item.id)) continue;
-        try { await downloadMedia(item); newlyReceived += 1; } catch {}
+        try { await downloadMedia(item); downloadedInBackground += 1; } catch {}
       }
       setLastSyncAt(new Date());
-      if (newlyReceived > 0) {
+      if (newRemoteItems.length > 0) {
         const preferences = await loadNotificationPreferences();
         await playNotificationFeedback(preferences);
       }
       if (manual) {
-        setMessage(newlyReceived > 0
-          ? `${newlyReceived} nouveau${newlyReceived === 1 ? '' : 'x'} média${newlyReceived === 1 ? '' : 's'} reçu${newlyReceived === 1 ? '' : 's'} sur SHARING.`
+        setMessage(newRemoteItems.length > 0
+          ? `${newRemoteItems.length} nouveau${newRemoteItems.length === 1 ? '' : 'x'} média${newRemoteItems.length === 1 ? '' : 's'} reçu${newRemoteItems.length === 1 ? '' : 's'} sur SHARING.`
           : 'Synchronisation actualisée. KHE continue de surveiller automatiquement les nouveaux médias.');
-      } else if (newlyReceived > 0) {
-        setMessage(`${newlyReceived} nouveau${newlyReceived === 1 ? '' : 'x'} Moment${newlyReceived === 1 ? '' : 's'} KHE reçu${newlyReceived === 1 ? '' : 's'} automatiquement.`);
+      } else if (newRemoteItems.length > 0) {
+        setMessage(`${newRemoteItems.length} nouveau${newRemoteItems.length === 1 ? '' : 'x'} Moment${newRemoteItems.length === 1 ? '' : 's'} KHE reçu${newRemoteItems.length === 1 ? '' : 's'} automatiquement.`);
       }
     } catch (error) {
-      if (manual || media.length === 0) setMessage(error instanceof Error ? error.message : 'Impossible de charger les médias synchronisés.');
-    } finally { refreshingRef.current = false; setLoading(false); }
+      if (manual || !hasLoadedRef.current) setMessage(error instanceof Error ? error.message : 'Impossible de charger les médias synchronisés.');
+    } finally { hasLoadedRef.current = true; refreshingRef.current = false; setLoading(false); }
   }
 
   async function loadTrash(): Promise<void> {
