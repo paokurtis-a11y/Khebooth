@@ -4,7 +4,7 @@ import type { CreativePlan, MusicAsset } from '../src/studio/creative-studio';
 import { buildRenderCommand } from '../src/studio/render-command';
 
 const BASE_PLAN: CreativePlan = {
-  template: 'NONE', title: '', subtitle: '', frameStyle: 'NONE', textPosition: 'BOTTOM', speed: '1x', boomerang: false, reverse: false, freezeFrame: false,
+  template: 'NONE', title: '', subtitle: '', frameStyle: 'NONE', textPosition: 'BOTTOM', textStartSeconds: 0, textEndSeconds: null, speed: '1x', boomerang: false, reverse: false, freezeFrame: false,
   colorEffect: 'NONE', audioMode: 'MIC_ONLY', musicRotationEvery: 3, music: [], background: null, showKheBranding: true,
 };
 
@@ -30,6 +30,12 @@ test('video graph applies reverse, boomerang, speed and freeze frame before deco
   const graph = command.args[command.args.indexOf('-filter_complex') + 1];
   assert.match(graph, /reverse/);assert.match(graph, /concat=n=2:v=1:a=0/);assert.match(graph, /setpts=PTS\/2/);assert.match(graph, /tpad=stop_mode=clone:stop_duration=1.5/);assert.match(graph, /areverse/);assert.match(graph, /atempo=2/);
   assert.equal(command.width, 1080);assert.equal(command.height, 1080);
+});
+
+test('video text respects appearance and disappearance settings', () => {
+  const command = buildRenderCommand({ sourcePath: '/raw.mp4', outputPath: '/final.mp4', mimeType: 'video/mp4', aspectRatio: '9:16', plan: plan({ title: 'KHE', subtitle: 'Moment', textStartSeconds: 2, textEndSeconds: 7 }), selectedMusic: null, backgroundPath: null, musicPath: null, hasSourceAudio: true, videoEncoder: 'mpeg4' });
+  const graph = command.args[command.args.indexOf('-filter_complex') + 1];
+  assert.match(graph, /enable='between\(t,2,7\)'/);
 });
 
 test('Studio music replaces microphone audio with selected trimmed playlist track', () => {

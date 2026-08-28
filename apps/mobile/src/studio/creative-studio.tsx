@@ -41,6 +41,8 @@ export interface CreativePlan {
   subtitle: string;
   frameStyle: 'NONE' | 'CLASSIC' | 'GOLD' | 'NEON' | 'POLAROID';
   textPosition: 'TOP' | 'CENTER' | 'BOTTOM';
+  textStartSeconds: number;
+  textEndSeconds: number | null;
   speed: SpeedEffect;
   boomerang: boolean;
   reverse: boolean;
@@ -65,6 +67,8 @@ export const DEFAULT_CREATIVE_PLAN: CreativePlan = {
   subtitle: '',
   frameStyle: 'NONE',
   textPosition: 'BOTTOM',
+  textStartSeconds: 0,
+  textEndSeconds: null,
   speed: '1x',
   boomerang: false,
   reverse: false,
@@ -125,6 +129,8 @@ export async function loadCreativePlan(): Promise<CreativePlan> {
     return {
       ...DEFAULT_CREATIVE_PLAN,
       ...parsed,
+      textStartSeconds: Number.isFinite(parsed.textStartSeconds) ? Math.max(0, Number(parsed.textStartSeconds)) : 0,
+      textEndSeconds: Number.isFinite(parsed.textEndSeconds) ? Math.max(0, Number(parsed.textEndSeconds)) : null,
       showKheBranding: parsed.showKheBranding !== false,
       music: Array.isArray(parsed.music) ? parsed.music.slice(0, 3).map((asset) => normalizeMusic(asset as MusicAsset)) : [],
       background: normalizeBackground(parsed.background),
@@ -441,6 +447,11 @@ export function CreativeStudio({ onClose, api, stationToken, eventId, onSaved }:
         <TextInput editable={!locked} style={styles.input} value={plan.title} onChangeText={(title) => patch({ title })} placeholder="Titre du design" placeholderTextColor="#777" />
         <TextInput editable={!locked} style={styles.input} value={plan.subtitle} onChangeText={(subtitle) => patch({ subtitle })} placeholder="Sous-titre / noms / date" placeholderTextColor="#777" />
         <View style={styles.wrap}>{(['TOP', 'CENTER', 'BOTTOM'] as const).map((position) => <Pressable disabled={locked} key={position} style={[styles.chip, plan.textPosition === position && styles.chipActive]} onPress={() => patch({ textPosition: position })}><Text style={plan.textPosition === position ? styles.chipTextActive : styles.chipText}>{position === 'TOP' ? 'Haut' : position === 'CENTER' ? 'Centre' : 'Bas'}</Text></Pressable>)}</View>
+        <Text style={styles.help}>Affichage du texte dans la vidéo. Laissez « Disparition » vide pour le conserver jusqu’à la fin.</Text>
+        <View style={styles.audioGrid}>
+          <View style={styles.audioField}><Text style={styles.audioLabel}>Apparition (s)</Text><TextInput editable={!locked} keyboardType="decimal-pad" value={String(plan.textStartSeconds)} onChangeText={(value) => patch({ textStartSeconds: parseSeconds(value, plan.textStartSeconds) ?? 0 })} style={styles.audioInput} /></View>
+          <View style={styles.audioField}><Text style={styles.audioLabel}>Disparition (s)</Text><TextInput editable={!locked} keyboardType="decimal-pad" value={plan.textEndSeconds === null ? '' : String(plan.textEndSeconds)} onChangeText={(value) => patch({ textEndSeconds: parseSeconds(value, plan.textEndSeconds) })} placeholder="Fin" placeholderTextColor="#777" style={styles.audioInput} /></View>
+        </View>
 
         <Text style={styles.section}>CADRE</Text>
         <View style={styles.wrap}>{(['NONE', 'CLASSIC', 'GOLD', 'NEON', 'POLAROID'] as const).map((frame) => <Pressable disabled={locked} key={frame} style={[styles.chip, plan.frameStyle === frame && styles.chipActive]} onPress={() => patch({ frameStyle: frame })}><Text style={plan.frameStyle === frame ? styles.chipTextActive : styles.chipText}>{frame === 'NONE' ? 'Aucun' : frame}</Text></Pressable>)}</View>

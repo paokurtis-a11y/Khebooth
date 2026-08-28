@@ -93,12 +93,13 @@ jobs:
           set -euo pipefail
           grep -Eq "applicationId[[:space:]]+['\"]com\.kurtishypnotic\.khebooth\.beta['\"]" android/app/build.gradle
           grep -q '<string name="app_name">KHE Booth Beta</string>' android/app/src/main/res/values/strings.xml
+          grep -q 'KHE_PREVIEW_STREAM_READY' node_modules/expo-camera/android/src/main/java/expo/modules/camera/ExpoCameraView.kt
 
-      - name: Compile Android standalone beta APK
+      - name: Compile Android standalone ARM64 beta APK
         working-directory: apps/mobile/android
         env:
           NODE_ENV: production
-        run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
+        run: ./gradlew :app:assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon --stacktrace
 
       - name: Verify embedded JavaScript bundle
         working-directory: apps/mobile
@@ -106,6 +107,12 @@ jobs:
           set -euo pipefail
           APK="android/app/build/outputs/apk/release/app-release.apk"
           test -s "$APK"
+          APK_BYTES=$(stat -c%s "$APK")
+          MAX_BYTES=$((140 * 1024 * 1024))
+          if [ "$APK_BYTES" -gt "$MAX_BYTES" ]; then
+            echo "Standalone ARM64 APK is unexpectedly large: $APK_BYTES bytes" >&2
+            exit 1
+          fi
           unzip -l "$APK" | grep -Eq 'assets/(index\.android\.bundle|expo-router|.*\.bundle)' || {
             echo "Standalone APK does not contain an embedded JS bundle" >&2
             exit 1
@@ -150,11 +157,11 @@ jobs:
             gh release edit android-latest \
               --prerelease \
               --title "KHE Booth Android — bêta autonome" \
-              --notes "APK Android bêta autonome avec bundle JavaScript embarqué, généré automatiquement depuis main après validation native. Package : com.kurtishypnotic.khebooth.beta. Aucun serveur Metro n’est nécessaire."
+              --notes "APK Android bêta autonome ARM64 avec bundle JavaScript embarqué, généré automatiquement depuis main après validation native. Package : com.kurtishypnotic.khebooth.beta. Aucun serveur Metro n’est nécessaire."
           else
             gh release create android-latest "$APK_RELEASE" \
               --prerelease \
               --target "$GITHUB_SHA" \
               --title "KHE Booth Android — bêta autonome" \
-              --notes "APK Android bêta autonome avec bundle JavaScript embarqué, généré automatiquement depuis main après validation native. Package : com.kurtishypnotic.khebooth.beta. Aucun serveur Metro n’est nécessaire."
+              --notes "APK Android bêta autonome ARM64 avec bundle JavaScript embarqué, généré automatiquement depuis main après validation native. Package : com.kurtishypnotic.khebooth.beta. Aucun serveur Metro n’est nécessaire."
           fi

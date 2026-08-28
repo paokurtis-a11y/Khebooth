@@ -7,6 +7,8 @@ const basePlan: CreativePlan = {
   title: 'Heureux mariage',
   subtitle: 'KHE Booth',
   textPosition: 'BOTTOM',
+  textStartSeconds: 0,
+  textEndSeconds: null,
   frameStyle: 'GOLD',
   colorEffect: 'GOLD',
   speed: '1x',

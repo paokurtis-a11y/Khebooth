@@ -60,15 +60,18 @@ function frameFilter(frame: CreativePlan['frameStyle']) {
   return null;
 }
 
-function textFilters(plan: CreativePlan, width: number, height: number) {
+function textFilters(plan: CreativePlan, width: number, height: number, timed: boolean) {
   const filters: string[] = [];
   const position = plan.textPosition === 'TOP' ? Math.round(height * 0.13) : plan.textPosition === 'CENTER' ? '(h-text_h)/2-35' : Math.round(height * 0.78);
+  const start = Math.max(0, Number(plan.textStartSeconds) || 0);
+  const end = plan.textEndSeconds === null || !Number.isFinite(plan.textEndSeconds) ? null : Math.max(start, Number(plan.textEndSeconds));
+  const enable = timed ? `:enable='${end === null ? `gte(t,${start})` : `between(t,${start},${end})`}'` : '';
   if (plan.title.trim()) {
-    filters.push(`drawtext=font='sans':text='${drawTextEscape(plan.title)}':fontcolor=white:fontsize=${width === height ? 54 : 58}:borderw=4:bordercolor=black@0.72:x=(w-text_w)/2:y=${position}`);
+    filters.push(`drawtext=font='sans':text='${drawTextEscape(plan.title)}':fontcolor=white:fontsize=${width === height ? 54 : 58}:borderw=4:bordercolor=black@0.72:x=(w-text_w)/2:y=${position}${enable}`);
   }
   if (plan.subtitle.trim()) {
     const subtitleY = typeof position === 'number' ? position + 76 : '(h-text_h)/2+42';
-    filters.push(`drawtext=font='sans':text='${drawTextEscape(plan.subtitle)}':fontcolor=white:fontsize=${width === height ? 28 : 31}:borderw=3:bordercolor=black@0.7:x=(w-text_w)/2:y=${subtitleY}`);
+    filters.push(`drawtext=font='sans':text='${drawTextEscape(plan.subtitle)}':fontcolor=white:fontsize=${width === height ? 28 : 31}:borderw=3:bordercolor=black@0.7:x=(w-text_w)/2:y=${subtitleY}${enable}`);
   }
   if (plan.showKheBranding) {
     filters.push("drawtext=font='sans':text='KHE BOOTH':fontcolor=0xD2AD4F:fontsize=23:borderw=2:bordercolor=black@0.9:box=1:boxcolor=black@0.58:boxborderw=11:x=w-text_w-28:y=h-text_h-28");
@@ -76,8 +79,8 @@ function textFilters(plan: CreativePlan, width: number, height: number) {
   return filters;
 }
 
-function decorations(plan: CreativePlan, width: number, height: number) {
-  return [colorFilter(plan.colorEffect), frameFilter(plan.frameStyle), ...textFilters(plan, width, height)].filter(Boolean) as string[];
+function decorations(plan: CreativePlan, width: number, height: number, timed = false) {
+  return [colorFilter(plan.colorEffect), frameFilter(plan.frameStyle), ...textFilters(plan, width, height, timed)].filter(Boolean) as string[];
 }
 
 function backgroundFilter(input: RenderCommandInput, width: number, height: number, inputIndex: number, outputLabel: string) {
@@ -96,7 +99,7 @@ function decorateVideo(label: string, input: RenderCommandInput, width: number, 
     current = 'khebgmix';
   }
 
-  const finalDecorations = decorations(input.plan, width, height);
+  const finalDecorations = decorations(input.plan, width, height, true);
   if (finalDecorations.length) {
     filters.push(`[${current}]${finalDecorations.join(',')}[khedecorated]`);
     current = 'khedecorated';
