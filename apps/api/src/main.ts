@@ -7,6 +7,8 @@ const TRUSTED_WEB_ORIGINS = new Set([
   'https://khebooth-rdvo.vercel.app',
   'https://khebooth.vercel.app',
 ]);
+const TRUSTED_WEB_PREVIEW_ORIGIN =
+  /^https:\/\/khebooth-git-[a-z0-9-]+-paokurtis-1101s-projects\.vercel\.app$/;
 
 function resolveWebOrigins() {
   const configured = process.env.WEB_ORIGIN?.trim();
@@ -25,7 +27,7 @@ function resolveWebOrigins() {
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true });
   app.setGlobalPrefix('api');
-  app.enableCors({ origin: resolveWebOrigins() });
+  app.enableCors({ origin: [...resolveWebOrigins(), TRUSTED_WEB_PREVIEW_ORIGIN] });
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
   );

@@ -24,6 +24,11 @@ type StrategyConfig = {
   autoPromotionEnabled:boolean; ownerApprovalForPaidCampaigns:boolean; strategyNotes:string|null; updatedAt:Date;
 };
 
+type OperationsAccessScope = {
+  organizationId: string;
+  managedClientId: string | null;
+};
+
 const AGENT_ROLES = new Set(['OWNER','ADMIN','OPERATOR']);
 
 @Injectable()
@@ -35,6 +40,20 @@ export class OperationsService {
   private safeSurface(value:unknown){const surface=String(value??'WEB_PORTAL').toUpperCase();return ['WEB_PORTAL','MOBILE_APP','ADMIN'].includes(surface)?surface:'WEB_PORTAL';}
   private geoValue(share:boolean,value:string|number|null|undefined){return share?value??null:null;}
 
+  private async accessScope(user:AuthenticatedUser):Promise<OperationsAccessScope>{
+    const rows=await this.prisma.$queryRaw<Array<{managedClientId:string|null;clientOrganizationId:string|null;subscriptionPlan:string|null;subscriptionStatus:string|null;paymentStatus:string|null;subscriptionEndsAt:Date|null}>>`
+      SELECT u."managedClientId",c."organizationId" AS "clientOrganizationId",c."subscriptionPlan",c."subscriptionStatus",c."paymentStatus",c."subscriptionEndsAt"
+      FROM "User" u LEFT JOIN "Client" c ON c.id=u."managedClientId"
+      WHERE u.id=${user.id}::uuid AND u."organizationId"=${user.organizationId}::uuid AND u."isActive"=TRUE LIMIT 1
+    `;
+    const row=rows[0];
+    if(!row?.managedClientId)return{organizationId:user.organizationId,managedClientId:null};
+    const eligiblePlan=row.subscriptionPlan==='BUSINESS'||row.subscriptionPlan==='ENTERPRISE';
+    const expired=Boolean(row.subscriptionEndsAt&&new Date(row.subscriptionEndsAt).getTime()<=Date.now());
+    if(!eligiblePlan||row.subscriptionStatus!=='ACTIVE'||row.paymentStatus!=='PAID'||expired||!row.clientOrganizationId)throw new ForbiddenException('Accès opérations réservé aux comptes BUSINESS ou ENTERPRISE actifs et payés');
+    return{organizationId:row.clientOrganizationId,managedClientId:row.managedClientId};
+  }
+
   async heartbeat(user:AuthenticatedUser, body:Record<string,unknown>, geo:GeoContext, userAgent?:string|null){
     const sessionKey=this.sessionKey(body.sessionKey);const surface=this.safeSurface(body.surface);const share=body.shareApproximateLocation===true;
     const pageViews=Math.min(20,Math.max(0,Math.trunc(Number(body.pageViews??0))));const actions=Math.min(50,Math.max(0,Math.trunc(Number(body.actions??0))));
@@ -45,13 +64,13 @@ export class OperationsService {
       VALUES (gen_random_uuid(),${user.organizationId}::uuid,${user.id}::uuid,${clientId}::uuid,${sessionKey},${surface},CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,${pageViews},${actions},
         ${this.geoValue(share,geo.countryCode)},${this.geoValue(share,geo.regionCode)},${this.geoValue(share,geo.municipality)},${this.geoValue(share,geo.latitude)},${this.geoValue(share,geo.longitude)},${this.geoValue(share,geo.timezone)},${share},${String(userAgent??'').slice(0,500)||null})
       ON CONFLICT ("userId","sessionKey") DO UPDATE SET "lastSeenAt"=CURRENT_TIMESTAMP,"pageViews"="UserActivitySession"."pageViews"+EXCLUDED."pageViews",actions="UserActivitySession".actions+EXCLUDED.actions,
-        "countryCode"=CASE WHEN EXCLUDED."locationSharingEnabled" THEN EXCLUDED."countryCode" ELSE "UserActivitySession"."countryCode" END,
-        "regionCode"=CASE WHEN EXCLUDED."locationSharingEnabled" THEN EXCLUDED."regionCode" ELSE "UserActivitySession"."regionCode" END,
-        municipality=CASE WHEN EXCLUDED."locationSharingEnabled" THEN EXCLUDED.municipality ELSE "UserActivitySession".municipality END,
-        latitude=CASE WHEN EXCLUDED."locationSharingEnabled" THEN EXCLUDED.latitude ELSE "UserActivitySession".latitude END,
-        longitude=CASE WHEN EXCLUDED."locationSharingEnabled" THEN EXCLUDED.longitude ELSE "UserActivitySession".longitude END,
-        timezone=CASE WHEN EXCLUDED."locationSharingEnabled" THEN EXCLUDED.timezone ELSE "UserActivitySession".timezone END,
-        "locationSharingEnabled"="UserActivitySession"."locationSharingEnabled" OR EXCLUDED."locationSharingEnabled"
+        "countryCode"=CASE WHEN EXCLUDED."locationSharingEnabled" THEN EXCLUDED."countryCode" ELSE NULL END,
+        "regionCode"=CASE WHEN EXCLUDED."locationSharingEnabled" THEN EXCLUDED."regionCode" ELSE NULL END,
+        municipality=CASE WHEN EXCLUDED."locationSharingEnabled" THEN EXCLUDED.municipality ELSE NULL END,
+        latitude=CASE WHEN EXCLUDED."locationSharingEnabled" THEN EXCLUDED.latitude ELSE NULL END,
+        longitude=CASE WHEN EXCLUDED."locationSharingEnabled" THEN EXCLUDED.longitude ELSE NULL END,
+        timezone=CASE WHEN EXCLUDED."locationSharingEnabled" THEN EXCLUDED.timezone ELSE NULL END,
+        "locationSharingEnabled"=EXCLUDED."locationSharingEnabled"
     `;
     if(this.isAgent(user)){
       const current=await this.prisma.$queryRaw<PresenceRow[]>`SELECT * FROM "AgentPresence" WHERE "userId"=${user.id}::uuid LIMIT 1`;
@@ -64,13 +83,13 @@ export class OperationsService {
           availability=CASE WHEN "AgentPresence"."activeSessionKey" IS DISTINCT FROM ${sessionKey} THEN 'UNAVAILABLE' ELSE "AgentPresence".availability END,
           "acceptingAssignments"=CASE WHEN "AgentPresence"."activeSessionKey" IS DISTINCT FROM ${sessionKey} THEN FALSE ELSE "AgentPresence"."acceptingAssignments" END,
           "availableSince"=CASE WHEN "AgentPresence"."activeSessionKey" IS DISTINCT FROM ${sessionKey} THEN NULL ELSE "AgentPresence"."availableSince" END,
-          "countryCode"=CASE WHEN ${share} THEN ${geo.countryCode??null} ELSE "AgentPresence"."countryCode" END,
-          "regionCode"=CASE WHEN ${share} THEN ${geo.regionCode??null} ELSE "AgentPresence"."regionCode" END,
-          municipality=CASE WHEN ${share} THEN ${geo.municipality??null} ELSE "AgentPresence".municipality END,
-          latitude=CASE WHEN ${share} THEN ${geo.latitude??null} ELSE "AgentPresence".latitude END,
-          longitude=CASE WHEN ${share} THEN ${geo.longitude??null} ELSE "AgentPresence".longitude END,
-          timezone=CASE WHEN ${share} THEN ${geo.timezone??null} ELSE "AgentPresence".timezone END,
-          "locationSharingEnabled"="AgentPresence"."locationSharingEnabled" OR ${share},"locationUpdatedAt"=CASE WHEN ${share} THEN CURRENT_TIMESTAMP ELSE "AgentPresence"."locationUpdatedAt" END,"updatedAt"=CURRENT_TIMESTAMP
+          "countryCode"=CASE WHEN ${share} THEN ${geo.countryCode??null} ELSE NULL END,
+          "regionCode"=CASE WHEN ${share} THEN ${geo.regionCode??null} ELSE NULL END,
+          municipality=CASE WHEN ${share} THEN ${geo.municipality??null} ELSE NULL END,
+          latitude=CASE WHEN ${share} THEN ${geo.latitude??null} ELSE NULL END,
+          longitude=CASE WHEN ${share} THEN ${geo.longitude??null} ELSE NULL END,
+          timezone=CASE WHEN ${share} THEN ${geo.timezone??null} ELSE NULL END,
+          "locationSharingEnabled"=${share},"locationUpdatedAt"=CASE WHEN ${share} THEN CURRENT_TIMESTAMP ELSE "AgentPresence"."locationUpdatedAt" END,"updatedAt"=CURRENT_TIMESTAMP
       `;
       if(newSession)await this.prisma.$executeRaw`
         INSERT INTO "AgentAvailabilityEvent" (id,"organizationId","userId","sessionKey",availability,"acceptingAssignments",source,"countryCode","regionCode",municipality)
@@ -91,13 +110,13 @@ export class OperationsService {
         ${this.geoValue(share,geo.countryCode)},${this.geoValue(share,geo.regionCode)},${this.geoValue(share,geo.municipality)},${this.geoValue(share,geo.latitude)},${this.geoValue(share,geo.longitude)},${this.geoValue(share,geo.timezone)},${share},${share?new Date():null})
       ON CONFLICT ("userId") DO UPDATE SET "activeSessionKey"=${sessionKey},availability=${requested},"acceptingAssignments"=${accepting},"lastHeartbeatAt"=CURRENT_TIMESTAMP,
         "availableSince"=CASE WHEN ${accepting} THEN COALESCE("AgentPresence"."availableSince",CURRENT_TIMESTAMP) ELSE NULL END,
-        "countryCode"=CASE WHEN ${share} THEN ${geo.countryCode??null} ELSE "AgentPresence"."countryCode" END,
-        "regionCode"=CASE WHEN ${share} THEN ${geo.regionCode??null} ELSE "AgentPresence"."regionCode" END,
-        municipality=CASE WHEN ${share} THEN ${geo.municipality??null} ELSE "AgentPresence".municipality END,
-        latitude=CASE WHEN ${share} THEN ${geo.latitude??null} ELSE "AgentPresence".latitude END,
-        longitude=CASE WHEN ${share} THEN ${geo.longitude??null} ELSE "AgentPresence".longitude END,
-        timezone=CASE WHEN ${share} THEN ${geo.timezone??null} ELSE "AgentPresence".timezone END,
-        "locationSharingEnabled"="AgentPresence"."locationSharingEnabled" OR ${share},"locationUpdatedAt"=CASE WHEN ${share} THEN CURRENT_TIMESTAMP ELSE "AgentPresence"."locationUpdatedAt" END,"updatedAt"=CURRENT_TIMESTAMP
+        "countryCode"=CASE WHEN ${share} THEN ${geo.countryCode??null} ELSE NULL END,
+        "regionCode"=CASE WHEN ${share} THEN ${geo.regionCode??null} ELSE NULL END,
+        municipality=CASE WHEN ${share} THEN ${geo.municipality??null} ELSE NULL END,
+        latitude=CASE WHEN ${share} THEN ${geo.latitude??null} ELSE NULL END,
+        longitude=CASE WHEN ${share} THEN ${geo.longitude??null} ELSE NULL END,
+        timezone=CASE WHEN ${share} THEN ${geo.timezone??null} ELSE NULL END,
+        "locationSharingEnabled"=${share},"locationUpdatedAt"=CASE WHEN ${share} THEN CURRENT_TIMESTAMP ELSE "AgentPresence"."locationUpdatedAt" END,"updatedAt"=CURRENT_TIMESTAMP
     `;
     await this.prisma.$executeRaw`
       INSERT INTO "AgentAvailabilityEvent" (id,"organizationId","userId","sessionKey",availability,"acceptingAssignments",source,"countryCode","regionCode",municipality)
@@ -124,9 +143,16 @@ export class OperationsService {
   }
 
   async listAgents(user:AuthenticatedUser){
+    const scope=await this.accessScope(user);
     const rows=await this.prisma.$queryRaw<any[]>`
-      SELECT u.id,u.email,u."firstName",u."lastName",u.role::text AS role,u."isActive",
-        p.availability,p."acceptingAssignments",p."lastHeartbeatAt",p."availableSince",p."countryCode",p."regionCode",p.municipality,p.latitude,p.longitude,p.timezone,p."locationSharingEnabled",
+      SELECT u.id,u.email,u.phone,u."firstName",u."lastName",u.role::text AS role,u."isActive",
+        p.availability,p."acceptingAssignments",p."lastHeartbeatAt",p."availableSince",
+        CASE WHEN p."locationSharingEnabled" THEN upper(p."countryCode") ELSE NULL END "countryCode",
+        CASE WHEN p."locationSharingEnabled" THEN p."regionCode" ELSE NULL END "regionCode",
+        CASE WHEN p."locationSharingEnabled" THEN p.municipality ELSE NULL END municipality,
+        CASE WHEN p."locationSharingEnabled" THEN round(p.latitude::numeric,2)::float8 ELSE NULL END latitude,
+        CASE WHEN p."locationSharingEnabled" THEN round(p.longitude::numeric,2)::float8 ELSE NULL END longitude,
+        CASE WHEN p."locationSharingEnabled" THEN p.timezone ELSE NULL END timezone,p."locationSharingEnabled",
         COALESCE(s.sessions,0)::int AS "connectionCount",COALESCE(s.seconds,0)::bigint AS "totalConnectedSeconds",s."lastLoginAt",
         COALESCE(c.assigned,0)::int AS "conversationAssignments",COALESCE(c.resolved,0)::int AS "resolvedProblems",
         COALESCE(t.assigned,0)::int AS "taskAssignments",COALESCE(t.completed,0)::int AS "completedTasks",
@@ -138,14 +164,27 @@ export class OperationsService {
       LEFT JOIN LATERAL (SELECT count(*) FILTER(WHERE "assignedToUserId"=u.id) assigned,count(*) FILTER(WHERE "assignedToUserId"=u.id AND status='DONE') completed FROM "SupportTask" WHERE "organizationId"=u."organizationId") t ON TRUE
       LEFT JOIN LATERAL (SELECT count(*) FILTER(WHERE "agentUserId"=u.id AND status='FAILED') failed FROM "SupportAssignmentAttempt" WHERE "organizationId"=u."organizationId") a ON TRUE
       LEFT JOIN LATERAL (SELECT count(*) reviews,round(avg(rating)::numeric,2)::float8 rating FROM "SupportFeedback" WHERE "agentUserId"=u.id) f ON TRUE
-      WHERE u."organizationId"=${user.organizationId}::uuid AND u."isActive"=TRUE AND u.role IN ('OWNER','ADMIN','OPERATOR')
+      WHERE u."organizationId"=${scope.organizationId}::uuid AND u."isActive"=TRUE AND u.role IN ('OWNER','ADMIN','OPERATOR')
+        AND (${scope.managedClientId}::uuid IS NULL OR EXISTS (
+          SELECT 1 FROM "SupportConversation" assigned
+          JOIN "User" requester ON requester.id=assigned."requesterUserId"
+          WHERE assigned."assignedToUserId"=u.id AND requester."managedClientId"=${scope.managedClientId}::uuid
+        ))
       ORDER BY COALESCE(p."acceptingAssignments",FALSE) DESC,p."lastHeartbeatAt" DESC NULLS LAST,u.email ASC
     `;
-    return rows.map(row=>({...row,online:Boolean(row.lastHeartbeatAt&&Date.now()-new Date(row.lastHeartbeatAt).getTime()<90000),available:Boolean(row.acceptingAssignments&&row.availability==='AVAILABLE'&&row.lastHeartbeatAt&&Date.now()-new Date(row.lastHeartbeatAt).getTime()<90000),totalConnectedSeconds:Number(row.totalConnectedSeconds||0),averageRating:row.averageRating===null?null:Number(row.averageRating)}));
+    return rows.map(row=>{
+      const result={...row,online:Boolean(row.lastHeartbeatAt&&Date.now()-new Date(row.lastHeartbeatAt).getTime()<90000),available:Boolean(row.acceptingAssignments&&row.availability==='AVAILABLE'&&row.lastHeartbeatAt&&Date.now()-new Date(row.lastHeartbeatAt).getTime()<90000),totalConnectedSeconds:Number(row.totalConnectedSeconds||0),averageRating:row.averageRating===null?null:Number(row.averageRating)};
+      if(scope.managedClientId){
+        for(const key of ['connectionCount','totalConnectedSeconds','lastLoginAt','conversationAssignments','resolvedProblems','taskAssignments','completedTasks','failedAssignments','reviewCount','averageRating'])delete result[key];
+      }
+      return result;
+    });
   }
 
   async agentHistory(user:AuthenticatedUser,agentId:string){
-    const exists=await this.prisma.$queryRaw<Array<{id:string}>>`SELECT id FROM "User" WHERE id=${agentId}::uuid AND "organizationId"=${user.organizationId}::uuid AND role IN ('OWNER','ADMIN','OPERATOR') LIMIT 1`;
+    const scope=await this.accessScope(user);
+    if(scope.managedClientId)throw new ForbiddenException('Historique complet réservé à l’organisation KHE');
+    const exists=await this.prisma.$queryRaw<Array<{id:string}>>`SELECT id FROM "User" WHERE id=${agentId}::uuid AND "organizationId"=${scope.organizationId}::uuid AND role IN ('OWNER','ADMIN','OPERATOR') LIMIT 1`;
     if(!exists[0])throw new NotFoundException('Agent introuvable');
     const [sessions,availability,assignments,feedback]=await Promise.all([
       this.prisma.$queryRaw<any[]>`SELECT id,"sessionKey",surface,"startedAt","lastSeenAt","endedAt","pageViews",actions,"countryCode","regionCode",municipality,timezone FROM "UserActivitySession" WHERE "userId"=${agentId}::uuid ORDER BY "startedAt" DESC LIMIT 100`,
@@ -204,7 +243,35 @@ export class OperationsService {
     const [summary,geographies,visitors]=await Promise.all([
       this.prisma.$queryRaw<any[]>`SELECT count(*) FILTER(WHERE "eventType"='PAGE_VIEW')::int visits,count(DISTINCT "anonymousId") FILTER(WHERE "anonymousId" IS NOT NULL)::int visitors,count(*) FILTER(WHERE "eventType"='PLAN_SELECTED')::int "planSelections",count(*) FILTER(WHERE "eventType"='CHECKOUT_STARTED')::int checkouts,count(*) FILTER(WHERE "eventType"='CHECKOUT_COMPLETED')::int conversions FROM "MarketingAnalyticsEvent" WHERE "organizationId"=${user.organizationId}::uuid AND "createdAt">=CURRENT_TIMESTAMP-${days}*INTERVAL '1 day'`,
       this.prisma.$queryRaw<any[]>`SELECT "countryCode","regionCode",municipality,round(avg(latitude)::numeric,4)::float8 latitude,round(avg(longitude)::numeric,4)::float8 longitude,count(*)::int events,count(DISTINCT "anonymousId")::int visitors FROM "MarketingAnalyticsEvent" WHERE "organizationId"=${user.organizationId}::uuid AND consent=TRUE AND "countryCode" IS NOT NULL AND "createdAt">=CURRENT_TIMESTAMP-${days}*INTERVAL '1 day' GROUP BY "countryCode","regionCode",municipality ORDER BY visitors DESC,events DESC LIMIT 100`,
-      this.prisma.$queryRaw<any[]>`SELECT left("anonymousId",8) "visitorKey",count(*)::int events,count(*) FILTER(WHERE "eventType"='PAGE_VIEW')::int visits,count(*) FILTER(WHERE "eventType"='PLAN_SELECTED')::int plans,count(*) FILTER(WHERE "eventType"='CHECKOUT_STARTED')::int checkouts,count(*) FILTER(WHERE "eventType"='CHECKOUT_COMPLETED')::int conversions,max("createdAt") "lastSeenAt",max("countryCode") "countryCode",max("regionCode") "regionCode",max(municipality) municipality FROM "MarketingAnalyticsEvent" WHERE "organizationId"=${user.organizationId}::uuid AND "anonymousId" IS NOT NULL AND "createdAt">=CURRENT_TIMESTAMP-${days}*INTERVAL '1 day' GROUP BY "anonymousId" ORDER BY checkouts DESC,plans DESC,visits DESC LIMIT 100`,
+      this.prisma.$queryRaw<any[]>`
+        WITH visitor_rollup AS (
+          SELECT "anonymousId",left("anonymousId",8) "visitorKey",count(*)::int events,
+            count(*) FILTER(WHERE "eventType"='PAGE_VIEW')::int visits,
+            count(*) FILTER(WHERE "eventType"='PLAN_SELECTED')::int plans,
+            count(*) FILTER(WHERE "eventType"='CHECKOUT_STARTED')::int checkouts,
+            count(*) FILTER(WHERE "eventType"='CHECKOUT_COMPLETED')::int conversions,
+            max("createdAt") "lastSeenAt",max("countryCode") "countryCode",max("regionCode") "regionCode",max(municipality) municipality
+          FROM "MarketingAnalyticsEvent"
+          WHERE "organizationId"=${user.organizationId}::uuid AND "anonymousId" IS NOT NULL
+            AND "createdAt">=CURRENT_TIMESTAMP-${days}*INTERVAL '1 day'
+          GROUP BY "anonymousId"
+        ),
+        latest_sessions AS (
+          SELECT DISTINCT ON ("sessionId") "anonymousId","eventType","createdAt"
+          FROM "MarketingAnalyticsEvent"
+          WHERE "organizationId"=${user.organizationId}::uuid AND consent=TRUE AND "sessionId" IS NOT NULL
+            AND "createdAt">=CURRENT_TIMESTAMP-INTERVAL '5 minutes'
+          ORDER BY "sessionId","createdAt" DESC
+        ),
+        live_anonymous AS (
+          SELECT DISTINCT "anonymousId" FROM latest_sessions
+          WHERE "eventType"<>'SESSION_ENDED' AND "createdAt">=CURRENT_TIMESTAMP-75*INTERVAL '1 second'
+        )
+        SELECT r."visitorKey",r.events,r.visits,r.plans,r.checkouts,r.conversions,r."lastSeenAt",
+          r."countryCode",r."regionCode",r.municipality,(l."anonymousId" IS NOT NULL) online
+        FROM visitor_rollup r LEFT JOIN live_anonymous l ON l."anonymousId"=r."anonymousId"
+        ORDER BY r.checkouts DESC,r.plans DESC,r.visits DESC LIMIT 100
+      `,
     ]);
     const scored=visitors.map(row=>{const score=Math.min(100,Number(row.visits)*8+Number(row.plans)*18+Number(row.checkouts)*35+Number(row.conversions)*50);return{...row,intentScore:score,highIntent:score>=config.highIntentScore};});
     const s=summary[0]??{visits:0,visitors:0,planSelections:0,checkouts:0,conversions:0};const highIntent=scored.filter(v=>v.highIntent).length;

@@ -16,6 +16,7 @@ export const KHE_PERMISSIONS = [
   'site.manage',
   'billing.manage',
   'team.manage',
+  'applications.manage',
   'reports.export',
 ] as const;
 
@@ -30,6 +31,7 @@ export const ROLE_PERMISSION_DEFAULTS: Record<string, Record<KhePermission, bool
     ...OWNER_DEFAULTS,
     'billing.manage': false,
     'team.manage': true,
+    'applications.manage': true,
     'enterprise.verify': false,
   },
   OPERATOR: {

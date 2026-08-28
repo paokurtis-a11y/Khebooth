@@ -16,8 +16,12 @@ const LABELS={
 } as const;
 type Language=keyof typeof LABELS;
 
+function safeGetItem(key:string):string|null{
+  try{return window.localStorage.getItem(key);}catch{return null;}
+}
+
 function language():Language{
-  const value=window.localStorage.getItem('khe.web.language');
+  const value=safeGetItem('khe.web.language');
   return value&&value in LABELS?value as Language:'fr';
 }
 
@@ -65,7 +69,7 @@ export function PortalExperienceBootstrap(){
     let frame=0;
     const schedule=(value?:string|null)=>{
       window.cancelAnimationFrame(frame);
-      frame=window.requestAnimationFrame(()=>applyMode(value??window.localStorage.getItem(MODE_KEY)));
+      frame=window.requestAnimationFrame(()=>applyMode(value??safeGetItem(MODE_KEY)));
     };
     schedule();
     const modeHandler=(event:Event)=>schedule((event as CustomEvent<string>).detail);

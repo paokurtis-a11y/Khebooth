@@ -7,8 +7,9 @@
   },
   "scripts": {
     "dev": "pnpm -r --parallel --if-present dev",
-    "lint": "node scripts/check-web-i18n.mjs && pnpm -r --if-present lint",
+    "lint": "node scripts/check-web-i18n.mjs && node scripts/check-globe-qa.mjs && pnpm -r --if-present lint",
     "lint:i18n": "node scripts/check-web-i18n.mjs",
+    "lint:globe": "node scripts/check-globe-qa.mjs",
     "test": "pnpm -r --if-present test",
     "build": "pnpm -r --if-present build",
     "prisma:generate": "prisma generate --schema apps/api/prisma/schema.prisma",

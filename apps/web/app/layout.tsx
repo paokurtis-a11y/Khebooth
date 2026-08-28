@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { PortalExperienceBootstrap } from '@/components/portal-experience-bootstrap';
 import { WebDisplayPreferenceBootstrap } from '@/components/web-display-preferences';
 import { WebStartupIntro } from '@/components/web-startup-intro';
@@ -9,6 +9,16 @@ import './portal-polish.css';
 import './portal-navigation.css';
 import './portal-menu-enhancements.css';
 import './portal-experience.css';
+import './responsive-platform.css';
+import './experience-enhancements.css';
+import './commercial-journey.css';
+import './recruitment.css';
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+};
 
 export const metadata: Metadata = {
   title: {
