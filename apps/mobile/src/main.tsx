@@ -3,7 +3,7 @@ import { registerRootComponent } from 'expo';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import * as SecureStore from 'expo-secure-store';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Alert, Animated, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Pressable, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { HttpStationApi } from './api/station-api';
 import { CameraCapture } from './capture/camera-capture';
 import { API_BASE_URL } from './config';
@@ -47,7 +47,7 @@ function refreshErrorMessage(error: unknown): string {
 function BackPage({ onBack, children, language }: { onBack: () => void; children: ReactNode; language: AppLanguage }) {
   return (
     <SafeAreaView style={styles.backPage}>
-      <View style={styles.backBar}>
+      <View style={[styles.backBar, { paddingTop: (StatusBar.currentHeight ?? 0) + 8 }]}>
         <Pressable style={styles.backButton} onPress={onBack}><Text style={styles.backText}>← {t(language,'back')}</Text></Pressable>
       </View>
       <View style={styles.backContent}>{children}</View>
