@@ -297,10 +297,14 @@ export function StationNotificationCenter({
         {unread > 0 ? <View style={styles.badge}><Text style={styles.badgeText}>{unread > 9 ? '9+' : unread}</Text></View> : null}
       </Pressable>
 
-      {open ? <View style={styles.panel}>
+      <Modal transparent visible={open} animationType="fade" statusBarTranslucent onRequestClose={() => setOpen(false)}>
+        <View style={styles.centerRoot}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Fermer les notifications" style={StyleSheet.absoluteFillObject} onPress={() => setOpen(false)} />
+          <View style={styles.panel}>
         <View style={styles.header}>
           <View style={{ flex: 1 }}><Text style={styles.eyebrow}>KHE BOOTH</Text><Text style={styles.title}>Notifications</Text><Text style={styles.help}>{unread} message{unread === 1 ? '' : 's'} non lu{unread === 1 ? '' : 's'}</Text></View>
           {unread > 0 ? <Pressable onPress={() => void markAllRead()} style={styles.markAll}><Text style={styles.markAllText}>Tout lire</Text></Pressable> : null}
+          <Pressable accessibilityRole="button" accessibilityLabel="Fermer" onPress={() => setOpen(false)} style={styles.panelClose}><Text style={styles.panelCloseText}>×</Text></Pressable>
         </View>
 
         <View style={styles.tabs}>
@@ -324,7 +328,9 @@ export function StationNotificationCenter({
           })}
         </ScrollView>
         {message ? <Text style={styles.message}>{message}</Text> : null}
-      </View> : null}
+          </View>
+        </View>
+      </Modal>
 
       <Modal transparent visible={Boolean(selected)} animationType="fade" onRequestClose={() => setSelected(null)}>
         <View style={styles.modalRoot}>
@@ -358,34 +364,37 @@ const styles = StyleSheet.create({
   bellGlyph: { position: 'absolute', color: KHE_GOLD, fontSize: 7, top: 9 },
   badge: { position: 'absolute', right: -4, top: -4, minWidth: 19, height: 19, borderRadius: 10, paddingHorizontal: 4, backgroundColor: KHE_RED, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#101010' },
   badgeText: { color: '#fff', fontSize: 9, fontWeight: '900' },
-  panel: { position: 'absolute', right: 0, top: 52, width: 370, maxHeight: 570, borderRadius: 22, backgroundColor: '#101012', borderWidth: 1, borderColor: '#5a4926', padding: 12, gap: 9, shadowColor: '#000', shadowOpacity: .45, shadowRadius: 18, elevation: 15 },
+  centerRoot: { flex: 1, backgroundColor: 'rgba(0,0,0,.72)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14, paddingVertical: 28 },
+  panel: { width: '100%', maxWidth: 640, maxHeight: '90%', borderRadius: 22, backgroundColor: '#101012', borderWidth: 1, borderColor: '#5a4926', padding: 14, gap: 9, shadowColor: '#000', shadowOpacity: .45, shadowRadius: 18, elevation: 15 },
   header: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, padding: 4 },
   eyebrow: { color: KHE_GOLD, fontSize: 9, fontWeight: '900', letterSpacing: 1.5 },
   title: { color: '#fff', fontSize: 21, fontWeight: '900' },
   help: { color: '#929299', fontSize: 10, lineHeight: 15 },
   markAll: { borderWidth: 1, borderColor: KHE_GOLD, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 6 },
   markAllText: { color: KHE_GOLD, fontSize: 9, fontWeight: '900' },
+  panelClose: { width: 32, height: 32, borderRadius: 16, borderWidth: 1, borderColor: '#44444a', alignItems: 'center', justifyContent: 'center' },
+  panelCloseText: { color: '#fff', fontSize: 21, lineHeight: 23 },
   tabs: { flexDirection: 'row', gap: 5, backgroundColor: '#171719', borderRadius: 12, padding: 4 },
   tab: { flex: 1, minHeight: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   tabActive: { backgroundColor: '#332913', borderWidth: 1, borderColor: '#665126' },
   tabText: { color: '#7f7f86', fontSize: 8, fontWeight: '900' },
   tabTextActive: { color: KHE_GOLD },
   trashHint: { color: '#9b8f7b', fontSize: 9, lineHeight: 14, paddingHorizontal: 4 },
-  list: { maxHeight: 410 },
+  list: { flexShrink: 1 },
   listContent: { gap: 8, paddingBottom: 3 },
   item: { backgroundColor: '#18181c', borderRadius: 15, padding: 12, gap: 6, borderWidth: 1, borderColor: '#27272d' },
   itemUnread: { backgroundColor: '#211d14', borderColor: '#6d592e' },
-  itemHeading: { flexDirection: 'row', alignItems: 'flex-start', gap: 7 },
+  itemHeading: { flexDirection: 'row', alignItems: 'flex-start', gap: 7, minWidth: 0 },
   dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: KHE_GOLD, marginTop: 5 },
   dotRead: { backgroundColor: '#515159' },
   kind: { color: '#898990', fontSize: 8, fontWeight: '900', letterSpacing: 1 },
   kindUnread: { color: KHE_GOLD },
   itemTitle: { color: '#fff', fontSize: 13, fontWeight: '900', lineHeight: 18 },
   itemTitleRead: { color: '#bebec4' },
-  newText: { color: KHE_RED, fontSize: 8, fontWeight: '900' },
-  readText: { color: '#707078', fontSize: 8, fontWeight: '900' },
+  newText: { color: KHE_RED, fontSize: 8, fontWeight: '900', flexShrink: 0 },
+  readText: { color: '#707078', fontSize: 8, fontWeight: '900', flexShrink: 0 },
   body: { color: '#b5b5bb', fontSize: 10, lineHeight: 15 },
-  itemFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  itemFooter: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   date: { color: '#686870', fontSize: 8 },
   openHint: { color: '#8e7b50', fontSize: 8, fontWeight: '800' },
   purgeMini: { color: '#c17676', fontSize: 8, fontWeight: '800' },

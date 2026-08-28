@@ -5,6 +5,7 @@ import * as SecureStore from 'expo-secure-store';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { StationExperienceApi } from '../api/station-api';
+import { canRemoveKheBranding } from '../subscription/plan-entitlements';
 
 export type AudioMode = 'MUSIC_ONLY' | 'MIC_ONLY';
 export type SpeedEffect = '0.5x' | '0.75x' | '1x' | '1.25x' | '1.5x' | '2x';
@@ -224,10 +225,16 @@ export function CreativeStudio({ onClose, api, stationToken, eventId, onSaved }:
       if (api && stationToken) {
         try {
           const workspace = await api.clientWorkspace(stationToken);
-          brandingAllowed = workspace.entitlements?.REMOVE_KHE_BRANDING === true;
+          brandingAllowed = canRemoveKheBranding(workspace.plan, workspace.entitlements);
           subscription = workspace.plan || subscription;
         } catch {
-          brandingAllowed = false;
+          try {
+            const access = await api.stationEntitlements(stationToken);
+            brandingAllowed = canRemoveKheBranding(access.plan, access.entitlements);
+            subscription = access.plan || subscription;
+          } catch {
+            brandingAllowed = false;
+          }
         }
       }
       if (cancelled) return;

@@ -169,6 +169,13 @@ export interface ClientWorkspaceContract {
   events: ClientEventContract[];
 }
 
+export interface StationSubscriptionAccessContract {
+  plan: string;
+  entitlements: Record<string, boolean>;
+  maxActiveEvents: number | null;
+  clientId: string | null;
+}
+
 export interface CreateClientEventRequest {
   name: string;
   description: string;
@@ -232,6 +239,7 @@ export interface StationExperienceApi extends StationApi {
   stationNotificationMailbox(stationToken: string): Promise<StationNotificationContract[]>;
   updateStationNotification(stationToken: string, notificationId: string, action: StationNotificationMailboxAction): Promise<StationNotificationContract>;
   stationBilling(stationToken:string):Promise<StationBillingContract>;
+  stationEntitlements(stationToken:string):Promise<StationSubscriptionAccessContract>;
   clientWorkspace(stationToken: string): Promise<ClientWorkspaceContract>;
   createClientEvent(stationToken: string, event: CreateClientEventRequest): Promise<CreateClientEventResponse>;
   markClientEventDesignReady(stationToken: string, eventId: string, designConfig: Record<string, unknown>): Promise<void>;
@@ -345,6 +353,7 @@ export class HttpStationApi implements StationExperienceApi {
   stationNotificationMailbox(token: string) { return this.stationRequest<StationNotificationContract[]>('/stations/notification-mailbox', token); }
   updateStationNotification(token: string, id: string, action: StationNotificationMailboxAction) { return this.stationRequest<StationNotificationContract>(`/stations/notification-mailbox/${encodeURIComponent(id)}`, token, { method: 'PATCH', body: JSON.stringify({ action }) }); }
   stationBilling(token:string){return this.stationRequest<StationBillingContract>('/stations/billing',token);}
+  stationEntitlements(token:string){return this.stationRequest<StationSubscriptionAccessContract>('/stations/entitlements',token);}
   clientWorkspace(token: string) { return this.stationRequest<ClientWorkspaceContract>('/stations/client-workspace', token); }
   createClientEvent(token: string, event: CreateClientEventRequest) { return this.stationRequest<CreateClientEventResponse>('/stations/client-events', token, { method: 'POST', body: JSON.stringify(event) }); }
   async markClientEventDesignReady(token: string, eventId: string, designConfig: Record<string, unknown>): Promise<void> { await this.stationRequest<ClientWorkspaceContract>(`/stations/client-events/${encodeURIComponent(eventId)}/design-ready`, token, { method: 'POST', body: JSON.stringify({ designConfig }) }); }

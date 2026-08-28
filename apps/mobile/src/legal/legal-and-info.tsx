@@ -5,7 +5,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { StartupIntro } from '../branding/startup-intro';
 import { API_BASE_URL } from '../config';
 
-export const APP_VERSION = '0.3.2';
+export const APP_VERSION = '0.3.3';
 export const LEGAL_CONTENT_REVISION = '2026-08-22.location.1';
 const TERMS_ACCEPTED_KEY = 'khe.terms.accepted.revision.v3';
 const PUBLIC_APP_CONFIG_URL = 'https://raw.githubusercontent.com/paokurtis-a11y/Khebooth/main/apps/mobile/app.json';
