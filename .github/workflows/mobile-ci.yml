@@ -95,11 +95,11 @@ jobs:
           grep -q '<string name="app_name">KHE Booth Beta</string>' android/app/src/main/res/values/strings.xml
           grep -q 'KHE_PREVIEW_STREAM_READY' node_modules/expo-camera/android/src/main/java/expo/modules/camera/ExpoCameraView.kt
 
-      - name: Compile Android standalone ARM64 beta APK
+      - name: Compile Android standalone ARM32 and ARM64 beta APK
         working-directory: apps/mobile/android
         env:
           NODE_ENV: production
-        run: ./gradlew :app:assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon --stacktrace
+        run: ./gradlew :app:assembleRelease -PreactNativeArchitectures=armeabi-v7a,arm64-v8a --no-daemon --stacktrace
 
       - name: Verify embedded JavaScript bundle
         working-directory: apps/mobile
@@ -108,9 +108,9 @@ jobs:
           APK="android/app/build/outputs/apk/release/app-release.apk"
           test -s "$APK"
           APK_BYTES=$(stat -c%s "$APK")
-          MAX_BYTES=$((140 * 1024 * 1024))
+          MAX_BYTES=$((190 * 1024 * 1024))
           if [ "$APK_BYTES" -gt "$MAX_BYTES" ]; then
-            echo "Standalone ARM64 APK is unexpectedly large: $APK_BYTES bytes" >&2
+            echo "Standalone ARM32/ARM64 APK is unexpectedly large: $APK_BYTES bytes" >&2
             exit 1
           fi
           unzip -l "$APK" | grep -Eq 'assets/(index\.android\.bundle|expo-router|.*\.bundle)' || {
@@ -118,11 +118,22 @@ jobs:
             exit 1
           }
 
-      - name: Upload Android standalone APK
+      - name: Package ZIP fallback for older Android download managers
+        working-directory: apps/mobile
+        run: |
+          set -euo pipefail
+          APK_DIR="android/app/build/outputs/apk/release"
+          cp "$APK_DIR/app-release.apk" "$APK_DIR/KHE-Booth-Android-Standalone.apk"
+          cd "$APK_DIR"
+          zip -9 KHE-Booth-Android-Standalone.zip KHE-Booth-Android-Standalone.apk
+
+      - name: Upload Android standalone APK and ZIP fallback
         uses: actions/upload-artifact@v4
         with:
           name: khe-booth-android-standalone
-          path: apps/mobile/android/app/build/outputs/apk/release/app-release.apk
+          path: |
+            apps/mobile/android/app/build/outputs/apk/release/KHE-Booth-Android-Standalone.apk
+            apps/mobile/android/app/build/outputs/apk/release/KHE-Booth-Android-Standalone.zip
           if-no-files-found: error
           retention-days: 7
 
@@ -148,20 +159,23 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          APK_SOURCE="android-release/app-release.apk"
+          APK_SOURCE="android-release/KHE-Booth-Android-Standalone.apk"
+          ZIP_SOURCE="android-release/KHE-Booth-Android-Standalone.zip"
           APK_RELEASE="KHE-Booth-Android-Standalone.apk"
+          ZIP_RELEASE="KHE-Booth-Android-Standalone.zip"
           cp "$APK_SOURCE" "$APK_RELEASE"
+          cp "$ZIP_SOURCE" "$ZIP_RELEASE"
 
           if gh release view android-latest >/dev/null 2>&1; then
-            gh release upload android-latest "$APK_RELEASE" --clobber
+            gh release upload android-latest "$APK_RELEASE" "$ZIP_RELEASE" --clobber
             gh release edit android-latest \
               --prerelease \
               --title "KHE Booth Android — bêta autonome" \
-              --notes "APK Android bêta autonome ARM64 avec bundle JavaScript embarqué, généré automatiquement depuis main après validation native. Package : com.kurtishypnotic.khebooth.beta. Aucun serveur Metro n’est nécessaire."
+              --notes "APK Android bêta autonome ARM32/ARM64 avec bundle JavaScript embarqué. Si Chrome bloque à la fin du téléchargement APK, utilisez le fichier ZIP de secours puis extrayez-le avec Mes fichiers. Package : com.kurtishypnotic.khebooth.beta."
           else
-            gh release create android-latest "$APK_RELEASE" \
+            gh release create android-latest "$APK_RELEASE" "$ZIP_RELEASE" \
               --prerelease \
               --target "$GITHUB_SHA" \
               --title "KHE Booth Android — bêta autonome" \
-              --notes "APK Android bêta autonome ARM64 avec bundle JavaScript embarqué, généré automatiquement depuis main après validation native. Package : com.kurtishypnotic.khebooth.beta. Aucun serveur Metro n’est nécessaire."
+              --notes "APK Android bêta autonome ARM32/ARM64 avec bundle JavaScript embarqué. Si Chrome bloque à la fin du téléchargement APK, utilisez le fichier ZIP de secours puis extrayez-le avec Mes fichiers. Package : com.kurtishypnotic.khebooth.beta."
           fi
