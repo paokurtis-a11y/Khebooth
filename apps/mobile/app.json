@@ -3,7 +3,7 @@
     "name": "KHE Booth",
     "slug": "kurtis-hypnotic-events",
     "owner": "kurtis-hypnotic-event",
-    "version": "0.3.6",
+    "version": "0.3.7",
     "scheme": "khebooth",
     "orientation": "default",
     "userInterfaceStyle": "automatic",
@@ -21,11 +21,7 @@
     },
     "android": {
       "package": "com.kurtishypnotic.khebooth",
-      "versionCode": 6,
-      "permissions": [
-        "android.permission.FOREGROUND_SERVICE",
-        "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"
-      ]
+      "versionCode": 7
     },
     "plugins": [
       "expo-sqlite",
@@ -48,25 +44,6 @@
           "microphonePermission": "Autoriser KHE Booth à utiliser le microphone pour enregistrer le son des vidéos.",
           "recordAudioAndroid": true,
           "barcodeScannerEnabled": false
-        }
-      ],
-      [
-        "@livekit/react-native-expo-plugin",
-        {
-          "android": {
-            "audioType": "media",
-            "enableScreenShareService": true
-          },
-          "ios": {
-            "enableMultitaskingCameraAccess": false
-          }
-        }
-      ],
-      [
-        "@config-plugins/react-native-webrtc",
-        {
-          "cameraPermission": "Autoriser KHE Booth à utiliser la caméra pour les captures événementielles.",
-          "microphonePermission": "Autoriser KHE Booth à utiliser le microphone pour enregistrer le son des vidéos."
         }
       ],
       [

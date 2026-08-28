@@ -3,7 +3,6 @@ import { CAPTURE_DURATIONS, VISUAL_EFFECTS } from '@khe/contracts';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { StationExperienceApi } from '../api/station-api';
-import { SharingLivePreview } from '../live/live-preview';
 import { DEFAULT_STATION_CONTROL_PREFERENCES, getStationControlPreferencesOrDefault, updateStationControlPreferencesFromSharing, type CaptureAspectRatio, type CaptureCountdownSeconds, type CaptureKind, type StationControlPreferences } from '../station/control-preferences-client';
 
 interface Props{eventName:string;api:StationExperienceApi;stationToken:string;}
@@ -29,7 +28,7 @@ export function RemoteControlPanel({eventName,api,stationToken}:Props){
     <View style={styles.header}><View style={{flex:1}}><Text style={styles.eyebrow}>RÉGIE SHARING</Text><Text style={styles.title}>{eventName}</Text></View><View style={[styles.badge,connected&&styles.badgeOk]}><Text style={styles.badgeText}>{connected?'● CONNECTÉ':status==='PENDING'?'◌ EN ATTENTE':'○ DÉCONNECTÉ'}</Text></View></View>
     {!connected?<View style={styles.connectionCard}><Text style={styles.connectionTitle}>{status==='PENDING'?'Autorisation CAPTURE en attente':'Connecter la régie à CAPTURE'}</Text><Text style={styles.help}>{status==='PENDING'?'Acceptez la fenêtre sur la tablette CAPTURE.':'La tablette CAPTURE garde le dernier mot avant toute commande distante.'}</Text><View style={styles.row}><Pressable disabled={busy} style={styles.primary} onPress={()=>void requestConnection()}><Text style={styles.primaryText}>{status==='PENDING'?'RENVOYER':'CONNECTER'}</Text></Pressable>{status==='PENDING'?<Pressable disabled={busy} style={styles.secondary} onPress={()=>void disconnect()}><Text style={styles.secondaryText}>Annuler</Text></Pressable>:null}</View></View>:<View style={styles.connectedCard}><Text style={styles.ok}>✓ CAPTURE CONNECTÉE</Text><Text style={styles.help}>Dernier échange : {Math.max(0,Math.round((Date.now()-lastRefreshAt)/1000))} s</Text><Pressable disabled={busy} style={styles.smallDanger} onPress={()=>void disconnect()}><Text style={styles.smallDangerText}>Déconnecter</Text></Pressable></View>}
 
-    <Text style={styles.section}>APERÇU LIVE CAPTURE</Text>{connected?<SharingLivePreview api={api} stationToken={stationToken}/>:<View style={styles.preview}><Text style={styles.light}>L’aperçu live démarre après l’autorisation CAPTURE.</Text></View>}
+    <Text style={styles.section}>SYNCHRONISATION DES RENDUS</Text><View style={styles.preview}><Text style={styles.light}>CAPTURE enregistre l’original sans flux caméra secondaire. Studio applique ensuite les effets, puis le rendu final arrive automatiquement dans Moments disponibles.</Text></View>
 
     <View style={styles.statusCard}><Text style={styles.statusLabel}>ÉTAT CAPTURE</Text><Text style={styles.statusValue}>{control.runtimeState}</Text><Text style={styles.timer}>{formatDuration(displaySeconds)} / {formatDuration(control.maxDurationSeconds)}</Text><Text style={styles.help}>Mode {prefs.captureKind} • {prefs.aspectRatio} • décompte {prefs.countdownSeconds}s • commande #{control.commandVersion} / acquittée #{control.acknowledgedVersion}</Text></View>
 

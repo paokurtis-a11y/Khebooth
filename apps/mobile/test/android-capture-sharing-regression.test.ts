@@ -7,18 +7,23 @@ async function source(path: string): Promise<string> {
   return readFile(resolve(process.cwd(), path), 'utf8');
 }
 
-test('CAPTURE keeps the stock CameraX surface and the APK 0.2 rear-camera defaults', async () => {
-  const [capture, mobilePackage] = await Promise.all([
+test('CAPTURE keeps the minimal stock CameraX surface that worked in APK 0.2', async () => {
+  const [capture, mobilePackage, appConfig] = await Promise.all([
     source('src/capture/camera-capture.tsx'),
     source('package.json'),
+    source('app.json'),
   ]);
 
   assert.match(capture, /useState<CameraType>\('back'\)/);
+  assert.match(capture, /camera:\{flex:1\}/);
   assert.match(capture, /ratio=\{format==='1:1'\?'1:1':'16:9'\}/);
-  assert.match(capture, /label="Relancer caméra"/);
+  assert.match(capture, /videoQuality="1080p"/);
   assert.match(capture, /APERÇU ORIGINAL • EFFETS STUDIO APRÈS CAPTURE/);
+  assert.doesNotMatch(capture, /camera:\{\.\.\.StyleSheet\.absoluteFillObject\}/);
+  assert.doesNotMatch(capture, /flash=|enableTorch=|zoom=|mute=|CaptureLivePublisher|Relancer caméra/);
   assert.doesNotMatch(capture, /styles\.designLayer|styles\.effectOverlay/);
-  assert.doesNotMatch(mobilePackage, /prepare-expo-camera-android|prepare:camera-native/);
+  assert.doesNotMatch(mobilePackage, /prepare-expo-camera-android|prepare:camera-native|livekit|webrtc/i);
+  assert.doesNotMatch(appConfig, /livekit|webrtc|MEDIA_PROJECTION/i);
 });
 
 test('CAPTURE secures the original before the persistent Studio render queue', async () => {
@@ -52,6 +57,14 @@ test('KHE LINK keeps its synchronization heading on one adaptive line', async ()
 
   assert.match(health, /Liaison & synchronisation<\/Text>/);
   assert.match(health, /numberOfLines=\{1\} adjustsFontSizeToFit minimumFontScale=\{0\.62\}/);
+});
+
+test('SHARING never opens a second camera stream beside CAPTURE', async () => {
+  const remoteControl = await source('src/sharing/remote-control-panel.tsx');
+
+  assert.match(remoteControl, /SYNCHRONISATION DES RENDUS/);
+  assert.match(remoteControl, /sans flux caméra secondaire/);
+  assert.doesNotMatch(remoteControl, /SharingLivePreview|APERÇU LIVE CAPTURE/);
 });
 
 test('every SQLite store operation goes through native-handle recovery', async () => {

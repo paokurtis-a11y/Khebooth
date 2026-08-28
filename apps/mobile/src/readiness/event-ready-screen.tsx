@@ -7,7 +7,6 @@ import type { LocalStore } from '../offline/local-store';
 import type { PersistedStationContext } from '../offline/types';
 import { reschedulePendingMediaNow } from '../sync/sync-rescue';
 import { assessHardware, confirmPrinterTest, printerTestStatus, readHardwareSnapshot, runPrinterTest } from './device-hardware';
-import { probeLiveKit } from './livekit-probe';
 import { countBlockingChecks, countWarnings, eventReadyState, isRecentHeartbeat, type ReadinessCheck, type ReadinessLevel } from './event-ready-model';
 
 interface Props {
@@ -71,8 +70,6 @@ export function EventReadyScreen({api,store,station,stationToken,eventName,langu
       if(controlResult.status==='fulfilled'){const control=controlResult.value;const fresh=isRecentHeartbeat(control.captureSeenAt);const status=control.sharingConnectionStatus??'DISCONNECTED';const accepted=status==='ACCEPTED';acceptedAndFresh=accepted&&fresh;setLinkState({status,fresh});next.push({id:'link',title:c.link,detail:acceptedAndFresh?c.linkOk:status==='PENDING'?c.linkPending:c.linkOff,level:acceptedAndFresh?'PASS':'WARN'});}else{setLinkState({status:'UNKNOWN',fresh:false});next.push({id:'link',title:c.link,detail:c.apiDown,level:'BLOCK'});}
 
       next.push({id:'screen',title:c.screen,detail:keepAwakeEnabled?c.screenOk:c.screenWarn,level:keepAwakeEnabled?'PASS':'WARN'});
-      if(acceptedAndFresh){try{const live=await probeLiveKit(api,stationToken);next.push({id:'live',title:c.live,detail:`${c.liveOk} ${live.latencyMs} ms.`,level:'PASS'});}catch(error){next.push({id:'live',title:c.live,detail:`${c.liveFail}${error instanceof Error?` ${error.message}`:''}`,level:'WARN'});}}else next.push({id:'live',title:c.live,detail:`${c.liveFail} ${c.linkOff}`,level:'INFO'});
-
       if(station.mode==='SHARING'){
         if(mediaResult.status==='fulfilled'){const synced=mediaResult.value.filter((media)=>media.syncState==='SYNCED'&&Boolean(media.acknowledgedAt));setSyncedMediaIds(synced.map((media)=>media.id));next.push({id:'gallery',title:c.gallery,detail:`${c.galleryOk} ${synced.length} média(s) synchronisé(s).`,level:'PASS'});next.push({id:'qr',title:c.qr,detail:synced.length?c.qrAvailable:c.qrWaiting,level:'INFO'});}else{setSyncedMediaIds([]);next.push({id:'gallery',title:c.gallery,detail:c.apiDown,level:'BLOCK'});next.push({id:'qr',title:c.qr,detail:c.qrFail,level:'WARN'});}
         try{const printer=await printerTestStatus(station.session.eventId);next.push({id:'printer',title:c.printer,detail:printer.confirmed?`${c.printerOk}${printer.testedAt?` ${new Date(printer.testedAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`:''}`:c.printerNeeded,level:printer.confirmed?'PASS':'WARN'});if(printer.confirmed)setPrinterAwaitingConfirmation(false);}catch{next.push({id:'printer',title:c.printer,detail:c.printerNeeded,level:'WARN'});}
@@ -91,7 +88,6 @@ export function EventReadyScreen({api,store,station,stationToken,eventName,langu
   async function rescueSync(){if(station.mode!=='CAPTURE')return;setFixing(true);setActionMessage('');try{const result=await reschedulePendingMediaNow(store,station.session.eventId);setActionMessage(language==='fr'?`${result.rescheduled} média(s) remis en tête de la file. La synchronisation reprend maintenant.`:`${result.rescheduled} media item(s) moved to the front of the queue. Sync is resuming now.`);await new Promise((resolve)=>setTimeout(resolve,2200));await runChecks();}catch(error){setActionMessage(error instanceof Error?error.message:String(error));}finally{setFixing(false);}}
   async function testPrinter(){setFixing(true);setActionMessage('');try{await runPrinterTest(eventName,station.session.eventId);setPrinterAwaitingConfirmation(true);setActionMessage(c.printerDialog);}catch(error){setActionMessage(error instanceof Error?error.message:String(error));}finally{setFixing(false);}}
   async function confirmPrinter(){await afterAction(async()=>confirmPrinterTest(station.session.eventId));setPrinterAwaitingConfirmation(false);}
-  async function retryLive(){await afterAction(async()=>probeLiveKit(api,stationToken));}
   async function fixAll(){setFixing(true);setActionMessage('');try{if(!keepAwakeEnabled)onEnableKeepAwake();if(station.mode==='CAPTURE'){if(!cameraPermission?.granted&&cameraPermission?.canAskAgain!==false)await requestCameraPermission();if(!microphonePermission?.granted&&microphonePermission?.canAskAgain!==false)await requestMicrophonePermission();await reschedulePendingMediaNow(store,station.session.eventId);const control=await api.control(stationToken).catch(()=>null);if(control?.sharingConnectionStatus==='PENDING')await api.respondControlConnection(stationToken,true);}else{const control=await api.control(stationToken).catch(()=>null);const fresh=isRecentHeartbeat(control?.captureSeenAt??null);if(!control||control.sharingConnectionStatus!=='ACCEPTED'||!fresh)await api.requestControlConnection(stationToken);}setActionMessage(c.fixed);await runChecks();}catch(error){setActionMessage(error instanceof Error?error.message:String(error));}finally{setFixing(false);}}
   async function testStableQr(){const mediaId=syncedMediaIds[0];if(!mediaId)return;setQrTesting(true);try{const first=await api.createMediaShare(stationToken,mediaId);const second=await api.createMediaShare(stationToken,mediaId);const stable=first.id===second.id&&first.shareUrl===second.shareUrl;setQrCheck({id:'qr-test',title:c.qr,detail:stable?c.qrStable:c.qrFail,level:stable?'PASS':'BLOCK'});}catch(error){setQrCheck({id:'qr-test',title:c.qr,detail:`${c.qrFail}${error instanceof Error?` ${error.message}`:''}`,level:'BLOCK'});}finally{setQrTesting(false);}}
 
@@ -103,7 +99,6 @@ export function EventReadyScreen({api,store,station,stationToken,eventName,langu
     if(check.id==='screen')return{label:c.keepScreen,run:fixScreen};
     if(check.id==='link'){if(station.mode==='SHARING')return{label:c.connect,run:()=>void fixLink()};if(linkState.status==='PENDING')return{label:c.accept,run:()=>void fixLink()};}
     if(check.id==='printer')return{label:printerAwaitingConfirmation?c.printerConfirm:c.printerTest,run:()=>void(printerAwaitingConfirmation?confirmPrinter():testPrinter())};
-    if(check.id==='live')return{label:c.retry,run:()=>void retryLive()};
     if(check.id==='api'||check.id==='gallery')return{label:c.retry,run:()=>void runChecks()};
     return null;
   }
