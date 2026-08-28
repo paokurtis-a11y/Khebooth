@@ -9,6 +9,7 @@ import './portal-polish.css';
 import './portal-navigation.css';
 import './portal-menu-enhancements.css';
 import './portal-experience.css';
+import './portal-responsive.css';
 
 export const metadata: Metadata = {
   title: {
