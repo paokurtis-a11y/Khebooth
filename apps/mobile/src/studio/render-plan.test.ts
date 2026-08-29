@@ -19,6 +19,7 @@ const basePlan: CreativePlan = {
   musicRotationEvery: 3,
   background: null,
   showKheBranding: true,
+  customLogo: null,
   music: [
     { id: 'a', name: 'A.mp3', uri: 'file:///a.mp3', mimeType: 'audio/mpeg', trimMode: 'SEGMENT', startSeconds: 12, endSeconds: 24, volume: 75 },
     { id: 'b', name: 'B.wav', uri: 'file:///b.wav', mimeType: 'audio/wav', trimMode: 'FULL', startSeconds: 0, endSeconds: null, volume: 100 },

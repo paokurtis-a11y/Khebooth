@@ -7,7 +7,7 @@ async function source(path: string): Promise<string> {
   return readFile(resolve(process.cwd(), path), 'utf8');
 }
 
-test('CAPTURE keeps the minimal stock CameraX surface that worked in APK 0.2', async () => {
+test('CAPTURE keeps one stock CameraX surface with high-quality recording and event live', async () => {
   const [capture, mobilePackage, appConfig] = await Promise.all([
     source('src/capture/camera-capture.tsx'),
     source('package.json'),
@@ -18,12 +18,14 @@ test('CAPTURE keeps the minimal stock CameraX surface that worked in APK 0.2', a
   assert.match(capture, /camera:\{flex:1\}/);
   assert.match(capture, /ratio=\{format==='1:1'\?'1:1':'16:9'\}/);
   assert.match(capture, /videoQuality="1080p"/);
-  assert.match(capture, /APERÇU ORIGINAL • EFFETS STUDIO APRÈS CAPTURE/);
+  assert.match(capture, /videoBitrate=\{16_000_000\}/);
+  assert.match(capture, /APERÇU ORIGINAL • STUDIO APRÈS CAPTURE/);
+  assert.match(capture, /CaptureLivePublisher/);
   assert.doesNotMatch(capture, /camera:\{\.\.\.StyleSheet\.absoluteFillObject\}/);
-  assert.doesNotMatch(capture, /flash=|enableTorch=|zoom=|mute=|CaptureLivePublisher|Relancer caméra/);
+  assert.doesNotMatch(capture, /flash=|enableTorch=|zoom=|mute=|Relancer caméra/);
   assert.doesNotMatch(capture, /styles\.designLayer|styles\.effectOverlay/);
-  assert.doesNotMatch(mobilePackage, /prepare-expo-camera-android|prepare:camera-native|livekit|webrtc/i);
-  assert.doesNotMatch(appConfig, /livekit|webrtc|MEDIA_PROJECTION/i);
+  assert.match(mobilePackage, /livekit-client/);
+  assert.match(appConfig, /MEDIA_PROJECTION/);
 });
 
 test('CAPTURE secures the original before the persistent Studio render queue', async () => {
@@ -36,6 +38,7 @@ test('CAPTURE secures the original before the persistent Studio render queue', a
 
   assert.ok(pipeline.indexOf('source.copy(raw)') < pipeline.indexOf('upsertRenderJob(job)'));
   assert.match(pipeline, /class CaptureRenderQueue/);
+  assert.doesNotMatch(pipeline, /raw\.size <= 0 \|\| !raw\.md5/);
   assert.match(pipeline, /state: 'FAILED'[\s\S]+nextAttemptAt/);
   assert.match(capture, /await stageCapture\(/);
   assert.doesNotMatch(capture, /await finalizeCapture\(/);
@@ -59,12 +62,12 @@ test('KHE LINK keeps its synchronization heading on one adaptive line', async ()
   assert.match(health, /numberOfLines=\{1\} adjustsFontSizeToFit minimumFontScale=\{0\.62\}/);
 });
 
-test('SHARING never opens a second camera stream beside CAPTURE', async () => {
+test('SHARING receives the authorized screen live without opening a second lens', async () => {
   const remoteControl = await source('src/sharing/remote-control-panel.tsx');
 
-  assert.match(remoteControl, /SYNCHRONISATION DES RENDUS/);
-  assert.match(remoteControl, /sans flux caméra secondaire/);
-  assert.doesNotMatch(remoteControl, /SharingLivePreview|APERÇU LIVE CAPTURE/);
+  assert.match(remoteControl, /SharingLivePreview|APERÇU LIVE CAPTURE/);
+  assert.match(remoteControl, /Une seule validation initiale/);
+  assert.doesNotMatch(remoteControl, /CameraView|expo-camera/);
 });
 
 test('every SQLite store operation goes through native-handle recovery', async () => {

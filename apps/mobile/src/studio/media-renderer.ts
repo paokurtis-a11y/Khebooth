@@ -81,18 +81,29 @@ async function renderAttempt(input: FinalMediaRenderInput, output: File, encoder
     plan: input.plan,
     selectedMusic: input.selectedMusic,
     backgroundPath: input.plan.background?.localUri ? filePath(input.plan.background.localUri) : null,
+    customLogoPath: input.plan.customLogo?.localUri ? filePath(input.plan.customLogo.localUri) : null,
     musicPath: input.selectedMusic?.uri ? filePath(input.selectedMusic.uri) : null,
     hasSourceAudio,
     videoEncoder: input.mimeType === 'video/mp4' ? encoder : undefined,
   });
   await executeArguments(command.args);
-  if (!output.exists || output.size <= 0 || !output.md5) throw new Error('Le moteur de rendu n’a pas produit de média final vérifiable.');
+  // File.md5 is optional and can remain null for several seconds on Android.
+  // Existence and a non-empty size are the synchronous durability guarantees.
+  if (!output.exists || output.size <= 0) throw new Error('Le moteur de rendu n’a pas produit de média final vérifiable.');
+}
+
+function contentIdentity(output: File, localId: string): string {
+  // Prefer the real digest whenever Android has already calculated it. The
+  // deterministic fallback remains stable across render retries for idempotent
+  // synchronisation and avoids dropping an otherwise valid media file.
+  return output.md5 ?? `local-${localId}-${output.size}`;
 }
 
 export async function renderFinalMedia(input: FinalMediaRenderInput): Promise<FinalMediaRenderResult> {
   const source = new File(input.sourceUri);
   if (!source.exists || source.size <= 0) throw new Error('Le média brut à rendre est introuvable.');
   if (input.plan.background?.cloudPath && !input.plan.background.localUri) throw new Error('Le fond Studio n’est pas encore disponible localement sur CAPTURE.');
+  if (input.plan.customLogo?.cloudPath && !input.plan.customLogo.localUri) throw new Error('Le logo personnalisé n’est pas encore disponible localement sur CAPTURE.');
   if (input.selectedMusic?.cloudPath && !input.selectedMusic.uri) throw new Error('La musique Studio n’est pas encore disponible localement sur CAPTURE.');
 
   ensureFonts();
@@ -108,7 +119,7 @@ export async function renderFinalMedia(input: FinalMediaRenderInput): Promise<Fi
     for (const hasSourceAudio of sourceAudioOptions) {
       try {
         await renderAttempt(input, output, encoder, hasSourceAudio);
-        return { outputUri: output.uri, byteSize: output.size, contentHash: output.md5!, encoder };
+        return { outputUri: output.uri, byteSize: output.size, contentHash: contentIdentity(output, input.localId), encoder };
       } catch (error) {
         lastError = error;
       }

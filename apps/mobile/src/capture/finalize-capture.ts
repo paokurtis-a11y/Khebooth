@@ -50,7 +50,12 @@ export async function stageCapture(input: StageCaptureInput): Promise<StagedCapt
 
   const raw = new File(rawDirectory, `${localId}-raw.${input.extension}`);
   source.copy(raw);
-  if (!raw.exists || raw.size <= 0 || !raw.md5) throw new Error('Le média brut n’a pas pu être sécurisé localement.');
+  // Android does not guarantee that File.md5 is populated immediately after a
+  // native camera file is copied. The bytes are already durable at this point;
+  // requiring the optional digest caused valid Samsung captures to be rejected.
+  if (!raw.exists || raw.size <= 0 || raw.size !== source.size) {
+    throw new Error('Le média brut n’a pas pu être sécurisé localement.');
+  }
 
   const renderPlan = await planCaptureRender(input.eventId, localId, raw.uri, input.plan);
   const job: LocalRenderJob = {

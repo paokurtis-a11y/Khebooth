@@ -1,6 +1,6 @@
 import { Directory, File, Paths } from 'expo-file-system';
 import type { StationExperienceApi } from '../api/station-api';
-import type { CreativePlan, DesignBackgroundAsset, MusicAsset } from './creative-studio';
+import type { CreativePlan, DesignBackgroundAsset, DesignLogoAsset, MusicAsset } from './creative-studio';
 
 function extension(contentType: string) {
   if (contentType === 'image/png') return 'png';
@@ -39,6 +39,22 @@ async function localizeBackground(api: StationExperienceApi, stationToken: strin
   return { ...background, localUri: asset.uri, byteSize: asset.byteSize, mimeType: asset.mimeType };
 }
 
+async function localizeLogo(api: StationExperienceApi, stationToken: string, eventId: string, logo: DesignLogoAsset | null) {
+  if (!logo?.cloudPath) return logo;
+  if (logo.localUri) {
+    const current = new File(logo.localUri);
+    if (current.exists && current.size > 0) return logo;
+  }
+  const directory = new Directory(Paths.document, 'studio-logos', eventId);
+  directory.create({ idempotent: true, intermediates: true });
+  const ticket = await api.designBackgroundDownload(stationToken, logo.cloudPath);
+  const destination = new File(directory, `active-logo.${extension(ticket.contentType)}`);
+  const asset = destination.exists && destination.size === ticket.byteSize && destination.size > 0
+    ? { uri: destination.uri, byteSize: destination.size, mimeType: ticket.contentType }
+    : await downloadAsset(api, stationToken, logo.cloudPath, destination);
+  return { ...logo, localUri: asset.uri, byteSize: asset.byteSize, mimeType: asset.mimeType };
+}
+
 async function localizeMusic(api: StationExperienceApi, stationToken: string, eventId: string, music: MusicAsset[]) {
   const directory = new Directory(Paths.document, 'studio-music', eventId);
   directory.create({ idempotent: true, intermediates: true });
@@ -67,10 +83,11 @@ async function localizeMusic(api: StationExperienceApi, stationToken: string, ev
 }
 
 export async function localizeCreativePlan(api: StationExperienceApi, stationToken: string, eventId: string, plan: CreativePlan): Promise<CreativePlan> {
-  const [background, music] = await Promise.all([
+  const [background, customLogo, music] = await Promise.all([
     localizeBackground(api, stationToken, eventId, plan.background),
+    localizeLogo(api, stationToken, eventId, plan.customLogo),
     localizeMusic(api, stationToken, eventId, plan.music),
   ]);
   if (plan.audioMode === 'MUSIC_ONLY' && music.length === 0) throw new Error('La playlist Studio n’est pas disponible sur CAPTURE.');
-  return { ...plan, background, music };
+  return { ...plan, background, customLogo, music };
 }
