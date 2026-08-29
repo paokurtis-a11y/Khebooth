@@ -93,7 +93,10 @@ jobs:
           set -euo pipefail
           grep -Eq "applicationId[[:space:]]+['\"]com\.kurtishypnotic\.khebooth\.beta['\"]" android/app/build.gradle
           grep -q '<string name="app_name">KHE Booth Beta</string>' android/app/src/main/res/values/strings.xml
-          grep -q 'KHE_PREVIEW_STREAM_READY' node_modules/expo-camera/android/src/main/java/expo/modules/camera/ExpoCameraView.kt
+          if grep -q 'KHE_PREVIEW_STREAM_READY' node_modules/expo-camera/android/src/main/java/expo/modules/camera/ExpoCameraView.kt; then
+            echo "The obsolete CameraX TextureView patch is still installed." >&2
+            exit 1
+          fi
 
       - name: Compile Android standalone ARM32 and ARM64 beta APK
         working-directory: apps/mobile/android

@@ -5,7 +5,7 @@ import { buildRenderCommand } from '../src/studio/render-command';
 
 const BASE_PLAN: CreativePlan = {
   template: 'NONE', title: '', subtitle: '', frameStyle: 'NONE', textPosition: 'BOTTOM', textStartSeconds: 0, textEndSeconds: null, speed: '1x', boomerang: false, reverse: false, freezeFrame: false,
-  colorEffect: 'NONE', audioMode: 'MIC_ONLY', musicRotationEvery: 3, music: [], background: null, showKheBranding: true,
+  colorEffect: 'NONE', audioMode: 'MIC_ONLY', musicRotationEvery: 3, music: [], background: null, showKheBranding: true, customLogo: null,
 };
 
 function plan(patch: Partial<CreativePlan> = {}): CreativePlan {
@@ -48,9 +48,16 @@ test('Studio music replaces microphone audio with selected trimmed playlist trac
 });
 
 test('photo background is composited before frame, text and KHE branding', () => {
-  const creative = plan({ title: 'Mariage', frameStyle: 'GOLD', showKheBranding: true, background: { localUri: 'file:///bg.jpg', cloudPath: 'cloud/bg.jpg', mimeType: 'image/jpeg', byteSize: 10, cropX: 0, cropY: 0, zoom: 1, opacity: 0.55 } });
+  const creative = plan({ title: 'Mariage', frameStyle: 'GOLD', showKheBranding: true, background: { localUri: 'file:///bg.jpg', cloudPath: 'cloud/bg.jpg', mimeType: 'image/jpeg', byteSize: 10, cropX: 0, cropY: 0, zoom: 1, opacity: 0.55, fit: 'CONTAIN', rotation: 0, flipX: false, flipY: false, brightness: 0, contrast: 1, saturation: 1, enhance: false } });
   const command = buildRenderCommand({ sourcePath: '/raw.jpg', outputPath: '/final.jpg', mimeType: 'image/jpeg', aspectRatio: '1:1', plan: creative, selectedMusic: null, backgroundPath: '/bg.jpg', musicPath: null, hasSourceAudio: false });
   const graph = command.args[command.args.indexOf('-filter_complex') + 1];
   const overlayAt = graph.indexOf('[photo][bg]overlay');const drawTextAt = graph.indexOf('drawtext');
-  assert.ok(overlayAt >= 0);assert.ok(drawTextAt > overlayAt);assert.match(graph, /KHE BOOTH/);
+  assert.ok(overlayAt >= 0);assert.ok(drawTextAt > overlayAt);assert.match(graph, /KHE BOOTH/);assert.match(graph,/force_original_aspect_ratio=decrease/);assert.match(graph,/eq=brightness=0:contrast=1:saturation=1/);
+});
+
+test('custom client logo is composited into the final video without replacing KHE entitlement branding',()=>{
+  const customLogo={localUri:'file:///logo.png',cloudPath:'cloud/logo.png',mimeType:'image/png',byteSize:100};
+  const command=buildRenderCommand({sourcePath:'/raw.mp4',outputPath:'/final.mp4',mimeType:'video/mp4',aspectRatio:'9:16',plan:plan({customLogo}),selectedMusic:null,backgroundPath:null,customLogoPath:'/logo.png',musicPath:null,hasSourceAudio:true,videoEncoder:'h264_mediacodec'});
+  const graph=command.args[command.args.indexOf('-filter_complex')+1];
+  assert.match(graph,/\[1:v\]scale=194:-1/);assert.match(graph,/overlay=W-w-30:30/);assert.match(graph,/KHE BOOTH/);
 });

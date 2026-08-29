@@ -1,6 +1,7 @@
 import type { EventManifestContract } from '@khe/contracts';
 import type {
   LocalMediaRecord,
+  LocalRenderJob,
   OfflineSnapshot,
   PersistedStationContext,
   SharedMediaRecord,
@@ -22,6 +23,10 @@ export interface LocalStore {
   enqueue(item: SyncQueueItem): Promise<void>;
   listQueue(): Promise<SyncQueueItem[]>;
   removeQueueItem(localId: string): Promise<void>;
+  upsertRenderJob(job: LocalRenderJob): Promise<void>;
+  getRenderJob(localId: string): Promise<LocalRenderJob | null>;
+  listRenderJobs(eventId: string): Promise<LocalRenderJob[]>;
+  listPendingRenderJobs(eventId: string): Promise<LocalRenderJob[]>;
   replaceSharedMedia(eventId: string, media: SharedMediaRecord[]): Promise<void>;
   listSharedMedia(eventId: string): Promise<SharedMediaRecord[]>;
   snapshot(eventId: string): Promise<OfflineSnapshot>;

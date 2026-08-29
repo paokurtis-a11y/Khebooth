@@ -2,7 +2,7 @@ import type { MediaAssetContract } from '@khe/contracts';
 import { Directory, File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import type {
   MediaShareContract,
@@ -94,7 +94,7 @@ export function SharingMediaGallery({ eventName, api, stationToken }: SharingMed
   const [socialShares, setSocialShares] = useState<Record<string, SocialShareContract>>({});
   const [activeSocialKey, setActiveSocialKey] = useState<string | null>(null);
   const [localUris, setLocalUris] = useState<Record<string, string>>({});
-  const [aspectRatios, setAspectRatios] = useState<Record<string, number>>({});
+  const [focusedId, setFocusedId] = useState<string | null>(null);
   const [businessSettings, setBusinessSettings] = useState<SharingBusinessSettingsContract>(DEFAULT_BUSINESS_SETTINGS);
   const [businessEnabled, setBusinessEnabled] = useState(false);
   const [message, setMessage] = useState('');
@@ -108,8 +108,10 @@ export function SharingMediaGallery({ eventName, api, stationToken }: SharingMed
   const knownRemoteIdsRef = useRef<Set<string> | null>(null);
   const hasLoadedRef = useRef(false);
 
-  const columns = Math.max(1, landscape ? businessSettings.landscapeColumns : businessSettings.portraitColumns);
+  const columns = width >= 600 ? 4 : width >= 340 ? 2 : 1;
   const cardWidth = `${Math.max(22, Math.floor(100 / columns) - 2)}%` as `${number}%`;
+  const tileHeight = width >= 600 ? (landscape ? 128 : 142) : 180;
+  const focusedItem = useMemo(() => media.find((item) => item.id === focusedId) ?? null, [focusedId, media]);
 
   function destinationFor(item: MediaAssetContract): File {
     const directory = new Directory(Paths.document, 'sharing-downloads');
@@ -149,6 +151,15 @@ export function SharingMediaGallery({ eventName, api, stationToken }: SharingMed
     }
     rememberLocal(item, downloaded);
     return downloaded;
+  }
+
+  function openMoment(item: MediaAssetContract): void {
+    setFocusedId(item.id);
+    if (!localUris[item.id]) {
+      void downloadMedia(item).catch((error) => {
+        setMessage(error instanceof Error ? error.message : 'Impossible de préparer ce Moment.');
+      });
+    }
   }
 
   async function refresh(manual = false): Promise<void> {
@@ -265,6 +276,7 @@ export function SharingMediaGallery({ eventName, api, stationToken }: SharingMed
     setSocialShares((current)=>Object.fromEntries(Object.entries(current).filter(([key])=>!ids.some((id)=>key.startsWith(`${id}:`)))));
     ids.forEach((id)=>receivedIdsRef.current.delete(id));
     if(activeSocialKey&&ids.some((id)=>activeSocialKey.startsWith(`${id}:`)))setActiveSocialKey(null);
+    if(focusedId&&ids.includes(focusedId))setFocusedId(null);
   }
 
   async function performDelete(item: MediaAssetContract): Promise<void> {
@@ -298,20 +310,6 @@ export function SharingMediaGallery({ eventName, api, stationToken }: SharingMed
     setBusyId(item.id);try{await restoreSharingMedia(stationToken,item.id);setTrashItems((current)=>current.filter((entry)=>entry.id!==item.id));setMessage(`« ${item.displayName||'Moment KHE'} » a été restauré.`);await refresh(true);}catch(error){setMessage(error instanceof Error?error.message:'Restauration impossible.');}finally{setBusyId(null);}
   }
 
-  function rememberAspect(itemId: string, ratio: number): void {
-    const safe = Number.isFinite(ratio) && ratio > 0 ? Math.max(.4, Math.min(2.4, ratio)) : 1;
-    setAspectRatios((current) => Math.abs((current[itemId] ?? 0) - safe) < .01 ? current : { ...current, [itemId]: safe });
-  }
-
-  function previewHeight(itemId: string): number {
-    if (businessSettings.galleryLayout === 'COMPACT') return landscape ? 140 : 165;
-    if (businessSettings.galleryLayout === 'GRID') return landscape ? 190 : 220;
-    const ratio = aspectRatios[itemId] ?? .8;
-    if (ratio < .78) return landscape ? 285 : 330;
-    if (ratio > 1.3) return landscape ? 175 : 195;
-    return landscape ? 220 : 255;
-  }
-
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
@@ -340,39 +338,47 @@ export function SharingMediaGallery({ eventName, api, stationToken }: SharingMed
       ) : (
         <View style={styles.galleryGrid}>
           {media.map((item) => {
-            const busy = busyId === item.id;
             const kind = item.mimeType.startsWith('image/') ? 'PHOTO' : 'VIDÉO';
-            const guestShare = shares[item.id];
             const received = receivedIdsRef.current.has(item.id);
-            const activeSocial = activeSocialKey?.startsWith(`${item.id}:`) ? socialShares[activeSocialKey] : undefined;
-            const activeProvider = activeSocial?.provider;
             const selected=selectedIds.has(item.id);
             return (
               <View key={item.id} style={[styles.mediaCard,{ width: cardWidth },selected&&styles.mediaCardSelected]}>
                 {selectionMode?<Pressable onPress={()=>toggleSelection(item.id)} style={[styles.selectControl,selected&&styles.selectControlActive]}><Text style={[styles.selectControlText,selected&&styles.selectControlTextActive]}>{selected?'✓':'○'} {selected?'Sélectionné':'Sélectionner'}</Text></Pressable>:null}
-                <View style={[styles.previewFrame, { height: previewHeight(item.id) }]}>
-                  <SharingMediaPreview uri={localUris[item.id] ?? null} mimeType={item.mimeType} autoplay={businessEnabled ? businessSettings.videoAutoplay : true} mediaFit={businessEnabled ? businessSettings.mediaFit : 'COVER'} onAspectRatio={(ratio) => rememberAspect(item.id, ratio)} />
+                <Pressable accessibilityRole="button" accessibilityLabel={`Ouvrir ${canonicalName(item,eventName)}`} style={[styles.previewFrame, { height: tileHeight }]} onPress={()=>selectionMode?toggleSelection(item.id):openMoment(item)}>
+                  {kind==='PHOTO'
+                    ? <SharingMediaPreview uri={localUris[item.id] ?? null} mimeType={item.mimeType} autoplay={false} mediaFit={businessEnabled ? businessSettings.mediaFit : 'COVER'} />
+                    : <View style={styles.videoTile}><Text style={styles.videoPlay}>▶</Text><Text style={styles.videoTileText}>OUVRIR LA VIDÉO</Text></View>}
                   <View style={styles.previewBadge}><Text style={styles.previewBadgeText}>{kind}</Text></View>
-                </View>
+                </Pressable>
                 <View style={styles.mediaTopRow}>
-                  <View style={styles.mediaCopy}><Text style={styles.mediaName} numberOfLines={2}>{canonicalName(item,eventName)}</Text><Text style={styles.meta}>{capturedLabel(item)}</Text><Text style={styles.meta}>{sizeLabel(item.byteSize)}</Text></View>
+                  <View style={styles.mediaCopy}><Text style={styles.mediaName} numberOfLines={2}>{canonicalName(item,eventName)}</Text><Text style={styles.meta} numberOfLines={1}>{capturedLabel(item)}</Text><Text style={styles.meta}>{sizeLabel(item.byteSize)}</Text></View>
                   <View style={styles.syncedBadge}><Text style={styles.syncedText}>{received ? 'REÇU ✓' : 'SYNCED ✓'}</Text></View>
                 </View>
-                {!selectionMode?<>
-                  <View style={styles.actions}>
-                    <Pressable disabled={Boolean(busyId)} style={[styles.primaryButton, Boolean(busyId) && styles.disabled]} onPress={() => void share(item)}><Text style={styles.primaryText}>{busy ? 'Préparation…' : 'Partager'}</Text></Pressable>
-                    <Pressable disabled={Boolean(busyId)} style={[styles.qrButton, Boolean(busyId) && styles.disabled]} onPress={() => void createGuestQr(item)}><Text style={styles.qrButtonText}>{guestShare ? 'Nouveau QR' : 'QR invité'}</Text></Pressable>
-                    <Pressable disabled={Boolean(busyId) || !businessEnabled} style={[styles.deleteButton, (!businessEnabled || Boolean(busyId)) && styles.disabled]} onPress={() => void deleteMoment(item)}><Text style={styles.deleteText}>Corbeille</Text></Pressable>
-                  </View>
-                  <View style={styles.socialSection}><Text style={styles.socialTitle}>PARTAGER VIA UN RÉSEAU</Text><View style={styles.socialButtons}>{SOCIALS.map((social) => {const configured = Boolean(businessSettings.socialLinks[social.key]);return <Pressable key={social.key} disabled={Boolean(busyId) || !businessEnabled} onPress={() => void createSocialQr(item, social.key)} style={[styles.socialButton, (!businessEnabled || !configured) && styles.socialButtonMuted]}><SocialMark provider={social.key} compact /><Text style={styles.socialButtonText}>{social.label}</Text></Pressable>;})}</View>{businessEnabled ? <Text style={styles.socialHelp}>Les réseaux configurés dans Paramètres SHARING sont prioritaires. KHE conserve le même nom du média jusqu’à sa réception.</Text> : <Text style={styles.socialHelp}>Disponible avec BUSINESS.</Text>}</View>
-                  {activeSocial && activeProvider ? <View style={styles.socialQrCard}><View style={styles.socialQrHeading}><SocialMark provider={activeProvider} /><View style={{ flex: 1 }}><Text style={styles.socialQrTitle}>{SOCIALS.find((social) => social.key === activeProvider)?.label}</Text><Text style={styles.socialHelp}>{canonicalName(item,eventName)}</Text></View></View><View style={styles.qrLogoFrame}><QRCode value={activeSocial.shareUrl} size={190} ecl="H" quietZone={8} /><View pointerEvents="none" style={styles.qrLogoOverlay}><SocialMark provider={activeProvider} /></View></View><Text selectable style={styles.shareUrl}>{activeSocial.shareUrl}</Text><View style={styles.consentNote}><Text style={styles.consentTitle}>Consentement en 3 étapes</Text><Text style={styles.socialHelp}>1. recevoir ce média • 2. autoriser ou non sa publication • 3. accepter ou non les messages promotionnels KHE. Les choix 2 et 3 restent facultatifs.</Text></View></View> : null}
-                  {guestShare ? <View style={styles.qrCard}><View style={styles.qrCanvas}><QRCode value={guestShare.shareUrl} size={160} ecl="H" quietZone={6} /></View><Text style={styles.qrMomentName}>{canonicalName(item,eventName)}</Text><Text selectable style={styles.shareUrl}>{guestShare.shareUrl}</Text><Pressable disabled={Boolean(busyId)} style={styles.revokeButton} onPress={() => void revokeGuestQr(item)}><Text style={styles.revokeText}>Révoquer ce QR</Text></Pressable></View> : null}
-                </>:null}
               </View>
             );
           })}
         </View>
       )}
+
+      <Modal visible={Boolean(focusedItem)} animationType="slide" onRequestClose={()=>setFocusedId(null)}>
+        {focusedItem ? <View style={styles.detailPage}>
+          <View style={styles.detailHeader}><View style={styles.detailHeaderCopy}><Text style={styles.eyebrow}>MOMENT KHE • {focusedItem.mimeType.startsWith('image/')?'PHOTO':'VIDÉO'}</Text><Text style={styles.detailTitle} numberOfLines={2}>{canonicalName(focusedItem,eventName)}</Text></View><Pressable accessibilityRole="button" style={styles.detailClose} onPress={()=>setFocusedId(null)}><Text style={styles.detailCloseText}>Fermer</Text></Pressable></View>
+          <ScrollView contentContainerStyle={styles.detailContent}>
+            <View style={styles.detailPreview}>
+              <SharingMediaPreview uri={localUris[focusedItem.id] ?? null} mimeType={focusedItem.mimeType} autoplay={businessEnabled ? businessSettings.videoAutoplay : true} mediaFit={businessEnabled ? businessSettings.mediaFit : 'COVER'} />
+            </View>
+            <View style={styles.detailMeta}><Text style={styles.mediaName}>{canonicalName(focusedItem,eventName)}</Text><Text style={styles.meta}>{capturedLabel(focusedItem)} • {sizeLabel(focusedItem.byteSize)}</Text></View>
+            <View style={styles.actions}>
+              <Pressable disabled={Boolean(busyId)} style={[styles.primaryButton,Boolean(busyId)&&styles.disabled]} onPress={()=>void share(focusedItem)}><Text style={styles.primaryText}>{busyId===focusedItem.id?'Préparation…':'Partager'}</Text></Pressable>
+              <Pressable disabled={Boolean(busyId)} style={[styles.qrButton,Boolean(busyId)&&styles.disabled]} onPress={()=>void createGuestQr(focusedItem)}><Text style={styles.qrButtonText}>{shares[focusedItem.id]?'Nouveau QR':'QR invité'}</Text></Pressable>
+              <Pressable disabled={Boolean(busyId)||!businessEnabled} style={[styles.deleteButton,(!businessEnabled||Boolean(busyId))&&styles.disabled]} onPress={()=>void deleteMoment(focusedItem)}><Text style={styles.deleteText}>Corbeille</Text></Pressable>
+            </View>
+            <View style={styles.socialSection}><Text style={styles.socialTitle}>PARTAGER VIA UN RÉSEAU</Text><View style={styles.socialButtons}>{SOCIALS.map((social)=>{const configured=Boolean(businessSettings.socialLinks[social.key]);return <Pressable key={social.key} disabled={Boolean(busyId)||!businessEnabled} onPress={()=>void createSocialQr(focusedItem,social.key)} style={[styles.socialButton,(!businessEnabled||!configured)&&styles.socialButtonMuted]}><SocialMark provider={social.key} compact/><Text style={styles.socialButtonText}>{social.label}</Text></Pressable>;})}</View>{businessEnabled?<Text style={styles.socialHelp}>Les réseaux configurés dans Paramètres SHARING sont prioritaires.</Text>:<Text style={styles.socialHelp}>Disponible avec BUSINESS.</Text>}</View>
+            {activeSocialKey?.startsWith(`${focusedItem.id}:`)&&socialShares[activeSocialKey] ? <View style={styles.socialQrCard}><View style={styles.socialQrHeading}><SocialMark provider={socialShares[activeSocialKey].provider}/><View style={{flex:1}}><Text style={styles.socialQrTitle}>{SOCIALS.find((social)=>social.key===socialShares[activeSocialKey].provider)?.label}</Text><Text style={styles.socialHelp}>{canonicalName(focusedItem,eventName)}</Text></View></View><View style={styles.qrLogoFrame}><QRCode value={socialShares[activeSocialKey].shareUrl} size={190} ecl="H" quietZone={8}/><View pointerEvents="none" style={styles.qrLogoOverlay}><SocialMark provider={socialShares[activeSocialKey].provider}/></View></View><Text selectable style={styles.shareUrl}>{socialShares[activeSocialKey].shareUrl}</Text></View>:null}
+            {shares[focusedItem.id]?<View style={styles.qrCard}><View style={styles.qrCanvas}><QRCode value={shares[focusedItem.id].shareUrl} size={160} ecl="H" quietZone={6}/></View><Text style={styles.qrMomentName}>{canonicalName(focusedItem,eventName)}</Text><Text selectable style={styles.shareUrl}>{shares[focusedItem.id].shareUrl}</Text><Pressable disabled={Boolean(busyId)} style={styles.revokeButton} onPress={()=>void revokeGuestQr(focusedItem)}><Text style={styles.revokeText}>Révoquer ce QR</Text></Pressable></View>:null}
+          </ScrollView>
+        </View>:null}
+      </Modal>
 
       <View style={styles.qrNote}><Text style={styles.qrTitle}>Réception automatique SHARING</Text><Text style={styles.help}>Chaque nouveau média synchronisé est reçu automatiquement avec le son/vibration choisis dans Paramètres. Son nom KHE reste stable jusqu’au partage au client. Les médias placés dans la corbeille Business restent restaurables 30 jours.</Text></View>
       {message ? <Text style={styles.message}>{message}</Text> : null}
@@ -390,13 +396,15 @@ const styles = StyleSheet.create({
   selectionBar:{borderRadius:13,backgroundColor:'#141414',padding:10,flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:10},selectionText:{color:'#fff',fontSize:11,fontWeight:'900'},deleteSelectionButton:{backgroundColor:'#a53b3b',paddingHorizontal:12,paddingVertical:9,borderRadius:9},deleteSelectionText:{color:'#fff',fontSize:9,fontWeight:'900'},
   trashPanel:{backgroundColor:'#171717',borderRadius:16,padding:13,gap:9,borderWidth:1,borderColor:'#3b3320'},trashHeading:{flexDirection:'row',justifyContent:'space-between',alignItems:'center',gap:8},trashTitle:{color:'#fff',fontSize:17,fontWeight:'900'},trashHint:{color:'#d2ad4f',fontSize:9,fontWeight:'900'},trashRow:{backgroundColor:'#222',borderRadius:12,padding:10,flexDirection:'row',alignItems:'center',gap:8},trashName:{color:'#fff',fontSize:11,fontWeight:'900'},restoreButton:{borderWidth:1,borderColor:'#d2ad4f',borderRadius:9,paddingHorizontal:10,paddingVertical:8},restoreText:{color:'#d2ad4f',fontSize:9,fontWeight:'900'},
   loading: { alignItems: 'center', gap: 8, paddingVertical: 20 }, emptyCard: { borderWidth: 1, borderColor: '#dddddd', borderRadius: 14, padding: 14, gap: 5 }, emptyTitle: { fontSize: 14, fontWeight: '900' },
-  galleryGrid: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }, mediaCard: { minWidth: 180, borderWidth: 1, borderColor: '#d7d7d7', borderRadius: 16, padding: 10, gap: 10, overflow: 'hidden' },mediaCardSelected:{borderColor:'#d2ad4f',borderWidth:2,backgroundColor:'#fffaf0'},
+  galleryGrid: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', gap: 10 }, mediaCard: { borderWidth: 1, borderColor: '#d7d7d7', borderRadius: 14, padding: 7, gap: 7, overflow: 'hidden', backgroundColor: '#fff' },mediaCardSelected:{borderColor:'#d2ad4f',borderWidth:2,backgroundColor:'#fffaf0'},
   selectControl:{borderWidth:1,borderColor:'#bbb',borderRadius:9,paddingVertical:7,paddingHorizontal:9,alignItems:'center'},selectControlActive:{backgroundColor:'#d2ad4f',borderColor:'#d2ad4f'},selectControlText:{fontSize:9,fontWeight:'900'},selectControlTextActive:{color:'#111'},
-  previewFrame: { width: '100%', borderRadius: 12, overflow: 'hidden', backgroundColor: '#151519', position: 'relative' }, previewBadge: { position: 'absolute', left: 8, top: 8, backgroundColor: 'rgba(0,0,0,.68)', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 5 }, previewBadgeText: { color: '#fff', fontSize: 9, fontWeight: '900' },
+  previewFrame: { width: '100%', borderRadius: 10, overflow: 'hidden', backgroundColor: '#151519', position: 'relative' }, previewBadge: { position: 'absolute', left: 7, top: 7, backgroundColor: 'rgba(0,0,0,.72)', borderRadius: 999, paddingHorizontal: 7, paddingVertical: 4 }, previewBadgeText: { color: '#fff', fontSize: 8, fontWeight: '900' },
+  videoTile: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 7, backgroundColor: '#111216' }, videoPlay: { color: '#d2ad4f', fontSize: 30, fontWeight: '900' }, videoTileText: { color: '#fff', fontSize: 8, fontWeight: '900', letterSpacing: .8 },
   mediaTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }, mediaCopy: { flex: 1, gap: 2 },mediaName:{fontSize:11,fontWeight:'900',lineHeight:15}, meta: { fontSize: 9, lineHeight: 14, opacity: 0.62 }, syncedBadge: { backgroundColor: '#e7f7ec', borderRadius: 12, paddingHorizontal: 7, paddingVertical: 5 }, syncedText: { color: '#16863a', fontSize: 8, fontWeight: '900' },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 }, primaryButton: { flexGrow: 1, minWidth: 82, backgroundColor: '#111111', borderRadius: 9, paddingVertical: 9, alignItems: 'center' }, primaryText: { color: '#ffffff', fontSize: 9, fontWeight: '900' }, qrButton: { flexGrow: 1, minWidth: 82, borderWidth: 1, borderColor: '#16863a', borderRadius: 9, paddingVertical: 9, alignItems: 'center' }, qrButtonText: { color: '#16863a', fontSize: 9, fontWeight: '900' }, deleteButton: { flexGrow: 1, minWidth: 82, borderWidth: 1, borderColor: '#a53b3b', borderRadius: 9, paddingVertical: 9, alignItems: 'center' }, deleteText: { color: '#a53b3b', fontSize: 9, fontWeight: '900' }, disabled: { opacity: 0.4 },
   socialSection: { borderTopWidth: 1, borderTopColor: '#e6e6e6', paddingTop: 9, gap: 7 }, socialTitle: { fontSize: 8, fontWeight: '900', letterSpacing: 1, opacity: .6 }, socialButtons: { flexDirection: 'row', flexWrap: 'wrap', gap: 5 }, socialButton: { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderColor: '#d7d7d7', borderRadius: 999, paddingVertical: 5, paddingHorizontal: 7, backgroundColor: '#fff' }, socialButtonMuted: { opacity: .45 }, socialButtonText: { fontSize: 8, fontWeight: '900' }, socialHelp: { fontSize: 9, lineHeight: 14, opacity: .62 },
   socialMark: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff' }, socialMarkCompact: { width: 20, height: 20, borderRadius: 6, borderWidth: 1 }, socialMarkText: { color: '#fff', fontSize: 17, fontWeight: '900' }, socialMarkTextCompact: { fontSize: 10 },
+  detailPage: { flex: 1, backgroundColor: '#fff' }, detailHeader: { paddingTop: 20, paddingHorizontal: 18, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#e5e5e5', flexDirection: 'row', alignItems: 'center', gap: 12 }, detailHeaderCopy: { flex: 1, minWidth: 0 }, detailTitle: { fontSize: 22, lineHeight: 27, fontWeight: '900', marginTop: 3 }, detailClose: { backgroundColor: '#111', borderRadius: 11, paddingHorizontal: 14, paddingVertical: 10 }, detailCloseText: { color: '#fff', fontWeight: '900', fontSize: 11 }, detailContent: { padding: 18, paddingBottom: 44, gap: 14 }, detailPreview: { width: '100%', height: 360, maxHeight: 480, borderRadius: 18, overflow: 'hidden', backgroundColor: '#111216' }, detailMeta: { gap: 3 },
   socialQrCard: { alignItems: 'center', gap: 9, backgroundColor: '#f6f6f8', borderRadius: 14, padding: 11 }, socialQrHeading: { width: '100%', flexDirection: 'row', alignItems: 'center', gap: 9 }, socialQrTitle: { fontSize: 14, fontWeight: '900' }, qrLogoFrame: { width: 206, height: 206, alignItems: 'center', justifyContent: 'center', position: 'relative', backgroundColor: '#fff', borderRadius: 14 }, qrLogoOverlay: { position: 'absolute', left: 86, top: 86, backgroundColor: '#fff', borderRadius: 12, padding: 1 }, consentNote: { width: '100%', backgroundColor: '#fff', borderRadius: 10, padding: 9, gap: 3 }, consentTitle: { fontSize: 9, fontWeight: '900' },
   qrCard: { alignItems: 'center', gap: 8, borderTopWidth: 1, borderTopColor: '#e4e4e4', paddingTop: 10 }, qrCanvas: { backgroundColor: '#ffffff', padding: 8, borderRadius: 12 },qrMomentName:{fontSize:10,fontWeight:'900',textAlign:'center'}, shareUrl: { fontSize: 8, lineHeight: 12, textAlign: 'center', opacity: 0.7 }, revokeButton: { borderWidth: 1, borderColor: '#a53b3b', borderRadius: 9, paddingHorizontal: 10, paddingVertical: 7 }, revokeText: { color: '#a53b3b', fontSize: 9, fontWeight: '900' },
   qrNote: { borderWidth: 1, borderColor: '#d7d7d7', borderRadius: 14, padding: 12, gap: 4 }, qrTitle: { fontSize: 12, fontWeight: '900' }, message: { fontSize: 11, lineHeight: 16, fontWeight: '700' },
