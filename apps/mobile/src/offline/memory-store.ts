@@ -1,6 +1,7 @@
 import type { EventManifestContract } from '@khe/contracts';
 import type { LocalStore } from './local-store';
 import type {
+  CapturePipelineRecord,
   LocalMediaRecord,
   OfflineSnapshot,
   PersistedStationContext,
@@ -12,6 +13,7 @@ export class MemoryLocalStore implements LocalStore {
   private station: PersistedStationContext | null = null;
   private readonly manifests = new Map<string, EventManifestContract>();
   private readonly media = new Map<string, LocalMediaRecord>();
+  private readonly captures = new Map<string, CapturePipelineRecord>();
   private readonly queue = new Map<string, SyncQueueItem>();
   private readonly sharedMedia = new Map<string, SharedMediaRecord[]>();
 
@@ -65,6 +67,26 @@ export class MemoryLocalStore implements LocalStore {
     this.media.delete(localId);
   }
 
+  async upsertCapture(capture: CapturePipelineRecord): Promise<void> {
+    this.captures.set(capture.localId, structuredClone(capture));
+  }
+
+  async getCapture(localId: string): Promise<CapturePipelineRecord | null> {
+    const capture = this.captures.get(localId);
+    return capture ? structuredClone(capture) : null;
+  }
+
+  async listCaptures(eventId: string): Promise<CapturePipelineRecord[]> {
+    return [...this.captures.values()]
+      .filter((item) => item.eventId === eventId)
+      .sort((a, b) => b.capturedAt.localeCompare(a.capturedAt))
+      .map((item) => structuredClone(item));
+  }
+
+  async deleteCapture(localId: string): Promise<void> {
+    this.captures.delete(localId);
+  }
+
   async enqueue(item: SyncQueueItem): Promise<void> {
     this.queue.set(item.localId, structuredClone(item));
   }
@@ -94,6 +116,7 @@ export class MemoryLocalStore implements LocalStore {
       pendingMedia: await this.listPendingMedia(eventId),
       queue: await this.listQueue(),
       sharedMedia: await this.listSharedMedia(eventId),
+      capturePipeline: await this.listCaptures(eventId),
     };
   }
 }
