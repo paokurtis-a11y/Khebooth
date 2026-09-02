@@ -6,10 +6,11 @@ import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Tex
 import { HttpStationApi } from '../api/station-api';
 import { API_BASE_URL } from '../config';
 import type { LocalStore } from '../offline/local-store';
-import type { LocalMediaRecord } from '../offline/types';
+import type { CapturePipelineRecord, LocalMediaRecord } from '../offline/types';
 import { SecureStoreCredentialVault } from '../security/secure-store-vault';
 import { shareMediaNatively } from '../sharing/native-share';
 import { StationLinkHealth } from '../station/station-link-health';
+import { rescheduleCaptureProcessing } from '../studio/capture-processing';
 import { rescheduleMediaNow } from '../sync/sync-rescue';
 
 interface MediaGalleryProps {
@@ -37,6 +38,13 @@ function syncLabel(media:LocalMediaRecord):string{
   return'En attente';
 }
 
+function processingLabel(capture:CapturePipelineRecord):string{
+  if(capture.processingState==='READY')return'Rendu final prêt';
+  if(capture.processingState==='RENDERING')return'Traitement Studio…';
+  if(capture.processingState==='FAILED')return`Nouvelle tentative Studio • ${capture.retryCount}`;
+  return'Brut enregistré • en attente de Studio';
+}
+
 export function MediaGallery({ eventId, eventName, store, onClose }: MediaGalleryProps) {
   const { width } = useWindowDimensions();
   const landscape = width >= 760;
@@ -47,6 +55,7 @@ export function MediaGallery({ eventId, eventName, store, onClose }: MediaGaller
   const [sharing, setSharing] = useState(false);
   const [rescuing,setRescuing]=useState(false);
   const [media, setMedia] = useState<LocalMediaRecord[]>([]);
+  const [rawMedia,setRawMedia]=useState<CapturePipelineRecord[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<MediaFilter>('ALL');
   const [message, setMessage] = useState('');
@@ -56,8 +65,9 @@ export function MediaGallery({ eventId, eventName, store, onClose }: MediaGaller
   async function readMedia(showLoading=false,clearMessage=false):Promise<void>{
     if(showLoading)setLoading(true);
     try{
-      const items=await store.listMedia(eventId);
+      const [items,captures]=await Promise.all([store.listMedia(eventId),store.listCaptures(eventId)]);
       setMedia(items);
+      setRawMedia(captures);
       setSelectedId((current)=>current&&items.some((item)=>item.localId===current)?current:items[0]?.localId??null);
       if(clearMessage)setMessage('');
     }catch(error){
@@ -75,9 +85,10 @@ export function MediaGallery({ eventId, eventName, store, onClose }: MediaGaller
       if(cancelled)return;
       if(showLoading)setLoading(true);
       try{
-        const items=await store.listMedia(eventId);
+        const [items,captures]=await Promise.all([store.listMedia(eventId),store.listCaptures(eventId)]);
         if(cancelled)return;
         setMedia(items);
+        setRawMedia(captures);
         setSelectedId((current)=>current&&items.some((item)=>item.localId===current)?current:items[0]?.localId??null);
         if(clearMessage)setMessage('');
       }catch(error){
@@ -100,6 +111,8 @@ export function MediaGallery({ eventId, eventName, store, onClose }: MediaGaller
   const videoCount = media.length - photoCount;
   const pendingCount = media.filter((item) => item.syncState !== 'SYNCED').length;
   const failedCount=media.filter((item)=>item.syncState==='FAILED').length;
+  const processingCount=rawMedia.filter((item)=>item.processingState!=='READY').length;
+  const processingFailedCount=rawMedia.filter((item)=>item.processingState==='FAILED').length;
 
   useEffect(() => {
     if (filteredMedia.length && !filteredMedia.some((item) => item.localId === selectedId)) {
@@ -139,6 +152,17 @@ export function MediaGallery({ eventId, eventName, store, onClose }: MediaGaller
     }finally{setRescuing(false);}
   }
 
+  async function retryProcessing(item:CapturePipelineRecord):Promise<void>{
+    setRescuing(true);
+    try{
+      const queued=await rescheduleCaptureProcessing(store,item.localId);
+      setMessage(queued?'Traitement Studio relancé. Le fichier brut reste intact.':'Ce rendu final est déjà prêt.');
+      await readMedia(false,false);
+    }catch(error){
+      setMessage(error instanceof Error?error.message:'Impossible de relancer le traitement Studio.');
+    }finally{setRescuing(false);}
+  }
+
   async function printPhoto(item: LocalMediaRecord): Promise<void> {
     if (!isPhoto(item)) return;
     setPrinting(true);
@@ -162,14 +186,14 @@ export function MediaGallery({ eventId, eventName, store, onClose }: MediaGaller
       if (file.exists) file.delete();
       await store.deleteMedia(item.localId);
       await refresh();
-      setMessage('Moment supprimé de cette tablette.');
+      setMessage('Rendu final supprimé de cette tablette. Le fichier brut reste conservé.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Suppression impossible.');
     }
   }
 
   function confirmDelete(item: LocalMediaRecord): void {
-    Alert.alert('Supprimer ce moment ?', item.syncState === 'SYNCED' ? 'La copie locale sera supprimée.' : 'Ce média n’est pas encore synchronisé. La suppression est définitive.', [
+    Alert.alert('Supprimer ce rendu final ?', item.syncState === 'SYNCED' ? 'La copie locale du rendu sera supprimée. Le brut reste conservé.' : 'Ce rendu n’est pas encore synchronisé. Le fichier brut reste conservé.', [
       { text: 'Annuler', style: 'cancel' },
       { text: 'Supprimer', style: 'destructive', onPress: () => void remove(item) },
     ]);
@@ -192,10 +216,11 @@ export function MediaGallery({ eventId, eventName, store, onClose }: MediaGaller
         <Pressable style={styles.healthButton} onPress={()=>void openHealth()}><View><Text style={styles.healthEyebrow}>KHE LINK HEALTH</Text><Text style={styles.healthTitle}>⇄ Vérifier CAPTURE ↔ SHARING</Text></View><Text style={styles.healthArrow}>›</Text></Pressable>
 
         <View style={styles.summaryRow}>
-          <View style={styles.summaryCard}><Text style={styles.summaryNumber}>{media.length}</Text><Text style={styles.summaryLabel}>moments</Text></View>
+          <View style={styles.summaryCard}><Text style={styles.summaryNumber}>{rawMedia.length}</Text><Text style={styles.summaryLabel}>fichiers bruts</Text></View>
+          <View style={styles.summaryCard}><Text style={styles.summaryNumber}>{media.length}</Text><Text style={styles.summaryLabel}>rendus finaux</Text></View>
           <View style={styles.summaryCard}><Text style={styles.summaryNumber}>{videoCount}</Text><Text style={styles.summaryLabel}>vidéos</Text></View>
           <View style={styles.summaryCard}><Text style={styles.summaryNumber}>{photoCount}</Text><Text style={styles.summaryLabel}>photos</Text></View>
-          <View style={[styles.summaryCard,failedCount>0&&styles.summaryCardWarning]}><Text style={styles.summaryNumber}>{pendingCount}</Text><Text style={styles.summaryLabel}>{failedCount>0?`${failedCount} échec(s) • à synchroniser`:'à synchroniser'}</Text></View>
+          <View style={[styles.summaryCard,(failedCount>0||processingFailedCount>0)&&styles.summaryCardWarning]}><Text style={styles.summaryNumber}>{processingCount+pendingCount}</Text><Text style={styles.summaryLabel}>{processingFailedCount||failedCount?`${processingFailedCount+failedCount} échec(s) • reprise auto`:'en cours'}</Text></View>
         </View>
 
         <View style={styles.filters}>
@@ -209,8 +234,17 @@ export function MediaGallery({ eventId, eventName, store, onClose }: MediaGaller
 
         {loading ? <View style={styles.center}><ActivityIndicator /><Text>Chargement…</Text></View> : null}
 
+        {!loading?<View style={styles.rawLibrary}>
+          <View><Text style={styles.sectionEyebrow}>ÉTAPE 1 • ORIGINAL CONSERVÉ</Text><Text style={[styles.sectionTitle,styles.sectionTitleLight]}>Fichiers bruts</Text><Text style={styles.rawMuted}>Chaque photo ou vidéo apparaît ici immédiatement. Studio travaille sur une copie et ne modifie jamais l’original.</Text></View>
+          {rawMedia.length===0?<View style={styles.rawEmpty}><Text style={[styles.emptyTitle,styles.sectionTitleLight]}>Aucun fichier brut</Text><Text style={styles.rawMuted}>La prochaine capture sera sécurisée ici avant le traitement Studio.</Text></View>:<View style={styles.rawCards}>{rawMedia.map((item,index)=><View key={item.localId} style={[styles.rawCard,item.processingState==='FAILED'&&styles.rawCardFailed]}>
+            {item.mimeType.startsWith('image/')?<Image source={{uri:item.rawUri}} style={styles.rawThumb} resizeMode="cover"/>:<View style={styles.rawVideo}><Text style={styles.playIcon}>▶</Text><Text style={styles.videoLabel}>BRUT</Text></View>}
+            <View style={styles.rawCopy}><Text style={styles.rawTitle}>{item.mimeType.startsWith('image/')?'Photo':'Vidéo'} brute {rawMedia.length-index}</Text><Text style={styles.rawMeta}>{new Date(item.capturedAt).toLocaleTimeString()} • {Math.max(1,Math.round(item.rawByteSize/1024/1024))} Mo • {item.aspectRatio}</Text><Text style={[styles.processingState,item.processingState==='FAILED'&&styles.processingStateFailed]}>{processingLabel(item)}</Text>{item.lastError?<Text numberOfLines={2} style={styles.rawError}>{item.lastError}</Text>:null}</View>
+            {item.processingState==='FAILED'?<Pressable disabled={rescuing} style={styles.rawRetry} onPress={()=>void retryProcessing(item)}><Text style={styles.rawRetryText}>RELANCER</Text></Pressable>:null}
+          </View>)}</View>}
+        </View>:null}
+
         {!loading && filteredMedia.length === 0 ? (
-          <View style={styles.empty}><Text style={styles.emptyIcon}>✦</Text><Text style={styles.emptyTitle}>Aucun moment pour ce filtre</Text><Text style={styles.muted}>Les prochaines captures apparaîtront ici immédiatement.</Text></View>
+          <View style={styles.empty}><Text style={styles.emptyIcon}>✦</Text><Text style={styles.emptyTitle}>Aucun rendu final pour ce filtre</Text><Text style={styles.muted}>Les rendus apparaissent automatiquement ici dès que Studio termine les effets.</Text></View>
         ) : null}
 
         {selected ? (
@@ -236,8 +270,9 @@ export function MediaGallery({ eventId, eventName, store, onClose }: MediaGaller
             </View>
 
             <View style={styles.library}>
-              <Text style={styles.sectionTitle}>Moments disponibles</Text>
-              <Text style={styles.muted}>Les états de synchronisation se mettent à jour toutes les 2 secondes. Les vidéos ne démarrent pas automatiquement dans les vignettes afin de préserver la stabilité Android.</Text>
+              <Text style={styles.sectionEyebrow}>ÉTAPES 3 À 5 • STUDIO → SHARING</Text>
+              <Text style={styles.sectionTitle}>Rendus finaux · Moments disponibles</Text>
+              <Text style={styles.muted}>Seuls les fichiers terminés par Studio apparaissent ici et partent automatiquement vers SHARING. Les vidéos ne démarrent pas dans les vignettes afin de préserver la stabilité Android.</Text>
               <View style={styles.cards}>
                 {filteredMedia.map((item, index) => (
                   <Pressable key={item.localId} style={[styles.mediaCard, item.localId === selectedId && styles.mediaCardActive,item.syncState==='FAILED'&&styles.mediaCardFailed]} onPress={() => setSelectedId(item.localId)}>
@@ -315,6 +350,17 @@ const styles = StyleSheet.create({
   danger: { flexGrow: 1, borderWidth: 1, borderColor: '#733', borderRadius: 13, padding: 13, alignItems: 'center' },
   dangerText: { color: '#ff9c9c', fontWeight: '900' },
   library: { flex: 1, backgroundColor: '#fff', borderRadius: 24, padding: 15, gap: 10 },
+  rawLibrary:{backgroundColor:'#111318',borderRadius:24,padding:15,gap:12,borderWidth:1,borderColor:'#3b3320'},
+  sectionEyebrow:{color:KHE_GOLD,fontSize:9,fontWeight:'900',letterSpacing:1.2,marginBottom:4},
+  sectionTitleLight:{color:'#fff'},rawMuted:{color:'#aeb5c0',fontSize:11,lineHeight:16},
+  rawEmpty:{padding:16,borderWidth:1,borderColor:'#30343d',borderRadius:15,backgroundColor:'#181b21'},
+  rawCards:{gap:8},
+  rawCard:{flexDirection:'row',alignItems:'center',gap:10,borderRadius:15,padding:9,backgroundColor:'#1b1e25',borderWidth:1,borderColor:'#30343d'},
+  rawCardFailed:{borderColor:'#9a4747',backgroundColor:'#27191b'},
+  rawThumb:{width:72,height:58,borderRadius:11,backgroundColor:'#000'},
+  rawVideo:{width:72,height:58,borderRadius:11,backgroundColor:'#08090b',alignItems:'center',justifyContent:'center'},
+  rawCopy:{flex:1,minWidth:0},rawTitle:{color:'#fff',fontSize:13,fontWeight:'900'},rawMeta:{color:'#9aa1ad',fontSize:9,marginTop:3},processingState:{color:'#d2ad4f',fontSize:10,fontWeight:'800',marginTop:4},processingStateFailed:{color:'#ff9c9c'},rawError:{color:'#e8b7b7',fontSize:9,lineHeight:13,marginTop:3},
+  rawRetry:{borderWidth:1,borderColor:KHE_GOLD,borderRadius:9,paddingHorizontal:9,paddingVertical:8},rawRetryText:{color:KHE_GOLD,fontSize:8,fontWeight:'900'},
   sectionTitle: { fontSize: 19, fontWeight: '900', color: KHE_BLACK },
   cards: { gap: 9 },
   mediaCard: { flexDirection: 'row', backgroundColor: '#f4efe7', borderRadius: 16, padding: 8, gap: 10, alignItems: 'center', borderWidth: 2, borderColor: 'transparent' },

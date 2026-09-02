@@ -3,6 +3,7 @@ import * as SQLite from 'expo-sqlite';
 import type { LocalStore } from './local-store';
 import { isDeadSQLiteNativeHandle, openInitializedSQLiteDatabase } from './sqlite-connection';
 import type {
+  CapturePipelineRecord,
   LocalMediaRecord,
   OfflineSnapshot,
   PersistedStationContext,
@@ -14,6 +15,7 @@ type JsonRow = { value: string };
 type MediaRow = LocalMediaRecord;
 type QueueRow = SyncQueueItem;
 type SharedMediaRow = SharedMediaRecord;
+type CapturePipelineRow = CapturePipelineRecord;
 
 const DATABASE_SCHEMA = `
   PRAGMA journal_mode = WAL;
@@ -46,6 +48,30 @@ const DATABASE_SCHEMA = `
     updatedAt TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS local_media_event_sync_idx ON local_media(eventId, syncState);
+  CREATE TABLE IF NOT EXISTS capture_pipeline (
+    localId TEXT PRIMARY KEY NOT NULL,
+    eventId TEXT NOT NULL,
+    rawUri TEXT NOT NULL,
+    rawContentHash TEXT NOT NULL,
+    rawByteSize INTEGER NOT NULL,
+    mimeType TEXT NOT NULL,
+    extension TEXT NOT NULL,
+    aspectRatio TEXT NOT NULL,
+    capturedAt TEXT NOT NULL,
+    processingState TEXT NOT NULL,
+    renderPlanJson TEXT NOT NULL,
+    selectedMusicJson TEXT,
+    renderSummary TEXT NOT NULL,
+    finalUri TEXT,
+    finalContentHash TEXT,
+    finalByteSize INTEGER,
+    encoder TEXT,
+    retryCount INTEGER NOT NULL DEFAULT 0,
+    lastError TEXT,
+    nextAttemptAt TEXT NOT NULL,
+    updatedAt TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS capture_pipeline_event_state_idx ON capture_pipeline(eventId, processingState, nextAttemptAt);
   CREATE TABLE IF NOT EXISTS sync_queue (
     localId TEXT PRIMARY KEY NOT NULL,
     nextAttemptAt TEXT NOT NULL,
@@ -235,6 +261,81 @@ export class SQLiteLocalStore implements LocalStore {
     });
   }
 
+  async upsertCapture(capture: CapturePipelineRecord): Promise<void> {
+    await this.withNativeRecovery(async (db) => {
+      await db.runAsync(
+        `INSERT INTO capture_pipeline(
+          localId,eventId,rawUri,rawContentHash,rawByteSize,mimeType,extension,aspectRatio,capturedAt,
+          processingState,renderPlanJson,selectedMusicJson,renderSummary,finalUri,finalContentHash,
+          finalByteSize,encoder,retryCount,lastError,nextAttemptAt,updatedAt
+        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(localId) DO UPDATE SET
+          eventId=excluded.eventId,
+          rawUri=excluded.rawUri,
+          rawContentHash=excluded.rawContentHash,
+          rawByteSize=excluded.rawByteSize,
+          mimeType=excluded.mimeType,
+          extension=excluded.extension,
+          aspectRatio=excluded.aspectRatio,
+          capturedAt=excluded.capturedAt,
+          processingState=excluded.processingState,
+          renderPlanJson=excluded.renderPlanJson,
+          selectedMusicJson=excluded.selectedMusicJson,
+          renderSummary=excluded.renderSummary,
+          finalUri=excluded.finalUri,
+          finalContentHash=excluded.finalContentHash,
+          finalByteSize=excluded.finalByteSize,
+          encoder=excluded.encoder,
+          retryCount=excluded.retryCount,
+          lastError=excluded.lastError,
+          nextAttemptAt=excluded.nextAttemptAt,
+          updatedAt=excluded.updatedAt`,
+        capture.localId,
+        capture.eventId,
+        capture.rawUri,
+        capture.rawContentHash,
+        capture.rawByteSize,
+        capture.mimeType,
+        capture.extension,
+        capture.aspectRatio,
+        capture.capturedAt,
+        capture.processingState,
+        capture.renderPlanJson,
+        capture.selectedMusicJson,
+        capture.renderSummary,
+        capture.finalUri,
+        capture.finalContentHash,
+        capture.finalByteSize,
+        capture.encoder,
+        capture.retryCount,
+        capture.lastError,
+        capture.nextAttemptAt,
+        capture.updatedAt,
+      );
+    });
+  }
+
+  async getCapture(localId: string): Promise<CapturePipelineRecord | null> {
+    return this.withNativeRecovery(async (db) =>
+      (await db.getFirstAsync<CapturePipelineRow>('SELECT * FROM capture_pipeline WHERE localId = ?', localId)) ?? null,
+    );
+  }
+
+  async listCaptures(eventId: string): Promise<CapturePipelineRecord[]> {
+    return this.withNativeRecovery(async (db) =>
+      db.getAllAsync<CapturePipelineRow>(
+        'SELECT * FROM capture_pipeline WHERE eventId = ? ORDER BY capturedAt DESC',
+        eventId,
+      ),
+    );
+  }
+
+  async deleteCapture(localId: string): Promise<void> {
+    await this.withNativeRecovery(async (db) => {
+      await db.runAsync('DELETE FROM capture_pipeline WHERE localId = ?', localId);
+    });
+  }
+
   async enqueue(item: SyncQueueItem): Promise<void> {
     const db = await this.database();
     await db.runAsync(
@@ -297,6 +398,7 @@ export class SQLiteLocalStore implements LocalStore {
       pendingMedia: await this.listPendingMedia(eventId),
       queue: await this.listQueue(),
       sharedMedia: await this.listSharedMedia(eventId),
+      capturePipeline: await this.listCaptures(eventId),
     };
   }
 }

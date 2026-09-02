@@ -3,7 +3,7 @@
     "name": "KHE Booth",
     "slug": "kurtis-hypnotic-events",
     "owner": "kurtis-hypnotic-event",
-    "version": "0.3.5",
+    "version": "0.3.6",
     "scheme": "khebooth",
     "orientation": "default",
     "userInterfaceStyle": "automatic",
@@ -21,7 +21,7 @@
     },
     "android": {
       "package": "com.kurtishypnotic.khebooth",
-      "versionCode": 5,
+      "versionCode": 6,
       "permissions": [
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"

@@ -1,5 +1,6 @@
 import type { EventManifestContract } from '@khe/contracts';
 import type {
+  CapturePipelineRecord,
   LocalMediaRecord,
   OfflineSnapshot,
   PersistedStationContext,
@@ -19,6 +20,10 @@ export interface LocalStore {
   listMedia(eventId: string): Promise<LocalMediaRecord[]>;
   listPendingMedia(eventId: string): Promise<LocalMediaRecord[]>;
   deleteMedia(localId: string): Promise<void>;
+  upsertCapture(capture: CapturePipelineRecord): Promise<void>;
+  getCapture(localId: string): Promise<CapturePipelineRecord | null>;
+  listCaptures(eventId: string): Promise<CapturePipelineRecord[]>;
+  deleteCapture(localId: string): Promise<void>;
   enqueue(item: SyncQueueItem): Promise<void>;
   listQueue(): Promise<SyncQueueItem[]>;
   removeQueueItem(localId: string): Promise<void>;

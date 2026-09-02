@@ -1,4 +1,4 @@
-import type { EventManifestContract, MediaSyncState, StationMode, StationSessionContract } from '@khe/contracts';
+import type { AspectRatio, EventManifestContract, MediaSyncState, StationMode, StationSessionContract } from '@khe/contracts';
 
 export interface PersistedStationContext {
   session: StationSessionContract;
@@ -22,6 +22,32 @@ export interface LocalMediaRecord {
   acknowledgedAt: string | null;
   retryCount: number;
   lastError: string | null;
+  updatedAt: string;
+}
+
+export type CaptureProcessingState = 'QUEUED' | 'RENDERING' | 'READY' | 'FAILED';
+
+export interface CapturePipelineRecord {
+  localId: string;
+  eventId: string;
+  rawUri: string;
+  rawContentHash: string;
+  rawByteSize: number;
+  mimeType: 'image/jpeg' | 'video/mp4';
+  extension: 'jpg' | 'mp4';
+  aspectRatio: AspectRatio;
+  capturedAt: string;
+  processingState: CaptureProcessingState;
+  renderPlanJson: string;
+  selectedMusicJson: string | null;
+  renderSummary: string;
+  finalUri: string | null;
+  finalContentHash: string | null;
+  finalByteSize: number | null;
+  encoder: string | null;
+  retryCount: number;
+  lastError: string | null;
+  nextAttemptAt: string;
   updatedAt: string;
 }
 
@@ -50,4 +76,5 @@ export interface OfflineSnapshot {
   pendingMedia: LocalMediaRecord[];
   queue: SyncQueueItem[];
   sharedMedia: SharedMediaRecord[];
+  capturePipeline: CapturePipelineRecord[];
 }

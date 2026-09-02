@@ -13,7 +13,7 @@ import { MediaGallery } from './gallery/media-gallery';
 import { APP_VERSION, AboutAndTerms, TermsGate, fetchReleaseInfo, type ReleaseInfo } from './legal/legal-and-info';
 import { StationNotificationCenter } from './notifications/station-notification-center';
 import { SQLiteLocalStore } from './offline/sqlite-store';
-import type { LocalMediaRecord, PersistedStationContext } from './offline/types';
+import type { CapturePipelineRecord, PersistedStationContext } from './offline/types';
 import { UserProfile } from './profile/user-profile';
 import { EventReadyScreen } from './readiness/event-ready-screen';
 import { SecurePasswordField } from './security/secure-password-field';
@@ -24,6 +24,7 @@ import { SharingStationPanel } from './sharing/sharing-station-panel';
 import { SharingErrorBoundary } from './sharing/sharing-error-boundary';
 import { StationBootstrapService } from './station/station-bootstrap';
 import { CreativeStudio } from './studio/creative-studio';
+import { useCaptureProcessing } from './studio/capture-processing-runner';
 import { useCaptureSync } from './sync/capture-sync-runner';
 
 const EVENT_KEEP_AWAKE_TAG = 'khe-booth-event';
@@ -93,6 +94,7 @@ function App() {
   const [securityOptionsHidden, setSecurityOptionsHidden] = useState(false);
 
   useCaptureSync(api, store, vault, station?.mode === 'CAPTURE' && Boolean(stationToken));
+  useCaptureProcessing(store, station?.session.eventId ?? null, station?.mode === 'CAPTURE' && Boolean(stationToken));
 
   useEffect(() => {
     let cancelled = false;
@@ -241,8 +243,8 @@ function App() {
     return Boolean(expected && expected === password);
   }
 
-  function handleCaptured(media: LocalMediaRecord, format: AspectRatio): void {
-    setMessage(`Capture ${format} conservée localement (${Math.max(1, Math.round(media.byteSize / 1024 / 1024))} Mo) et placée en attente de synchronisation.`);
+  function handleCaptured(capture: CapturePipelineRecord, format: AspectRatio): void {
+    setMessage(`Capture brute ${format} conservée localement (${Math.max(1, Math.round(capture.rawByteSize / 1024 / 1024))} Mo). Studio prépare automatiquement le rendu final.`);
   }
 
   function enableEventScreen():void{
