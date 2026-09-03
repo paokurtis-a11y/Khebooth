@@ -7,6 +7,7 @@ import type {
   LocalMediaRecord,
   OfflineSnapshot,
   PersistedStationContext,
+  QueuedDiagnosticReport,
   SharedMediaRecord,
   SyncQueueItem,
 } from './types';
@@ -16,6 +17,13 @@ type MediaRow = LocalMediaRecord;
 type QueueRow = SyncQueueItem;
 type SharedMediaRow = SharedMediaRecord;
 type CapturePipelineRow = CapturePipelineRecord;
+type DiagnosticRow = {
+  reportId: string;
+  reportJson: string;
+  retryCount: number;
+  nextAttemptAt: string;
+  lastError: string | null;
+};
 
 const DATABASE_SCHEMA = `
   PRAGMA journal_mode = WAL;
@@ -91,6 +99,14 @@ const DATABASE_SCHEMA = `
     cachedAt TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS shared_media_event_idx ON shared_media(eventId, acknowledgedAt);
+  CREATE TABLE IF NOT EXISTS diagnostic_queue (
+    reportId TEXT PRIMARY KEY NOT NULL,
+    reportJson TEXT NOT NULL,
+    retryCount INTEGER NOT NULL DEFAULT 0,
+    nextAttemptAt TEXT NOT NULL,
+    lastError TEXT
+  );
+  CREATE INDEX IF NOT EXISTS diagnostic_queue_attempt_idx ON diagnostic_queue(nextAttemptAt);
 `;
 
 export class SQLiteLocalStore implements LocalStore {
@@ -368,6 +384,46 @@ export class SQLiteLocalStore implements LocalStore {
     });
   }
 
+  async upsertDiagnostic(report: QueuedDiagnosticReport): Promise<void> {
+    await this.withNativeRecovery(async (db) => {
+      const { retryCount, nextAttemptAt, lastError, ...payload } = report;
+      await db.runAsync(
+        `INSERT INTO diagnostic_queue(reportId,reportJson,retryCount,nextAttemptAt,lastError) VALUES(?,?,?,?,?)
+         ON CONFLICT(reportId) DO UPDATE SET
+           reportJson=excluded.reportJson,
+           retryCount=excluded.retryCount,
+           nextAttemptAt=excluded.nextAttemptAt,
+           lastError=excluded.lastError`,
+        report.reportId,
+        JSON.stringify(payload),
+        retryCount,
+        nextAttemptAt,
+        lastError,
+      );
+    });
+  }
+
+  async listPendingDiagnostics(limit = 10): Promise<QueuedDiagnosticReport[]> {
+    return this.withNativeRecovery(async (db) => {
+      const rows = await db.getAllAsync<DiagnosticRow>(
+        'SELECT * FROM diagnostic_queue ORDER BY nextAttemptAt ASC LIMIT ?',
+        Math.max(0, limit),
+      );
+      return rows.map((row) => ({
+        ...(JSON.parse(row.reportJson) as Omit<QueuedDiagnosticReport, 'retryCount' | 'nextAttemptAt' | 'lastError'>),
+        retryCount: row.retryCount,
+        nextAttemptAt: row.nextAttemptAt,
+        lastError: row.lastError,
+      }));
+    });
+  }
+
+  async removeDiagnostic(reportId: string): Promise<void> {
+    await this.withNativeRecovery(async (db) => {
+      await db.runAsync('DELETE FROM diagnostic_queue WHERE reportId = ?', reportId);
+    });
+  }
+
   async replaceSharedMedia(eventId: string, media: SharedMediaRecord[]): Promise<void> {
     await this.withNativeRecovery(async (db) => {
       await db.withTransactionAsync(async () => {
@@ -408,6 +464,7 @@ export class SQLiteLocalStore implements LocalStore {
       queue: await this.listQueue(),
       sharedMedia: await this.listSharedMedia(eventId),
       capturePipeline: await this.listCaptures(eventId),
+      diagnostics: await this.listPendingDiagnostics(100),
     };
   }
 }

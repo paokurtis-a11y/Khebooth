@@ -7,6 +7,8 @@ import type {
   StationControlCommandContract,
   StationControlContract,
   StationControlStatusContract,
+  StationDiagnosticReceiptContract,
+  StationDiagnosticReportContract,
   StationLiveSessionContract,
   StationRedeemRequestContract,
   StationRedeemResponseContract,
@@ -225,6 +227,7 @@ export interface StationApi {
 
 /** Extended client-facing station contract used by Profile, Settings and SHARING workspace. */
 export interface StationExperienceApi extends StationApi {
+  reportDiagnostic(stationToken: string, report: StationDiagnosticReportContract): Promise<StationDiagnosticReceiptContract>;
   requestControlConnection(stationToken: string): Promise<StationControlContract>;
   respondControlConnection(stationToken: string, accepted: boolean): Promise<StationControlContract>;
   disconnectControlConnection(stationToken: string): Promise<StationControlContract>;
@@ -334,6 +337,7 @@ export class HttpStationApi implements StationExperienceApi {
   }
 
   redeem(request: StationRedeemRequestContract) { return this.request<StationRedeemResponseContract>('/stations/redeem', { method: 'POST', body: JSON.stringify(request) }); }
+  reportDiagnostic(token: string, report: StationDiagnosticReportContract) { return this.stationRequest<StationDiagnosticReceiptContract>('/stations/diagnostics', token, { method: 'POST', body: JSON.stringify(report) }); }
   manifest(token: string) { return this.stationRequest<EventManifestContract>('/stations/manifest', token); }
   liveSession(token: string) { return this.stationRequest<StationLiveSessionContract>('/stations/live-session', token); }
   control(token: string) { return this.stationRequest<StationControlContract>('/stations/control', token); }

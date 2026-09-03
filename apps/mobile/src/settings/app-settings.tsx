@@ -307,6 +307,12 @@ export function SettingsScreen({ onClose, language='fr' }: { onClose: () => void
 
         <SharingBusinessSettingsPanel api={api} />
 
+        <View style={styles.sectionCard}>
+          <Text style={styles.cardTitle}>DIAGNOSTIC AUTOMATIQUE KHE</Text>
+          <Text style={styles.sectionTitle}>Protection active</Text>
+          <Text style={styles.help}>En cas d’erreur ou de plantage, un rapport technique filtré est conservé hors ligne puis envoyé au support KHE dès que la connexion revient. Aucun mot de passe, jeton, adresse e-mail, photo ou vidéo n’est joint.</Text>
+        </View>
+
         <View style={styles.note}>
           <Text style={styles.noteTitle}>{t(language,'mobileData')}</Text>
           <Text style={styles.noteText}>{t(language,'mobileDataNote')}</Text>

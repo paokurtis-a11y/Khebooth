@@ -1,12 +1,13 @@
-import type { AspectRatio, StationMode } from '@khe/contracts';
+import type { AspectRatio, DiagnosticSeverity, StationMode } from '@khe/contracts';
 import { registerRootComponent } from 'expo';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import * as SecureStore from 'expo-secure-store';
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
 import { ActivityIndicator, Alert, Animated, Pressable, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { HttpStationApi } from './api/station-api';
 import { CameraCapture } from './capture/camera-capture';
 import { API_BASE_URL } from './config';
+import { useMobileDiagnostics } from './diagnostics/use-mobile-diagnostics';
 import { t } from './experience/i18n';
 import { LanguageAndRegion, UserGuide, getDeviceLocaleInfo, languageLabel, loadLanguagePreference, type AppLanguage } from './experience/user-guide-and-language';
 import { MediaGallery } from './gallery/media-gallery';
@@ -92,6 +93,13 @@ function App() {
   const [newLockPassword, setNewLockPassword] = useState('');
   const [confirmLockPassword, setConfirmLockPassword] = useState('');
   const [securityOptionsHidden, setSecurityOptionsHidden] = useState(false);
+  const { reportError } = useMobileDiagnostics(api, store, stationToken);
+  const handleDiagnostic = useCallback((source:string,error:unknown,context?:Record<string,unknown>,severity?:DiagnosticSeverity) => {
+    void reportError(source,error,context,severity);
+  }, [reportError]);
+  const handleSharingError = useCallback((error:Error,info:ErrorInfo) => {
+    handleDiagnostic('sharing.error-boundary',error,{componentStack:info.componentStack},'FATAL');
+  }, [handleDiagnostic]);
 
   useCaptureSync(api, store, vault, station?.mode === 'CAPTURE' && Boolean(stationToken));
   useCaptureProcessing(store, station?.session.eventId ?? null, station?.mode === 'CAPTURE' && Boolean(stationToken));
@@ -288,7 +296,7 @@ function App() {
   if (settingsOpen) return <BackPage language={appLanguage} onBack={() => setSettingsOpen(false)}><SettingsScreen language={appLanguage} onClose={() => {setSettingsOpen(false);returnToMenu();}} /></BackPage>;
   if (studioOpen && station && stationToken) return <BackPage language={appLanguage} onBack={() => setStudioOpen(false)}><CreativeStudio api={api} stationToken={stationToken} eventId={station.session.eventId} onSaved={(plan)=>api.markClientEventDesignReady(stationToken,station.session.eventId,plan as unknown as Record<string,unknown>)} onClose={() => {setStudioOpen(false);returnToMenu();}} /></BackPage>;
   if (profileOpen) return <BackPage language={appLanguage} onBack={() => setProfileOpen(false)}><UserProfile onClose={() => {setProfileOpen(false);returnToMenu();}} /></BackPage>;
-  if (cameraOpen && station?.mode === 'CAPTURE' && stationToken) return <BackPage language={appLanguage} onBack={() => setCameraOpen(false)}><CameraCapture eventId={station.session.eventId} store={store} api={api} stationToken={stationToken} onClose={() => setCameraOpen(false)} onCaptured={handleCaptured} /></BackPage>;
+  if (cameraOpen && station?.mode === 'CAPTURE' && stationToken) return <BackPage language={appLanguage} onBack={() => setCameraOpen(false)}><CameraCapture eventId={station.session.eventId} store={store} api={api} stationToken={stationToken} onClose={() => setCameraOpen(false)} onCaptured={handleCaptured} onDiagnostic={handleDiagnostic} /></BackPage>;
   if (galleryOpen && station?.mode === 'CAPTURE') return <BackPage language={appLanguage} onBack={() => setGalleryOpen(false)}><MediaGallery eventId={station.session.eventId} eventName={eventName ?? station.session.eventId} store={store} onClose={() => setGalleryOpen(false)} /></BackPage>;
 
   const menuItemStyle=(section:MenuSection)=>[styles.menuItem,activeMenu===section&&styles.menuItemActive];
@@ -335,7 +343,7 @@ function App() {
 
               {station.mode === 'SHARING' && !securityOptionsHidden ? <View style={styles.securityCard}><Text style={styles.awakeTitle}>{t(appLanguage,'securityOptional')}</Text><Text style={styles.securityTitle}>{lockConfigured ? t(appLanguage,'passwordConfigured') : t(appLanguage,'createPassword')}</Text><Text style={styles.awakeHelp}>{lockConfigured ? t(appLanguage,'replacePasswordHelp') : t(appLanguage,'passwordOptionalHelp')}</Text><SecurePasswordField value={newLockPassword} onChangeText={setNewLockPassword} placeholder={lockConfigured ? t(appLanguage,'newPassword') : t(appLanguage,'password')} /><SecurePasswordField value={confirmLockPassword} onChangeText={setConfirmLockPassword} placeholder={t(appLanguage,'confirmPassword')} onSubmitEditing={() => void saveLockPassword()} /><Pressable disabled={!newLockPassword || !confirmLockPassword} onPress={() => void saveLockPassword()} style={styles.securityButton}><Text style={styles.securityButtonText}>{lockConfigured ? t(appLanguage,'changePassword') : t(appLanguage,'savePassword')}</Text></Pressable><Pressable style={styles.skipButton} onPress={() => setSecurityOptionsHidden(true)}><Text style={styles.skipButtonText}>{t(appLanguage,'skipConfiguration')}</Text></Pressable></View> : null}
 
-              {station.mode === 'SHARING' && stationToken ? <SharingErrorBoundary><SharingStationPanel eventName={eventName ?? 'KHE Booth'} api={api} stationToken={stationToken} store={store} /></SharingErrorBoundary> : <><Text style={styles.label}>{t(appLanguage,'stationActive')}</Text><Text style={styles.value}>{station.mode}</Text><Text style={styles.label}>{t(appLanguage,'event')}</Text><Text style={styles.value}>{eventName ?? station.session.eventId}</Text><Text style={styles.label}>{t(appLanguage,'kheId')}</Text><Text style={styles.value}>{kheEventNumber(station.session.eventId)}</Text><Pressable disabled={busy} style={styles.primaryButton} onPress={() => void refreshManifest()}><Text style={styles.primaryButtonText}>{busy ? t(appLanguage,'syncing') : t(appLanguage,'refreshManifest')}</Text></Pressable><View style={styles.captureActions}><Pressable disabled={busy || !stationToken} style={styles.captureButton} onPress={() => setCameraOpen(true)}><Text style={styles.captureButtonText}>{t(appLanguage,'openCamera')}</Text></Pressable><Pressable disabled={busy} style={styles.galleryButton} onPress={() => setGalleryOpen(true)}><Text style={styles.galleryButtonText}>{t(appLanguage,'gallery')}</Text></Pressable></View><Text style={styles.notice}>{t(appLanguage,'studioNotice')}</Text></>}
+              {station.mode === 'SHARING' && stationToken ? <SharingErrorBoundary onError={handleSharingError}><SharingStationPanel eventName={eventName ?? 'KHE Booth'} api={api} stationToken={stationToken} store={store} /></SharingErrorBoundary> : <><Text style={styles.label}>{t(appLanguage,'stationActive')}</Text><Text style={styles.value}>{station.mode}</Text><Text style={styles.label}>{t(appLanguage,'event')}</Text><Text style={styles.value}>{eventName ?? station.session.eventId}</Text><Text style={styles.label}>{t(appLanguage,'kheId')}</Text><Text style={styles.value}>{kheEventNumber(station.session.eventId)}</Text><Pressable disabled={busy} style={styles.primaryButton} onPress={() => void refreshManifest()}><Text style={styles.primaryButtonText}>{busy ? t(appLanguage,'syncing') : t(appLanguage,'refreshManifest')}</Text></Pressable><View style={styles.captureActions}><Pressable disabled={busy || !stationToken} style={styles.captureButton} onPress={() => setCameraOpen(true)}><Text style={styles.captureButtonText}>{t(appLanguage,'openCamera')}</Text></Pressable><Pressable disabled={busy} style={styles.galleryButton} onPress={() => setGalleryOpen(true)}><Text style={styles.galleryButtonText}>{t(appLanguage,'gallery')}</Text></Pressable></View><Text style={styles.notice}>{t(appLanguage,'studioNotice')}</Text></>}
             </View>
           ) : <View style={styles.section}><Text style={styles.label}>{t(appLanguage,'tabletMode')}</Text><View style={styles.modeRow}>{(['CAPTURE', 'SHARING'] as const).map((candidate) => <Pressable key={candidate} onPress={() => setMode(candidate)} style={[styles.modeButton, mode === candidate && styles.modeButtonActive]}><Text style={mode === candidate ? styles.modeTextActive : styles.modeText}>{candidate}</Text></Pressable>)}</View><Text style={styles.label}>{t(appLanguage,'activationCode')}</Text><TextInput autoCapitalize="characters" autoCorrect={false} value={code} onChangeText={setCode} placeholder="KHE-123456" style={styles.input} /><Text style={styles.activationHelp}>{t(appLanguage,'noEventId')}</Text><Pressable disabled={busy || !code.trim()} style={styles.primaryButton} onPress={() => void activate()}><Text style={styles.primaryButtonText}>{busy ? t(appLanguage,'activating') : t(appLanguage,'activateStation')}</Text></Pressable><Pressable style={styles.termsLink} onPress={() => setAboutOpen(true)}><Text style={styles.termsLinkText}>{t(appLanguage,'terms')} • {t(appLanguage,'version')} {APP_VERSION}</Text></Pressable></View>}
           {message ? <Text style={styles.message}>{message}</Text> : null}

@@ -1,4 +1,4 @@
-import type { AspectRatio, EventManifestContract, MediaSyncState, StationMode, StationSessionContract } from '@khe/contracts';
+import type { AspectRatio, EventManifestContract, MediaSyncState, StationDiagnosticReportContract, StationMode, StationSessionContract } from '@khe/contracts';
 
 export interface PersistedStationContext {
   session: StationSessionContract;
@@ -70,6 +70,13 @@ export interface SyncQueueItem {
   lastError: string | null;
 }
 
+export interface QueuedDiagnosticReport extends Omit<StationDiagnosticReportContract, 'occurredAt'> {
+  occurredAt: string;
+  retryCount: number;
+  nextAttemptAt: string;
+  lastError: string | null;
+}
+
 export interface OfflineSnapshot {
   station: PersistedStationContext | null;
   manifest: EventManifestContract | null;
@@ -77,4 +84,5 @@ export interface OfflineSnapshot {
   queue: SyncQueueItem[];
   sharedMedia: SharedMediaRecord[];
   capturePipeline: CapturePipelineRecord[];
+  diagnostics: QueuedDiagnosticReport[];
 }
