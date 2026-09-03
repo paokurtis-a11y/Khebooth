@@ -2,12 +2,13 @@ import { useEffect, useMemo, useRef } from 'react';
 import { AppState } from 'react-native';
 import type { LocalStore } from '../offline/local-store';
 import { CaptureProcessingService } from './capture-processing';
-import { renderFinalMedia } from './media-renderer';
+import { createLazyFinalMediaRenderer } from './lazy-media-renderer';
 
 const PROCESS_INTERVAL_MS = 750;
 
 export function useCaptureProcessing(store: LocalStore, eventId: string | null, enabled: boolean): void {
-  const service = useMemo(() => new CaptureProcessingService(store, renderFinalMedia), [store]);
+  const renderer = useMemo(() => createLazyFinalMediaRenderer(), []);
+  const service = useMemo(() => new CaptureProcessingService(store, renderer), [renderer, store]);
   const runningRef = useRef(false);
 
   useEffect(() => {

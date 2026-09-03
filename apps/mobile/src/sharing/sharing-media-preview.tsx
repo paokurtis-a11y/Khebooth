@@ -1,6 +1,6 @@
 import { useEventListener } from 'expo';
-import { useEffect, useState } from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { useEffect } from 'react';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import type { SharingMediaFit } from '../api/station-api';
 
@@ -9,6 +9,8 @@ interface PreviewProps {
   mimeType: string;
   autoplay: boolean;
   mediaFit: SharingMediaFit;
+  active?: boolean;
+  onActivate?: () => void;
   onAspectRatio?: (ratio: number) => void;
 }
 
@@ -53,12 +55,21 @@ function LoadingMoment() {
 }
 
 export function SharingMediaPreview(props: PreviewProps) {
-  if (props.mimeType.startsWith('video/')) return <VideoMoment {...props} />;
+  if (props.mimeType.startsWith('video/')) {
+    if (!props.uri) return <LoadingMoment />;
+    if (!props.active) {
+      return <Pressable accessibilityRole="button" accessibilityLabel="Lire cette vidéo" style={styles.videoPoster} onPress={props.onActivate}><Text style={styles.playIcon}>▶</Text><Text style={styles.playText}>TOUCHER POUR LIRE</Text></Pressable>;
+    }
+    return <VideoMoment {...props} />;
+  }
   return <ImageMoment uri={props.uri} mediaFit={props.mediaFit} onAspectRatio={props.onAspectRatio} />;
 }
 
 const styles = StyleSheet.create({
   media: { width: '100%', height: '100%' },
+  videoPoster: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#151519' },
+  playIcon: { color: '#d2ad4f', fontSize: 34 },
+  playText: { color: '#ffffff', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#151519' },
   loadingText: { color: '#d2ad4f', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
 });

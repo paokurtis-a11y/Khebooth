@@ -101,6 +101,7 @@ export function SharingMediaGallery({ eventName, api, stationToken }: SharingMed
   const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
   const [trashOpen, setTrashOpen] = useState(false);
   const [trashItems, setTrashItems] = useState<SharingTrashItem[]>([]);
   const refreshingRef = useRef(false);
@@ -264,6 +265,7 @@ export function SharingMediaGallery({ eventName, api, stationToken }: SharingMed
     setShares((current)=>Object.fromEntries(Object.entries(current).filter(([key])=>!idSet.has(key))));
     setSocialShares((current)=>Object.fromEntries(Object.entries(current).filter(([key])=>!ids.some((id)=>key.startsWith(`${id}:`)))));
     ids.forEach((id)=>receivedIdsRef.current.delete(id));
+    if(activeVideoId&&ids.includes(activeVideoId))setActiveVideoId(null);
     if(activeSocialKey&&ids.some((id)=>activeSocialKey.startsWith(`${id}:`)))setActiveSocialKey(null);
   }
 
@@ -351,7 +353,7 @@ export function SharingMediaGallery({ eventName, api, stationToken }: SharingMed
               <View key={item.id} style={[styles.mediaCard,{ width: cardWidth },selected&&styles.mediaCardSelected]}>
                 {selectionMode?<Pressable onPress={()=>toggleSelection(item.id)} style={[styles.selectControl,selected&&styles.selectControlActive]}><Text style={[styles.selectControlText,selected&&styles.selectControlTextActive]}>{selected?'✓':'○'} {selected?'Sélectionné':'Sélectionner'}</Text></Pressable>:null}
                 <View style={[styles.previewFrame, { height: previewHeight(item.id) }]}>
-                  <SharingMediaPreview uri={localUris[item.id] ?? null} mimeType={item.mimeType} autoplay={businessEnabled ? businessSettings.videoAutoplay : true} mediaFit={businessEnabled ? businessSettings.mediaFit : 'COVER'} onAspectRatio={(ratio) => rememberAspect(item.id, ratio)} />
+                  <SharingMediaPreview uri={localUris[item.id] ?? null} mimeType={item.mimeType} autoplay={businessEnabled ? businessSettings.videoAutoplay : true} mediaFit={businessEnabled ? businessSettings.mediaFit : 'COVER'} active={activeVideoId===item.id} onActivate={()=>setActiveVideoId(item.id)} onAspectRatio={(ratio) => rememberAspect(item.id, ratio)} />
                   <View style={styles.previewBadge}><Text style={styles.previewBadgeText}>{kind}</Text></View>
                 </View>
                 <View style={styles.mediaTopRow}>
