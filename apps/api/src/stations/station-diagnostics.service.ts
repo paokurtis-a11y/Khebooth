@@ -109,9 +109,13 @@ export class StationDiagnosticsService {
       },
     });
     if (conversationId) {
+      const chatbotAlert = this.chatbotAlertBody(station, report);
+      await this.prisma.supportMessage.create({
+        data: { conversationId, author: SupportMessageAuthor.SYSTEM, body },
+      });
       await Promise.all([
         this.prisma.supportMessage.create({
-          data: { conversationId, author: SupportMessageAuthor.SYSTEM, body },
+          data: { conversationId, author: SupportMessageAuthor.KHE, body: chatbotAlert },
         }),
         this.prisma.supportConversation.update({
           where: { id: conversationId },
@@ -183,6 +187,16 @@ export class StationDiagnosticsService {
       `Empreinte : ${report.fingerprint}`,
       'Les mots de passe, jetons, clés, cookies et adresses e-mail ont été masqués automatiquement. Aucun média photo ou vidéo n’est joint.',
     ].join('\n').slice(0, 12_000);
+  }
+
+  private chatbotAlertBody(station: AuthenticatedStation, report: StationDiagnosticReport): string {
+    const alert = report.severity === 'FATAL' ? '🚨 Incident critique détecté' : '⚠️ Incident détecté';
+    return [
+      `${alert} automatiquement par KHE Booth.`,
+      `Station : ${station.mode} · Version : ${report.appVersion} · Appareil : ${station.deviceId.slice(0, 12)}`,
+      `Problème : ${report.message}`,
+      'Le journal technique filtré a été transmis à l’équipe KHE. Ne désinstallez pas l’application et n’effacez pas ses données : les prochaines informations apparaîtront dans cette conversation.',
+    ].join('\n').slice(0, 1_500);
   }
 
   private async sendEmail(
