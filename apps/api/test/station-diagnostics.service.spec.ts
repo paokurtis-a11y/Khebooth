@@ -69,7 +69,16 @@ describe('StationDiagnosticsService', () => {
     });
 
     expect(result).toEqual({ accepted: true, deduplicated: false, rateLimited: false, conversationId: 'conversation-1', emailSent: true });
-    expect(messageCreate).toHaveBeenCalledTimes(1);
+    expect(messageCreate).toHaveBeenCalledTimes(2);
+    expect(messageCreate).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      data: expect.objectContaining({ author: 'SYSTEM' }),
+    }));
+    expect(messageCreate).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      data: expect.objectContaining({
+        author: 'KHE',
+        body: expect.stringContaining('Incident détecté automatiquement par KHE Booth'),
+      }),
+    }));
     expect(notificationCreate).toHaveBeenCalledTimes(1);
     expect(global.fetch).toHaveBeenCalledTimes(1);
     const emailRequest = (global.fetch as jest.Mock).mock.calls[0]?.[1] as RequestInit;
