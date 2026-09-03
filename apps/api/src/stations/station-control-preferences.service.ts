@@ -31,16 +31,23 @@ export class StationControlPreferencesService {
   constructor(private readonly prisma: PrismaService) {}
 
   async get(station: AuthenticatedStation): Promise<StationControlPreferences> {
-    await this.ensure(station);
+    let row = await this.read(station);
+    if (!row) {
+      await this.ensure(station);
+      row = await this.read(station);
+    }
+    if (!row) throw new BadRequestException('Capture preferences are unavailable');
+    return row;
+  }
+
+  private async read(station: AuthenticatedStation): Promise<PreferenceRow | null> {
     const rows = await this.prisma.$queryRaw<PreferenceRow[]>`
       SELECT "captureKind", "aspectRatio", "countdownSeconds", "updatedAt"
       FROM "StationControlPreference"
       WHERE "organizationId"=${station.organizationId}::uuid AND "eventId"=${station.eventId}::uuid
       LIMIT 1
     `;
-    const row = rows[0];
-    if (!row) throw new BadRequestException('Capture preferences are unavailable');
-    return row;
+    return rows[0] ?? null;
   }
 
   async updateFromSharing(station: AuthenticatedStation, body: Record<string, unknown>) {

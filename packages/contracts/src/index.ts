@@ -121,6 +121,13 @@ export interface StationRedeemResponseContract {
   manifest: EventManifestContract;
 }
 
+export interface StationControlPreferencesContract {
+  captureKind: 'PHOTO' | 'VIDEO';
+  aspectRatio: '9:16' | '1:1';
+  countdownSeconds: 0 | 3 | 5 | 10;
+  updatedAt: string | Date;
+}
+
 export interface StationControlContract {
   eventId: string;
   command: RemoteCaptureCommand;
@@ -134,6 +141,7 @@ export interface StationControlContract {
   sharingConnectionStatus?: SharingConnectionStatus;
   sharingRequestedAt?: string | Date | null;
   sharingRespondedAt?: string | Date | null;
+  preferences?: StationControlPreferencesContract;
   updatedAt: string | Date;
 }
 
