@@ -192,8 +192,8 @@ export class SQLiteLocalStore implements LocalStore {
   }
 
   async upsertMedia(media: LocalMediaRecord): Promise<void> {
-    const db = await this.database();
-    await db.runAsync(
+    await this.withNativeRecovery(async (db) => {
+      await db.runAsync(
       `INSERT INTO local_media(
         localId,eventId,idempotencyKey,contentHash,byteSize,mimeType,localUri,capturedAt,
         syncState,remoteId,uploadedBytes,acknowledgedAt,retryCount,lastError,updatedAt
@@ -227,13 +227,15 @@ export class SQLiteLocalStore implements LocalStore {
       media.acknowledgedAt,
       media.retryCount,
       media.lastError,
-      media.updatedAt,
-    );
+        media.updatedAt,
+      );
+    });
   }
 
   async getMedia(localId: string): Promise<LocalMediaRecord | null> {
-    const db = await this.database();
-    return (await db.getFirstAsync<MediaRow>('SELECT * FROM local_media WHERE localId = ?', localId)) ?? null;
+    return this.withNativeRecovery(async (db) =>
+      (await db.getFirstAsync<MediaRow>('SELECT * FROM local_media WHERE localId = ?', localId)) ?? null,
+    );
   }
 
   async listMedia(eventId: string): Promise<LocalMediaRecord[]> {
@@ -246,18 +248,20 @@ export class SQLiteLocalStore implements LocalStore {
   }
 
   async listPendingMedia(eventId: string): Promise<LocalMediaRecord[]> {
-    const db = await this.database();
-    return db.getAllAsync<MediaRow>(
-      "SELECT * FROM local_media WHERE eventId = ? AND syncState <> 'SYNCED' ORDER BY capturedAt ASC",
-      eventId,
+    return this.withNativeRecovery(async (db) =>
+      db.getAllAsync<MediaRow>(
+        "SELECT * FROM local_media WHERE eventId = ? AND syncState <> 'SYNCED' ORDER BY capturedAt ASC",
+        eventId,
+      ),
     );
   }
 
   async deleteMedia(localId: string): Promise<void> {
-    const db = await this.database();
-    await db.withTransactionAsync(async () => {
-      await db.runAsync('DELETE FROM sync_queue WHERE localId = ?', localId);
-      await db.runAsync('DELETE FROM local_media WHERE localId = ?', localId);
+    await this.withNativeRecovery(async (db) => {
+      await db.withTransactionAsync(async () => {
+        await db.runAsync('DELETE FROM sync_queue WHERE localId = ?', localId);
+        await db.runAsync('DELETE FROM local_media WHERE localId = ?', localId);
+      });
     });
   }
 
@@ -337,57 +341,62 @@ export class SQLiteLocalStore implements LocalStore {
   }
 
   async enqueue(item: SyncQueueItem): Promise<void> {
-    const db = await this.database();
-    await db.runAsync(
-      `INSERT INTO sync_queue(localId,nextAttemptAt,retryCount,lastError) VALUES(?,?,?,?)
-       ON CONFLICT(localId) DO UPDATE SET
-         nextAttemptAt=excluded.nextAttemptAt,
-         retryCount=excluded.retryCount,
-         lastError=excluded.lastError`,
-      item.localId,
-      item.nextAttemptAt,
-      item.retryCount,
-      item.lastError,
-    );
+    await this.withNativeRecovery(async (db) => {
+      await db.runAsync(
+        `INSERT INTO sync_queue(localId,nextAttemptAt,retryCount,lastError) VALUES(?,?,?,?)
+         ON CONFLICT(localId) DO UPDATE SET
+           nextAttemptAt=excluded.nextAttemptAt,
+           retryCount=excluded.retryCount,
+           lastError=excluded.lastError`,
+        item.localId,
+        item.nextAttemptAt,
+        item.retryCount,
+        item.lastError,
+      );
+    });
   }
 
   async listQueue(): Promise<SyncQueueItem[]> {
-    const db = await this.database();
-    return db.getAllAsync<QueueRow>('SELECT * FROM sync_queue ORDER BY nextAttemptAt ASC');
+    return this.withNativeRecovery(async (db) =>
+      db.getAllAsync<QueueRow>('SELECT * FROM sync_queue ORDER BY nextAttemptAt ASC'),
+    );
   }
 
   async removeQueueItem(localId: string): Promise<void> {
-    const db = await this.database();
-    await db.runAsync('DELETE FROM sync_queue WHERE localId = ?', localId);
+    await this.withNativeRecovery(async (db) => {
+      await db.runAsync('DELETE FROM sync_queue WHERE localId = ?', localId);
+    });
   }
 
   async replaceSharedMedia(eventId: string, media: SharedMediaRecord[]): Promise<void> {
-    const db = await this.database();
-    await db.withTransactionAsync(async () => {
-      await db.runAsync('DELETE FROM shared_media WHERE eventId = ?', eventId);
-      for (const item of media) {
-        await db.runAsync(
-          `INSERT INTO shared_media(id,eventId,localId,contentHash,byteSize,mimeType,capturedAt,acknowledgedAt,cachedAt)
-           VALUES(?,?,?,?,?,?,?,?,?)`,
-          item.id,
-          item.eventId,
-          item.localId,
-          item.contentHash,
-          item.byteSize,
-          item.mimeType,
-          item.capturedAt,
-          item.acknowledgedAt,
-          item.cachedAt,
-        );
-      }
+    await this.withNativeRecovery(async (db) => {
+      await db.withTransactionAsync(async () => {
+        await db.runAsync('DELETE FROM shared_media WHERE eventId = ?', eventId);
+        for (const item of media) {
+          await db.runAsync(
+            `INSERT INTO shared_media(id,eventId,localId,contentHash,byteSize,mimeType,capturedAt,acknowledgedAt,cachedAt)
+             VALUES(?,?,?,?,?,?,?,?,?)`,
+            item.id,
+            item.eventId,
+            item.localId,
+            item.contentHash,
+            item.byteSize,
+            item.mimeType,
+            item.capturedAt,
+            item.acknowledgedAt,
+            item.cachedAt,
+          );
+        }
+      });
     });
   }
 
   async listSharedMedia(eventId: string): Promise<SharedMediaRecord[]> {
-    const db = await this.database();
-    return db.getAllAsync<SharedMediaRow>(
-      'SELECT * FROM shared_media WHERE eventId = ? ORDER BY acknowledgedAt ASC',
-      eventId,
+    return this.withNativeRecovery(async (db) =>
+      db.getAllAsync<SharedMediaRow>(
+        'SELECT * FROM shared_media WHERE eventId = ? ORDER BY acknowledgedAt DESC',
+        eventId,
+      ),
     );
   }
 

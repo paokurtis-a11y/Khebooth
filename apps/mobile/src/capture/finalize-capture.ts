@@ -4,6 +4,7 @@ import type { LocalStore } from '../offline/local-store';
 import type { CapturePipelineRecord } from '../offline/types';
 import type { CreativePlan } from '../studio/creative-studio';
 import { planCaptureRender, renderSummary } from '../studio/render-plan';
+import { copyAndVerifyCapturedFile } from './capture-file-commit';
 
 export interface FinalizeCaptureInput {
   eventId: string;
@@ -33,8 +34,10 @@ export async function finalizeCapture(input: FinalizeCaptureInput): Promise<Fina
   const source = new File(input.sourceUri);
   if (!source.exists || source.size <= 0) throw new Error('Le média brut est introuvable après la capture.');
   const raw = new File(rawDirectory, `${localId}-raw.${input.extension}`);
-  source.copy(raw);
-  if (!raw.exists || raw.size <= 0 || !raw.md5) throw new Error('Le média brut n’a pas pu être sécurisé localement.');
+  const verified = await copyAndVerifyCapturedFile(
+    () => source.copy(raw),
+    () => ({ exists: raw.exists, byteSize: raw.size ?? 0, contentHash: raw.md5 }),
+  );
 
   const renderJob = await planCaptureRender(input.eventId, localId, raw.uri, input.plan);
   const summary = renderSummary(renderJob);
@@ -42,8 +45,8 @@ export async function finalizeCapture(input: FinalizeCaptureInput): Promise<Fina
     localId,
     eventId: input.eventId,
     rawUri: raw.uri,
-    rawContentHash: raw.md5,
-    rawByteSize: raw.size,
+    rawContentHash: verified.contentHash,
+    rawByteSize: verified.byteSize,
     mimeType: input.mimeType,
     extension: input.extension,
     aspectRatio: input.aspectRatio,

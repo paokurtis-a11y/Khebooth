@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { AppState } from 'react-native';
+import { recoverOrphanedRawCaptures } from '../capture/capture-orphan-recovery';
 import type { LocalStore } from '../offline/local-store';
+import { loadCreativePlan } from './creative-studio';
 import { CaptureProcessingService } from './capture-processing';
 import { createLazyFinalMediaRenderer } from './lazy-media-renderer';
 
@@ -10,6 +12,7 @@ export function useCaptureProcessing(store: LocalStore, eventId: string | null, 
   const renderer = useMemo(() => createLazyFinalMediaRenderer(), []);
   const service = useMemo(() => new CaptureProcessingService(store, renderer), [renderer, store]);
   const runningRef = useRef(false);
+  const lastRecoveryScanRef = useRef(0);
 
   useEffect(() => {
     if (!enabled || !eventId) return;
@@ -20,6 +23,14 @@ export function useCaptureProcessing(store: LocalStore, eventId: string | null, 
       if (cancelled || runningRef.current) return;
       runningRef.current = true;
       try {
+        if (Date.now() - lastRecoveryScanRef.current >= 5_000) {
+          lastRecoveryScanRef.current = Date.now();
+          try {
+            await recoverOrphanedRawCaptures(eventId, store, await loadCreativePlan());
+          } catch (error) {
+            console.error('[capture:recovery] scan failed', { eventId, error: String(error) });
+          }
+        }
         await service.drain(eventId);
       } finally {
         runningRef.current = false;
