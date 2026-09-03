@@ -20,6 +20,7 @@ import { ProfileStorageService } from './profile-storage.service';
 import { SharingBusinessService } from './sharing-business.service';
 import { StationAuthGuard } from './station-auth.guard';
 import { StationConnectionService } from './station-connection.service';
+import { StationControlPreferencesService } from './station-control-preferences.service';
 import { StationNotificationsService } from './station-notifications.service';
 import { StationProfileService } from './station-profile.service';
 import { StationRenewalService } from './station-renewal.service';
@@ -40,6 +41,7 @@ export class StationsController {
     private readonly stationProfile: StationProfileService,
     private readonly stationNotifications: StationNotificationsService,
     private readonly stationConnection: StationConnectionService,
+    private readonly stationControlPreferences: StationControlPreferencesService,
     private readonly commerce: CommerceService,
     private readonly entitlements: EntitlementsService,
     private readonly clientEvents: ClientEventWorkspaceService,
@@ -120,7 +122,11 @@ export class StationsController {
   @UseGuards(StationAuthGuard)
   @Get('control') async control(@CurrentStation() station: AuthenticatedStation) {
     await this.entitlements.requireStation(station, 'SHARING');
-    return this.stationConnection.decorate(station, await this.stations.getControl(station));
+    const [control, preferences] = await Promise.all([
+      this.stations.getControl(station),
+      this.stationControlPreferences.get(station),
+    ]);
+    return { ...await this.stationConnection.decorate(station, control), preferences };
   }
   @UseGuards(StationAuthGuard)
   @Post('control/connection-request') async requestControlConnection(@CurrentStation() station: AuthenticatedStation) {

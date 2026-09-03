@@ -11,18 +11,30 @@ type ConnectionStateRow = {
   sharingRespondedAt: Date | null;
 };
 
+type DecoratableControl = {
+  sharingConnectionStatus: string;
+  sharingRequestedAt: Date | null;
+  sharingRespondedAt: Date | null;
+  captureSeenAt: Date | null;
+};
+
+function connectionStatus(value: string): SharingConnectionStatus {
+  return ['DISCONNECTED', 'PENDING', 'ACCEPTED', 'REJECTED'].includes(value)
+    ? value as SharingConnectionStatus
+    : 'DISCONNECTED';
+}
+
 @Injectable()
 export class StationConnectionService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async decorate<T extends { captureSeenAt: Date | null }>(station: AuthenticatedStation, control: T) {
-    const state = await this.readState(station.eventId);
-    const status = state?.sharingConnectionStatus ?? 'DISCONNECTED';
+  async decorate<T extends DecoratableControl>(station: AuthenticatedStation, control: T) {
+    const status = connectionStatus(control.sharingConnectionStatus);
     return {
       ...control,
       sharingConnectionStatus: status,
-      sharingRequestedAt: state?.sharingRequestedAt ?? null,
-      sharingRespondedAt: state?.sharingRespondedAt ?? null,
+      sharingRequestedAt: control.sharingRequestedAt ?? null,
+      sharingRespondedAt: control.sharingRespondedAt ?? null,
       captureSeenAt: station.mode === StationMode.SHARING && status !== 'ACCEPTED' ? null : control.captureSeenAt,
     };
   }

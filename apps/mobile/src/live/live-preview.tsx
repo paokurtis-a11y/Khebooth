@@ -157,8 +157,8 @@ export function SharingLivePreview({ api, stationToken }: SharingLivePreviewProp
     return (
       <View style={styles.placeholder}>
         <ActivityIndicator />
-        <Text style={styles.placeholderTitle}>APERÇU LIVE</Text>
-        <Text style={styles.placeholderText}>Préparation du canal vidéo sécurisé…</Text>
+        <Text style={styles.placeholderTitle}>FLUX CAMÉRA PROPRE</Text>
+        <Text style={styles.placeholderText}>Préparation du canal vidéo sécurisé sans commandes CAPTURE…</Text>
       </View>
     );
   }
@@ -166,7 +166,7 @@ export function SharingLivePreview({ api, stationToken }: SharingLivePreviewProp
   if (!session) {
     return (
       <View style={styles.placeholder}>
-        <Text style={styles.placeholderTitle}>APERÇU LIVE INDISPONIBLE</Text>
+        <Text style={styles.placeholderTitle}>FLUX CAMÉRA INDISPONIBLE</Text>
         <Text style={styles.placeholderText}>{error ?? 'Le service live n’est pas configuré.'}</Text>
         <Pressable style={styles.retryButton} onPress={() => setRetryNonce((current) => current + 1)}>
           <Text style={styles.retryText}>RÉESSAYER</Text>
