@@ -141,7 +141,7 @@ jobs:
         run: pnpm --filter @khe/mobile build
 
   publish-android-release:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/android-'))
     needs: validate-mobile
     runs-on: ubuntu-latest
     permissions:
