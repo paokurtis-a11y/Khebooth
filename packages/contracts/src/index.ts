@@ -30,6 +30,9 @@ export type SharingConnectionStatus = (typeof SHARING_CONNECTION_STATUSES)[numbe
 export const VISUAL_EFFECTS = ['NONE', 'WARM', 'COOL', 'GOLD', 'PARTY'] as const;
 export type VisualEffect = (typeof VISUAL_EFFECTS)[number];
 
+export const DIAGNOSTIC_SEVERITIES = ['WARNING', 'ERROR', 'FATAL'] as const;
+export type DiagnosticSeverity = (typeof DIAGNOSTIC_SEVERITIES)[number];
+
 export const CAPTURE_DURATIONS = [10, 15, 20, 25, 30] as const;
 export type CaptureDurationSeconds = (typeof CAPTURE_DURATIONS)[number];
 
@@ -145,6 +148,27 @@ export interface StationControlStatusContract {
   runtimeState?: RemoteCaptureState;
   elapsedSeconds?: number;
   maxDurationSeconds?: CaptureDurationSeconds;
+}
+
+export interface StationDiagnosticReportContract {
+  reportId: string;
+  fingerprint: string;
+  severity: DiagnosticSeverity;
+  source: string;
+  message: string;
+  stack?: string | null;
+  context?: Record<string, string | number | boolean | null>;
+  appVersion: string;
+  platform: string;
+  occurredAt: string | Date;
+}
+
+export interface StationDiagnosticReceiptContract {
+  accepted: true;
+  deduplicated: boolean;
+  rateLimited: boolean;
+  conversationId: string | null;
+  emailSent: boolean;
 }
 
 export interface StationLiveSessionContract {

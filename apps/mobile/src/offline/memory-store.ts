@@ -5,6 +5,7 @@ import type {
   LocalMediaRecord,
   OfflineSnapshot,
   PersistedStationContext,
+  QueuedDiagnosticReport,
   SharedMediaRecord,
   SyncQueueItem,
 } from './types';
@@ -15,6 +16,7 @@ export class MemoryLocalStore implements LocalStore {
   private readonly media = new Map<string, LocalMediaRecord>();
   private readonly captures = new Map<string, CapturePipelineRecord>();
   private readonly queue = new Map<string, SyncQueueItem>();
+  private readonly diagnostics = new Map<string, QueuedDiagnosticReport>();
   private readonly sharedMedia = new Map<string, SharedMediaRecord[]>();
 
   async init(): Promise<void> {}
@@ -101,6 +103,21 @@ export class MemoryLocalStore implements LocalStore {
     this.queue.delete(localId);
   }
 
+  async upsertDiagnostic(report: QueuedDiagnosticReport): Promise<void> {
+    this.diagnostics.set(report.reportId, structuredClone(report));
+  }
+
+  async listPendingDiagnostics(limit = 10): Promise<QueuedDiagnosticReport[]> {
+    return [...this.diagnostics.values()]
+      .sort((a, b) => a.nextAttemptAt.localeCompare(b.nextAttemptAt))
+      .slice(0, Math.max(0, limit))
+      .map((item) => structuredClone(item));
+  }
+
+  async removeDiagnostic(reportId: string): Promise<void> {
+    this.diagnostics.delete(reportId);
+  }
+
   async replaceSharedMedia(eventId: string, media: SharedMediaRecord[]): Promise<void> {
     this.sharedMedia.set(eventId, structuredClone(media));
   }
@@ -117,6 +134,7 @@ export class MemoryLocalStore implements LocalStore {
       queue: await this.listQueue(),
       sharedMedia: await this.listSharedMedia(eventId),
       capturePipeline: await this.listCaptures(eventId),
+      diagnostics: await this.listPendingDiagnostics(100),
     };
   }
 }
