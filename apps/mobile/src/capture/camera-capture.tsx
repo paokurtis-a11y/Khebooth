@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import type { StationExperienceApi } from '../api/station-api';
 import { finalizeCapture } from './finalize-capture';
-import { canStartCapture, type CaptureStartSource } from './capture-start-policy';
+import { canStartCapture, isPendingRemoteCommand, type CaptureStartSource } from './capture-start-policy';
 import { CaptureLivePublisher, type LivePreviewState } from '../live/live-preview';
 import type { LocalStore } from '../offline/local-store';
 import type { CapturePipelineRecord } from '../offline/types';
@@ -43,7 +43,56 @@ export function CameraCapture({eventId,store,api,stationToken,onClose,onCaptured
   async function ensureVideoMicrophone(){if(creativePlan.audioMode==='MUSIC_ONLY')return true;if(microphonePermission?.granted)return true;const result=await requestMicrophonePermission();if(!result.granted){setMessage('Le microphone est refusé. Autorisez-le pour enregistrer une vidéo avec son.');return false;}return true;}
   async function runCountdown(seconds:CaptureCountdownSeconds){for(let value=seconds;value>=1;value-=1){setCountdown(value);await sleep(1000);}setCountdown(null);}
 
-  useEffect(()=>{if(!cameraPermission?.granted)return;let cancelled=false;let timer:ReturnType<typeof setTimeout>|null=null;const poll=async()=>{let delay=900;if(processingCommand.current){timer=setTimeout(()=>void poll(),delay);return;}try{const control=await api.control(stationToken);const prefs=await getStationControlPreferencesOrDefault(api,stationToken,{...DEFAULT_STATION_CONTROL_PREFERENCES,captureKind,aspectRatio:format,countdownSeconds});if(cancelled)return;if(!recording&&!starting&&control.maxDurationSeconds!==durationRef.current)applyDuration(control.maxDurationSeconds);if(!recording&&!starting){if(prefs.captureKind!==captureKind){applyCaptureKind(prefs.captureKind,false);return;}if(prefs.aspectRatio!==format){setFormat(prefs.aspectRatio);return;}if(prefs.countdownSeconds!==countdownSeconds)setCountdownSeconds(prefs.countdownSeconds);}if(control.commandVersion<=handledCommandVersion.current)return;processingCommand.current=true;try{if(control.command==='START'){handledCommandVersion.current=control.commandVersion;setMessage('Commande distante reçue. Appuyez sur le bouton local pour démarrer la capture.');await api.updateControlStatus(stationToken,{acknowledgedVersion:control.commandVersion,runtimeState:runtimeStateRef.current,elapsedSeconds:elapsedRef.current,maxDurationSeconds:durationRef.current});}else if(control.command==='STOP'){handledCommandVersion.current=control.commandVersion;if(recording){stopRecording();await api.updateControlStatus(stationToken,{acknowledgedVersion:control.commandVersion,runtimeState:'SAVING',elapsedSeconds:elapsedRef.current,maxDurationSeconds:durationRef.current});}else await api.updateControlStatus(stationToken,{acknowledgedVersion:control.commandVersion,runtimeState:runtimeStateRef.current,elapsedSeconds:elapsedRef.current,maxDurationSeconds:durationRef.current});}else if(control.command==='PAUSE'){handledCommandVersion.current=control.commandVersion;if(recording&&!paused&&cameraRef.current&&typeof cameraRef.current.toggleRecordingAsync==='function'){await cameraRef.current.toggleRecordingAsync();setPaused(true);setRuntimeState('PAUSED');}await api.updateControlStatus(stationToken,{acknowledgedVersion:control.commandVersion,runtimeState:runtimeStateRef.current,elapsedSeconds:elapsedRef.current,maxDurationSeconds:durationRef.current});}else if(control.command==='RESUME'){handledCommandVersion.current=control.commandVersion;if(recording&&paused&&cameraRef.current&&typeof cameraRef.current.toggleRecordingAsync==='function'){await cameraRef.current.toggleRecordingAsync();setPaused(false);setRuntimeState('RECORDING');}await api.updateControlStatus(stationToken,{acknowledgedVersion:control.commandVersion,runtimeState:runtimeStateRef.current,elapsedSeconds:elapsedRef.current,maxDurationSeconds:durationRef.current});}}finally{processingCommand.current=false;}}catch{delay=4000;processingCommand.current=false;}finally{if(!cancelled)timer=setTimeout(()=>void poll(),delay);}};void poll();return()=>{cancelled=true;if(timer)clearTimeout(timer);};},[api,cameraPermission?.granted,captureKind,countdownSeconds,format,paused,ready,recording,starting,stationToken]);
+  useEffect(()=>{
+    if(!cameraPermission?.granted)return;
+    let cancelled=false;
+    let timer:ReturnType<typeof setTimeout>|null=null;
+    const poll=async()=>{
+      let delay=900;
+      if(processingCommand.current){timer=setTimeout(()=>void poll(),delay);return;}
+      try{
+        const control=await api.control(stationToken);
+        const prefs=await getStationControlPreferencesOrDefault(api,stationToken,{...DEFAULT_STATION_CONTROL_PREFERENCES,captureKind,aspectRatio:format,countdownSeconds});
+        if(cancelled)return;
+        if(!recording&&!starting&&control.maxDurationSeconds!==durationRef.current)applyDuration(control.maxDurationSeconds);
+        if(!recording&&!starting){
+          if(prefs.captureKind!==captureKind){applyCaptureKind(prefs.captureKind,false);return;}
+          if(prefs.aspectRatio!==format){setFormat(prefs.aspectRatio);return;}
+          if(prefs.countdownSeconds!==countdownSeconds)setCountdownSeconds(prefs.countdownSeconds);
+        }
+        if(control.sharingConnectionStatus!=='ACCEPTED'||!isPendingRemoteCommand(control.commandVersion,control.acknowledgedVersion,handledCommandVersion.current))return;
+        processingCommand.current=true;
+        try{
+          if(control.command==='START'){
+            if(!ready||recording||starting||!cameraRef.current)return;
+            setMessage(prefs.captureKind==='PHOTO'?'Commande distante PHOTO reçue.':'Commande distante REC reçue.');
+            await api.updateControlStatus(stationToken,{acknowledgedVersion:control.commandVersion,runtimeState:'COUNTDOWN',elapsedSeconds:0,maxDurationSeconds:control.maxDurationSeconds});
+            handledCommandVersion.current=control.commandVersion;
+            if(prefs.captureKind==='PHOTO')void takePhoto('REMOTE_COMMAND',prefs.countdownSeconds);
+            else void startRecording('REMOTE_COMMAND',control.maxDurationSeconds,prefs.countdownSeconds);
+          }else if(control.command==='STOP'){
+            handledCommandVersion.current=control.commandVersion;
+            if(recording){stopRecording();await api.updateControlStatus(stationToken,{acknowledgedVersion:control.commandVersion,runtimeState:'SAVING',elapsedSeconds:elapsedRef.current,maxDurationSeconds:durationRef.current});}
+            else await api.updateControlStatus(stationToken,{acknowledgedVersion:control.commandVersion,runtimeState:runtimeStateRef.current,elapsedSeconds:elapsedRef.current,maxDurationSeconds:durationRef.current});
+          }else if(control.command==='PAUSE'){
+            handledCommandVersion.current=control.commandVersion;
+            if(recording&&!paused&&cameraRef.current&&typeof cameraRef.current.toggleRecordingAsync==='function'){await cameraRef.current.toggleRecordingAsync();setPaused(true);setRuntimeState('PAUSED');}
+            await api.updateControlStatus(stationToken,{acknowledgedVersion:control.commandVersion,runtimeState:runtimeStateRef.current,elapsedSeconds:elapsedRef.current,maxDurationSeconds:durationRef.current});
+          }else if(control.command==='RESUME'){
+            handledCommandVersion.current=control.commandVersion;
+            if(recording&&paused&&cameraRef.current&&typeof cameraRef.current.toggleRecordingAsync==='function'){await cameraRef.current.toggleRecordingAsync();setPaused(false);setRuntimeState('RECORDING');}
+            await api.updateControlStatus(stationToken,{acknowledgedVersion:control.commandVersion,runtimeState:runtimeStateRef.current,elapsedSeconds:elapsedRef.current,maxDurationSeconds:durationRef.current});
+          }
+        }finally{processingCommand.current=false;}
+      }catch(error){
+        delay=4000;
+        processingCommand.current=false;
+        console.error('[capture:remote-control] poll failed',{error:String(error)});
+      }finally{if(!cancelled)timer=setTimeout(()=>void poll(),delay);}
+    };
+    void poll();
+    return()=>{cancelled=true;if(timer)clearTimeout(timer);};
+  },[api,cameraPermission?.granted,captureKind,countdownSeconds,format,paused,ready,recording,starting,stationToken]);
   useEffect(()=>{if(!cameraPermission?.granted)return;const heartbeat=setInterval(()=>{void api.updateControlStatus(stationToken,{runtimeState:runtimeStateRef.current,elapsedSeconds:elapsedRef.current,maxDurationSeconds:durationRef.current}).catch(()=>undefined);},2000);return()=>clearInterval(heartbeat);},[api,cameraPermission?.granted,stationToken]);
 
   async function startRecording(source:CaptureStartSource,durationOverride?:CaptureDurationSeconds,countdownOverride:CaptureCountdownSeconds=countdownSeconds){if(!canStartCapture(source)||!cameraRef.current||!ready||recording||starting||captureKind!=='VIDEO')return;if(!(await ensureVideoMicrophone())){setRuntimeState('ERROR');return;}const duration=durationOverride??durationRef.current;applyDuration(duration);setMessage('');setStarting(true);setRuntimeState('COUNTDOWN');try{await runCountdown(countdownOverride);setElapsedSeconds(0);setRecording(true);setPaused(false);setRuntimeState('RECORDING');void api.updateControlStatus(stationToken,{runtimeState:'RECORDING',elapsedSeconds:0,maxDurationSeconds:duration}).catch(()=>undefined);const result=await cameraRef.current.recordAsync({maxDuration:duration});setRuntimeState('SAVING');setMessage('Sécurisation du fichier brut…');if(!result?.uri)throw new Error('Enregistrement interrompu avant la création du fichier.');const finalized=await finalizeCapture({eventId,sourceUri:result.uri,mimeType:'video/mp4',extension:'mp4',aspectRatio:format,plan:creativePlan,store});onCaptured(finalized.capture,format);setMessage(`✓ Vidéo brute enregistrée (${format}). Studio applique maintenant les effets en arrière-plan • ${finalized.renderSummary}.`);setRuntimeState('IDLE');void api.updateControlStatus(stationToken,{runtimeState:'IDLE',elapsedSeconds:0,maxDurationSeconds:duration}).catch(()=>undefined);}catch(error){setRuntimeState('ERROR');setMessage(error instanceof Error?error.message:'Échec de l’enregistrement de la vidéo brute.');}finally{setCountdown(null);setStarting(false);setRecording(false);setPaused(false);}}

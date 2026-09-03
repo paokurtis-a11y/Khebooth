@@ -11,18 +11,22 @@ import type {
   SocialShareContract,
   StationExperienceApi,
 } from '../api/station-api';
+import type { LocalStore } from '../offline/local-store';
+import type { SharedMediaRecord } from '../offline/types';
 import { loadAppSettings } from '../settings/app-settings';
 import { loadNotificationPreferences, playNotificationFeedback } from '../settings/notification-feedback';
 import { SharingMediaPreview } from './sharing-media-preview';
 import { listSharingTrash, restoreSharingMedia, trashSharingMediaMany, type SharingTrashItem } from './sharing-trash-client';
 
 interface SharingMediaGalleryProps {
+  eventId: string;
   eventName: string;
   api: StationExperienceApi;
   stationToken: string;
+  store: LocalStore;
 }
 
-const AUTO_SYNC_INTERVAL_MS = 5_000;
+const AUTO_SYNC_INTERVAL_MS = 2_000;
 const BACKGROUND_DOWNLOAD_BATCH = 3;
 const DEFAULT_BUSINESS_SETTINGS: SharingBusinessSettingsContract = {
   socialLinks: {},
@@ -79,12 +83,27 @@ function remainingDays(item: SharingTrashItem): number {
   return Math.max(0, Math.ceil((new Date(item.trashExpiresAt).getTime() - Date.now()) / 86_400_000));
 }
 
+function cachedMedia(item: SharedMediaRecord): MediaAssetContract {
+  return {
+    id: item.id,
+    organizationId: '',
+    eventId: item.eventId,
+    localId: item.localId,
+    contentHash: item.contentHash,
+    byteSize: item.byteSize,
+    mimeType: item.mimeType,
+    syncState: 'SYNCED',
+    capturedAt: item.capturedAt,
+    acknowledgedAt: item.acknowledgedAt,
+  };
+}
+
 function SocialMark({ provider, compact = false }: { provider: SocialProvider; compact?: boolean }) {
   const social = SOCIALS.find((item) => item.key === provider) ?? SOCIALS[0];
   return <View style={[styles.socialMark, compact && styles.socialMarkCompact, { backgroundColor: social.color }]}><Text style={[styles.socialMarkText, compact && styles.socialMarkTextCompact]}>{social.mark}</Text></View>;
 }
 
-export function SharingMediaGallery({ eventName, api, stationToken }: SharingMediaGalleryProps) {
+export function SharingMediaGallery({ eventId, eventName, api, stationToken, store }: SharingMediaGalleryProps) {
   const { width, height } = useWindowDimensions();
   const landscape = width > height;
   const [loading, setLoading] = useState(true);
@@ -164,6 +183,17 @@ export function SharingMediaGallery({ eventName, api, stationToken }: SharingMed
         return rightTime - leftTime;
       });
       setMedia(synced);
+      void store.replaceSharedMedia(eventId, synced.map((item) => ({
+        id: item.id,
+        eventId: item.eventId,
+        localId: item.localId,
+        contentHash: item.contentHash,
+        byteSize: item.byteSize,
+        mimeType: item.mimeType,
+        capturedAt: item.capturedAt ? new Date(item.capturedAt).toISOString() : null,
+        acknowledgedAt: new Date(item.acknowledgedAt as string | Date).toISOString(),
+        cachedAt: new Date().toISOString(),
+      }))).catch((error) => console.error('[sharing:gallery] cache update failed', { eventId, error: String(error) }));
       const previousRemoteIds = knownRemoteIdsRef.current;
       const newRemoteItems = previousRemoteIds ? synced.filter((item) => !previousRemoteIds.has(item.id)) : [];
       knownRemoteIdsRef.current = new Set(synced.map((item) => item.id));
@@ -205,10 +235,23 @@ export function SharingMediaGallery({ eventName, api, stationToken }: SharingMed
   }, [api, stationToken]);
 
   useEffect(() => {
+    let cancelled = false;
+    hasLoadedRef.current = false;
+    knownRemoteIdsRef.current = null;
+    receivedIdsRef.current.clear();
+    setLocalUris({});
+    setMedia([]);
+    void store.listSharedMedia(eventId).then((items) => {
+      if (!cancelled && !hasLoadedRef.current) setMedia(items.map(cachedMedia));
+    }).catch((error) => console.error('[sharing:gallery] cache read failed', { eventId, error: String(error) }));
+    return () => { cancelled = true; };
+  }, [eventId, store]);
+
+  useEffect(() => {
     void refresh();
     const timer = setInterval(() => void refresh(), AUTO_SYNC_INTERVAL_MS);
     return () => clearInterval(timer);
-  }, [api, stationToken]);
+  }, [api, eventId, stationToken, store]);
 
   useEffect(() => { if (trashOpen && businessEnabled) void loadTrash(); }, [trashOpen, businessEnabled]);
 

@@ -59,8 +59,9 @@ export function useCaptureSync(
           cellularDeniedRef.current = false;
         }
         await syncEngine.drain();
-      } catch {
+      } catch (error) {
         // Offline-first: queued media and local files remain intact for the next retry.
+        console.error('[capture:sync] drain failed', { error: String(error) });
       } finally {
         runningRef.current = false;
       }

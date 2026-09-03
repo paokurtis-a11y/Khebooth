@@ -169,6 +169,30 @@ function App() {
     return()=>{cancelled=true;clearInterval(timer);};
   },[api,cameraOpen,station,stationToken,store,vault]);
 
+  useEffect(()=>{
+    if(station?.mode!=='CAPTURE'||!stationToken||cameraOpen)return;
+    let cancelled=false;
+    let timer:ReturnType<typeof setTimeout>|null=null;
+    const listenForRemoteStart=async()=>{
+      let delay=1_000;
+      try{
+        const control=await api.control(stationToken);
+        const pendingStart=control.sharingConnectionStatus==='ACCEPTED'&&control.command==='START'&&control.commandVersion>control.acknowledgedVersion;
+        if(cancelled||!pendingStart)return;
+        setReadyOpen(false);setAboutOpen(false);setGuideOpen(false);setLanguageOpen(false);setSettingsOpen(false);setStudioOpen(false);setProfileOpen(false);setGalleryOpen(false);setMenuOpen(false);
+        setMessage('Commande REC reçue depuis SHARING : ouverture automatique de la caméra CAPTURE.');
+        setCameraOpen(true);
+      }catch(error){
+        delay=4_000;
+        console.error('[capture:remote-control] background listener failed',{error:String(error)});
+      }finally{
+        if(!cancelled)timer=setTimeout(()=>void listenForRemoteStart(),delay);
+      }
+    };
+    void listenForRemoteStart();
+    return()=>{cancelled=true;if(timer)clearTimeout(timer);};
+  },[api,cameraOpen,station?.mode,stationToken]);
+
   async function activate(): Promise<void> {
     setBusy(true); setMessage('');
     try {
