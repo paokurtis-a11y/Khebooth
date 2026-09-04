@@ -1,8 +1,8 @@
 import { Controller, Get, Query } from '@nestjs/common';
 
-const LATEST_VERSION = process.env.MOBILE_LATEST_VERSION?.trim() || '0.3.12';
+const LATEST_VERSION = process.env.MOBILE_LATEST_VERSION?.trim() || '0.3.13';
 const INSTALL_URL = process.env.MOBILE_INSTALL_URL?.trim() || 'https://github.com/paokurtis-a11y/Khebooth/releases/download/android-latest/KHE-Booth-Android-Standalone.apk';
-const RELEASE_NOTES = process.env.MOBILE_RELEASE_NOTES?.trim() || 'KHE Booth 0.3.12 : bibliothèque de 12 modèles Studio prêts à l’emploi et galerie SHARING stabilisée avec miniatures JPEG légères et un seul lecteur vidéo actif.';
+const RELEASE_NOTES = process.env.MOBILE_RELEASE_NOTES?.trim() || 'KHE Booth 0.3.13 : retour de la galerie SHARING stable à écran noir, lecture vidéo uniquement après toucher et commande audio indépendante en haut à droite.';
 
 function compareVersions(a: string, b: string): number {
   const pa = a.split('.').map((value) => Number.parseInt(value, 10) || 0);

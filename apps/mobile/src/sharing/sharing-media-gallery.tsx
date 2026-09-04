@@ -121,14 +121,12 @@ export function SharingMediaGallery({ eventId, eventName, api, stationToken, sto
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
-  const [activeAudioVideoId, setActiveAudioVideoId] = useState<string | null>(null);
-  const [posterUris, setPosterUris] = useState<Record<string, string>>({});
+  const [unmutedVideoIds, setUnmutedVideoIds] = useState<Set<string>>(new Set());
   const [trashOpen, setTrashOpen] = useState(false);
   const [trashItems, setTrashItems] = useState<SharingTrashItem[]>([]);
   const [trashSelectedIds, setTrashSelectedIds] = useState<Set<string>>(new Set());
   const refreshingRef = useRef(false);
   const receivedIdsRef = useRef(new Set<string>());
-  const thumbnailAttemptedRef = useRef(new Set<string>());
   const knownRemoteIdsRef = useRef<Set<string> | null>(null);
   const hasLoadedRef = useRef(false);
 
@@ -175,18 +173,6 @@ export function SharingMediaGallery({ eventId, eventName, api, stationToken, sto
     return downloaded;
   }
 
-  async function prepareVideoPoster(item: MediaAssetContract, source: File): Promise<void> {
-    if (!item.mimeType.startsWith('video/') || thumbnailAttemptedRef.current.has(item.id)) return;
-    thumbnailAttemptedRef.current.add(item.id);
-    try {
-      const { createSharingVideoThumbnail } = await import('./sharing-video-thumbnail');
-      const posterUri = await createSharingVideoThumbnail(item.id, source.uri);
-      if (posterUri) setPosterUris((current) => current[item.id] === posterUri ? current : { ...current, [item.id]: posterUri });
-    } catch (error) {
-      console.warn('[sharing:gallery] lightweight poster unavailable', { mediaId: item.id, error: String(error) });
-    }
-  }
-
   async function refresh(manual = false): Promise<void> {
     if (refreshingRef.current) return;
     refreshingRef.current = true;
@@ -217,7 +203,7 @@ export function SharingMediaGallery({ eventId, eventName, api, stationToken, sto
       for (const item of synced) {
         if (downloadedInBackground >= BACKGROUND_DOWNLOAD_BATCH) break;
         if (receivedIdsRef.current.has(item.id)) continue;
-        try { const source = await downloadMedia(item); downloadedInBackground += 1; await prepareVideoPoster(item, source); } catch {}
+        try { await downloadMedia(item); downloadedInBackground += 1; } catch {}
       }
       setLastSyncAt(new Date());
       if (newRemoteItems.length > 0) {
@@ -255,11 +241,9 @@ export function SharingMediaGallery({ eventId, eventName, api, stationToken, sto
     hasLoadedRef.current = false;
     knownRemoteIdsRef.current = null;
     receivedIdsRef.current.clear();
-    thumbnailAttemptedRef.current.clear();
     setLocalUris({});
-    setPosterUris({});
     setActiveVideoId(null);
-    setActiveAudioVideoId(null);
+    setUnmutedVideoIds(new Set());
     setMedia([]);
     void store.listSharedMedia(eventId).then((items) => {
       if (!cancelled && !hasLoadedRef.current) setMedia(items.map(cachedMedia));
@@ -285,7 +269,6 @@ export function SharingMediaGallery({ eventId, eventName, api, stationToken, sto
     try {
       if (!(await Sharing.isAvailableAsync())) throw new Error('Le partage natif n’est pas disponible sur cette tablette.');
       const downloaded = await downloadMedia(item);
-      await prepareVideoPoster(item, downloaded);
       const named = await shareFileFor(item, downloaded);
       await Sharing.shareAsync(named.uri, { dialogTitle: canonicalName(item, eventName), mimeType: item.mimeType || undefined });
       setMessage(`Partage ouvert pour « ${canonicalName(item, eventName)} » : choisissez WhatsApp, TikTok, Facebook, Instagram, X, Telegram, YouTube ou une autre application.`);
@@ -329,7 +312,8 @@ export function SharingMediaGallery({ eventId, eventName, api, stationToken, sto
     setShares((current)=>Object.fromEntries(Object.entries(current).filter(([key])=>!idSet.has(key))));
     setSocialShares((current)=>Object.fromEntries(Object.entries(current).filter(([key])=>!ids.some((id)=>key.startsWith(`${id}:`)))));
     ids.forEach((id)=>receivedIdsRef.current.delete(id));
-    if(activeVideoId&&ids.includes(activeVideoId)){setActiveVideoId(null);setActiveAudioVideoId(null);}
+    setUnmutedVideoIds((current)=>new Set([...current].filter((id)=>!idSet.has(id))));
+    if(activeVideoId&&ids.includes(activeVideoId))setActiveVideoId(null);
     if(activeSocialKey&&ids.some((id)=>activeSocialKey.startsWith(`${id}:`)))setActiveSocialKey(null);
   }
 
@@ -421,7 +405,7 @@ export function SharingMediaGallery({ eventId, eventName, api, stationToken, sto
               <View key={item.id} style={[styles.mediaCard,{ width: cardWidth },selected&&styles.mediaCardSelected]}>
                 {selectionMode?<Pressable onPress={()=>toggleSelection(item.id)} style={[styles.selectControl,selected&&styles.selectControlActive]}><Text style={[styles.selectControlText,selected&&styles.selectControlTextActive]}>{selected?'✓':'○'} {selected?'Sélectionné':'Sélectionner'}</Text></Pressable>:null}
                 <View style={[styles.previewFrame, { height: previewHeight(item.id) }]}>
-                  <SharingMediaPreview uri={localUris[item.id] ?? null} posterUri={posterUris[item.id] ?? null} mimeType={item.mimeType} autoplay={businessEnabled ? businessSettings.videoAutoplay : true} mediaFit={businessEnabled ? businessSettings.mediaFit : 'COVER'} active={activeVideoId===item.id} startWithAudio={activeAudioVideoId===item.id} onActivate={(withAudio)=>{setActiveAudioVideoId(withAudio?item.id:null);setActiveVideoId(item.id);}} onAspectRatio={(ratio) => rememberAspect(item.id, ratio)} />
+                  <SharingMediaPreview uri={localUris[item.id] ?? null} mimeType={item.mimeType} mediaFit={businessEnabled ? businessSettings.mediaFit : 'COVER'} active={activeVideoId===item.id} muted={!unmutedVideoIds.has(item.id)} onActivate={()=>setActiveVideoId(item.id)} onToggleMuted={()=>setUnmutedVideoIds((current)=>{const next=new Set(current);if(next.has(item.id))next.delete(item.id);else next.add(item.id);return next;})} onAspectRatio={(ratio) => rememberAspect(item.id, ratio)} />
                   <View style={styles.previewBadge}><Text style={styles.previewBadgeText}>{kind}</Text></View>
                 </View>
                 <View style={styles.mediaTopRow}>
