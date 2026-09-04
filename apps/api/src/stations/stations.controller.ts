@@ -91,6 +91,9 @@ export class StationsController {
   @Post('client-events/:id/design-ready') markClientEventDesignReady(@CurrentStation() station:AuthenticatedStation,@Param('id',new ParseUUIDPipe()) id:string,@Body() body:Record<string,unknown>){ return this.clientEvents.markDesignReady(station,id,body); }
 
   @UseGuards(StationAuthGuard)
+  @Get('client-events/:id/design') clientEventDesign(@CurrentStation() station:AuthenticatedStation,@Param('id',new ParseUUIDPipe()) id:string){ return this.clientEvents.design(station,id); }
+
+  @UseGuards(StationAuthGuard)
   @Post('client-events/:id/design-background-upload') async prepareDesignBackground(@CurrentStation() station:AuthenticatedStation,@Param('id',new ParseUUIDPipe()) id:string,@Body() body:Record<string,unknown>){
     await this.entitlements.requireStation(station,'STUDIO_BASIC');
     return this.designStorage.prepareBackgroundUpload(station,id,body);
@@ -194,6 +197,12 @@ export class StationsController {
   @Get('media-trash') async mediaTrashList(@CurrentStation() station:AuthenticatedStation){
     await this.entitlements.requireStation(station,'BUSINESS_TRASH');return this.mediaTrash.list(station);
   }
+  @UseGuards(StationAuthGuard)
+  @Delete('media-trash') async emptyMediaTrash(@CurrentStation() station:AuthenticatedStation){await this.entitlements.requireStation(station,'BUSINESS_TRASH');return this.mediaTrash.empty(station);}
+  @UseGuards(StationAuthGuard)
+  @Post('media-trash/delete') async permanentlyDeleteManyMedia(@CurrentStation() station:AuthenticatedStation,@Body() body:Record<string,unknown>){await this.entitlements.requireStation(station,'BUSINESS_TRASH');return this.mediaTrash.permanentlyDeleteMany(station,body.ids);}
+  @UseGuards(StationAuthGuard)
+  @Delete('media-trash/:id') async permanentlyDeleteMedia(@CurrentStation() station:AuthenticatedStation,@Param('id',new ParseUUIDPipe()) id:string){await this.entitlements.requireStation(station,'BUSINESS_TRASH');return this.mediaTrash.permanentlyDelete(station,id);}
   @UseGuards(StationAuthGuard)
   @Post('media/:id/restore') async restoreMedia(@CurrentStation() station:AuthenticatedStation,@Param('id',new ParseUUIDPipe()) id:string){
     await this.entitlements.requireStation(station,'BUSINESS_TRASH');return this.mediaTrash.restore(station,id);

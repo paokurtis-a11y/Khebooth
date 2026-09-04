@@ -1,8 +1,8 @@
 import { Controller, Get, Query } from '@nestjs/common';
 
-const LATEST_VERSION = process.env.MOBILE_LATEST_VERSION?.trim() || '0.3.10';
+const LATEST_VERSION = process.env.MOBILE_LATEST_VERSION?.trim() || '0.3.11';
 const INSTALL_URL = process.env.MOBILE_INSTALL_URL?.trim() || 'https://github.com/paokurtis-a11y/Khebooth/releases/download/android-latest/KHE-Booth-Android-Standalone.apk';
-const RELEASE_NOTES = process.env.MOBILE_RELEASE_NOTES?.trim() || 'KHE Booth 0.3.10 : commandes SHARING accélérées, synchronisation CAPTURE/SHARING optimisée et flux live propre sans commandes CAPTURE.';
+const RELEASE_NOTES = process.env.MOBILE_RELEASE_NOTES?.trim() || 'KHE Booth 0.3.11 : profil et Studio synchronisés entre CAPTURE et SHARING, liaison verte uniquement lorsque les deux tablettes sont actives, vignette et audio vidéo, corbeille avec suppression définitive.';
 
 function compareVersions(a: string, b: string): number {
   const pa = a.split('.').map((value) => Number.parseInt(value, 10) || 0);

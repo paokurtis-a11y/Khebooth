@@ -24,3 +24,6 @@ async function request<T>(path:string,stationToken:string,init?:RequestInit):Pro
 export function listSharingTrash(stationToken:string){return request<SharingTrashItem[]>('/stations/media-trash',stationToken);}
 export function trashSharingMediaMany(stationToken:string,ids:string[]){return request<{count:number;retentionDays:number}>('/stations/media/trash',stationToken,{method:'POST',body:JSON.stringify({ids})});}
 export function restoreSharingMedia(stationToken:string,id:string){return request<{id:string;displayName:string|null;restored:boolean}>(`/stations/media/${encodeURIComponent(id)}/restore`,stationToken,{method:'POST'});}
+export function deleteSharingTrashPermanently(stationToken:string,id:string){return request<{id:string;deleted:boolean}>(`/stations/media-trash/${encodeURIComponent(id)}`,stationToken,{method:'DELETE'});}
+export function deleteSharingTrashManyPermanently(stationToken:string,ids:string[]){return request<{requested:number;deleted:number;deletedIds:string[];failed:Array<{id:string;error:string}>}>('/stations/media-trash/delete',stationToken,{method:'POST',body:JSON.stringify({ids})});}
+export function emptySharingTrash(stationToken:string){return request<{requested:number;deleted:number;deletedIds:string[];failed:Array<{id:string;error:string}>}>('/stations/media-trash',stationToken,{method:'DELETE'});}

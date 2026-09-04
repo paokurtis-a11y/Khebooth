@@ -171,6 +171,13 @@ export interface ClientWorkspaceContract {
   events: ClientEventContract[];
 }
 
+export interface ClientEventDesignContract {
+  eventId: string;
+  designConfig: Record<string, unknown>;
+  designReadyAt: string | Date | null;
+  updatedAt: string | Date | null;
+}
+
 export interface StationSubscriptionAccessContract {
   plan: string;
   entitlements: Record<string, boolean>;
@@ -244,8 +251,9 @@ export interface StationExperienceApi extends StationApi {
   stationBilling(stationToken:string):Promise<StationBillingContract>;
   stationEntitlements(stationToken:string):Promise<StationSubscriptionAccessContract>;
   clientWorkspace(stationToken: string): Promise<ClientWorkspaceContract>;
+  clientEventDesign(stationToken: string, eventId: string): Promise<ClientEventDesignContract>;
   createClientEvent(stationToken: string, event: CreateClientEventRequest): Promise<CreateClientEventResponse>;
-  markClientEventDesignReady(stationToken: string, eventId: string, designConfig: Record<string, unknown>): Promise<void>;
+  markClientEventDesignReady(stationToken: string, eventId: string, designConfig: Record<string, unknown>): Promise<ClientWorkspaceContract>;
   prepareDesignBackgroundUpload(stationToken: string, eventId: string, contentType: string, byteSize: number): Promise<DesignBackgroundUploadTicket>;
   designBackgroundDownload(stationToken: string, pathname: string): Promise<DesignBackgroundDownloadTicket>;
   switchClientEvent(stationToken: string, eventId: string): Promise<SwitchedStationResponse>;
@@ -359,8 +367,9 @@ export class HttpStationApi implements StationExperienceApi {
   stationBilling(token:string){return this.stationRequest<StationBillingContract>('/stations/billing',token);}
   stationEntitlements(token:string){return this.stationRequest<StationSubscriptionAccessContract>('/stations/entitlements',token);}
   clientWorkspace(token: string) { return this.stationRequest<ClientWorkspaceContract>('/stations/client-workspace', token); }
+  clientEventDesign(token: string, eventId: string) { return this.stationRequest<ClientEventDesignContract>(`/stations/client-events/${encodeURIComponent(eventId)}/design`, token); }
   createClientEvent(token: string, event: CreateClientEventRequest) { return this.stationRequest<CreateClientEventResponse>('/stations/client-events', token, { method: 'POST', body: JSON.stringify(event) }); }
-  async markClientEventDesignReady(token: string, eventId: string, designConfig: Record<string, unknown>): Promise<void> { await this.stationRequest<ClientWorkspaceContract>(`/stations/client-events/${encodeURIComponent(eventId)}/design-ready`, token, { method: 'POST', body: JSON.stringify({ designConfig }) }); }
+  markClientEventDesignReady(token: string, eventId: string, designConfig: Record<string, unknown>) { return this.stationRequest<ClientWorkspaceContract>(`/stations/client-events/${encodeURIComponent(eventId)}/design-ready`, token, { method: 'POST', body: JSON.stringify({ designConfig }) }); }
   prepareDesignBackgroundUpload(token: string, eventId: string, contentType: string, byteSize: number) { return this.stationRequest<DesignBackgroundUploadTicket>(`/stations/client-events/${encodeURIComponent(eventId)}/design-background-upload`, token, { method: 'POST', body: JSON.stringify({ contentType, byteSize }) }); }
   designBackgroundDownload(token: string, pathname: string) { return this.stationRequest<DesignBackgroundDownloadTicket>('/stations/design-background-download', token, { method: 'POST', body: JSON.stringify({ pathname }) }); }
   async switchClientEvent(token: string, eventId: string) {
