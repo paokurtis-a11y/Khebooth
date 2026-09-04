@@ -12,6 +12,10 @@ function extension(contentType: string) {
   return 'm4a';
 }
 
+function cloudRevision(cloudPath:string,fallback:string){
+  return cloudPath.split('/').pop()?.replace(/[^A-Za-z0-9._-]/g,'_').slice(0,120)||fallback;
+}
+
 async function downloadAsset(api: StationExperienceApi, stationToken: string, cloudPath: string, destination: File) {
   const ticket = await api.designBackgroundDownload(stationToken, cloudPath);
   if (destination.exists && destination.size === ticket.byteSize && destination.size > 0) {
@@ -32,7 +36,7 @@ async function localizeBackground(api: StationExperienceApi, stationToken: strin
   const directory = new Directory(Paths.document, 'studio-backgrounds', eventId);
   directory.create({ idempotent: true, intermediates: true });
   const ticket = await api.designBackgroundDownload(stationToken, background.cloudPath);
-  const destination = new File(directory, `active-background.${extension(ticket.contentType)}`);
+  const destination = new File(directory, `${cloudRevision(background.cloudPath,'active-background')}.${extension(ticket.contentType)}`);
   const asset = destination.exists && destination.size === ticket.byteSize && destination.size > 0
     ? { uri: destination.uri, byteSize: destination.size, mimeType: ticket.contentType }
     : await downloadAsset(api, stationToken, background.cloudPath, destination);
@@ -56,7 +60,7 @@ async function localizeMusic(api: StationExperienceApi, stationToken: string, ev
       if (local.exists && local.size > 0) { localized.push(asset); continue; }
     }
     const ticket = await api.designBackgroundDownload(stationToken, asset.cloudPath);
-    const safeId = asset.id.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 80) || 'music';
+    const safeId = cloudRevision(asset.cloudPath,asset.id.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 80) || 'music');
     const destination = new File(directory, `${safeId}.${extension(ticket.contentType)}`);
     const downloaded = destination.exists && destination.size === ticket.byteSize && destination.size > 0
       ? { uri: destination.uri, byteSize: destination.size, mimeType: ticket.contentType }

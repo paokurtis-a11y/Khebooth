@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { StationMode } from '@prisma/client';
 import { del } from '@vercel/blob';
 import { PrismaService } from '../prisma/prisma.service';
@@ -52,6 +52,30 @@ export class MediaTrashService{
       RETURNING "id","displayName"
     `;
     if(!rows[0])throw new NotFoundException('Média absent de la corbeille');return{...rows[0],restored:true};
+  }
+
+  async permanentlyDelete(station:AuthenticatedStation,mediaId:string){
+    this.assertSharing(station);this.assertUuid(mediaId);
+    const rows=await this.prisma.$queryRaw<PurgeRow[]>`
+      SELECT "id","organizationId","eventId","mimeType" FROM "MediaAsset"
+      WHERE id=${mediaId}::uuid AND "organizationId"=${station.organizationId}::uuid AND "eventId"=${station.eventId}::uuid AND "trashedAt" IS NOT NULL LIMIT 1
+    `;
+    const media=rows[0];if(!media)throw new NotFoundException('Média absent de la corbeille');
+    try{await del(this.pathnameFor(media));const deleted=await this.prisma.$executeRaw`DELETE FROM "MediaAsset" WHERE id=${mediaId}::uuid AND "organizationId"=${station.organizationId}::uuid AND "eventId"=${station.eventId}::uuid AND "trashedAt" IS NOT NULL`;if(deleted!==1)throw new Error('Le média a changé pendant la suppression.');return{id:mediaId,deleted:true};}
+    catch(error){throw new ServiceUnavailableException(`Suppression définitive impossible : ${error instanceof Error?error.message:'stockage indisponible'}`);}
+  }
+
+  async permanentlyDeleteMany(station:AuthenticatedStation,value:unknown){
+    this.assertSharing(station);if(!Array.isArray(value)||value.length===0||value.length>100)throw new BadRequestException('Sélection invalide');
+    const ids=[...new Set(value.map((item)=>String(item)))];ids.forEach((id)=>this.assertUuid(id));const deleted:string[]=[];const failed:Array<{id:string;error:string}>=[];
+    for(const id of ids){try{await this.permanentlyDelete(station,id);deleted.push(id);}catch(error){failed.push({id,error:error instanceof Error?error.message:'Suppression impossible'});}}
+    return{requested:ids.length,deleted:deleted.length,deletedIds:deleted,failed};
+  }
+
+  async empty(station:AuthenticatedStation){
+    const rows=await this.list(station);if(rows.length===0)return{requested:0,deleted:0,deletedIds:[],failed:[]};const deleted:string[]=[];const failed:Array<{id:string;error:string}>=[];
+    for(const media of rows){try{await this.permanentlyDelete(station,media.id);deleted.push(media.id);}catch(error){failed.push({id:media.id,error:error instanceof Error?error.message:'Suppression impossible'});}}
+    return{requested:rows.length,deleted:deleted.length,deletedIds:deleted,failed};
   }
 
   async purgeExpiredTrash(limit=200){

@@ -13,7 +13,7 @@ const SWITCH_OVERLAP_SECONDS = 5 * 60;
 type ClientContextRow={clientId:string|null;subscriptionPlan:string|null;subscriptionStatus:string|null;paymentStatus:string|null};
 type WorkspaceRow={clientId:string;organizationId:string;selectedEventId:string|null;designConfig:unknown;designReadyAt:Date|null;updatedAt:Date};
 type EventRow={id:string;name:string;description:string|null;startsAt:Date;endsAt:Date|null;status:string;clientId:string|null;createdAt:Date;updatedAt:Date};
-type EventDesignRow={eventId:string;designConfig:unknown;designReadyAt:Date|null};
+type EventDesignRow={eventId:string;designConfig:unknown;designReadyAt:Date|null;updatedAt:Date};
 type AccessSnapshot={entitlements:Record<string,boolean>};
 
 @Injectable()
@@ -49,10 +49,18 @@ export class ClientEventWorkspaceService{
 
   private async eventDesign(organizationId:string,eventId:string):Promise<EventDesignRow|null>{
     const rows=await this.prisma.$queryRaw<EventDesignRow[]>`
-      SELECT "eventId","designConfig","designReadyAt" FROM "EventDesignConfiguration"
+      SELECT "eventId","designConfig","designReadyAt","updatedAt" FROM "EventDesignConfiguration"
       WHERE "organizationId"=${organizationId}::uuid AND "eventId"=${eventId}::uuid LIMIT 1
     `;
     return rows[0]??null;
+  }
+
+  async design(station:AuthenticatedStation,eventId:string){
+    const context=await this.context(station);const clientId=context.clientId!;
+    const target=await this.prisma.event.findFirst({where:{id:eventId,organizationId:station.organizationId,clientId},select:{id:true}});
+    if(!target)throw new NotFoundException('Événement client introuvable.');
+    const [design,access]=await Promise.all([this.eventDesign(station.organizationId,eventId),this.entitlements.forEvent(station.organizationId,eventId)]);
+    return{eventId,designConfig:this.enforceBranding(design?.designConfig??{},access),designReadyAt:design?.designReadyAt??null,updatedAt:design?.updatedAt??null};
   }
 
   private async upsertEventDesign(organizationId:string,clientId:string,eventId:string,designConfig:Record<string,unknown>,readyAt:Date|null){
@@ -162,7 +170,7 @@ export class ClientEventWorkspaceService{
       const access=await this.entitlements.forEvent(station.organizationId,eventId);
       const fallback=this.enforceBranding({},access);const readyAt=new Date();
       await this.upsertEventDesign(station.organizationId,clientId,eventId,fallback,readyAt);
-      design={eventId,designConfig:fallback,designReadyAt:readyAt};
+      design={eventId,designConfig:fallback,designReadyAt:readyAt,updatedAt:readyAt};
     }
     if(!design.designReadyAt)throw new ForbiddenException('Cet événement n’est pas encore prêt pour les stations.');
     const access=await this.entitlements.forEvent(station.organizationId,eventId);

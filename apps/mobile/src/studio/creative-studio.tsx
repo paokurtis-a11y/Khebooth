@@ -4,8 +4,9 @@ import { Directory, File, Paths } from 'expo-file-system';
 import * as SecureStore from 'expo-secure-store';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import type { StationExperienceApi } from '../api/station-api';
+import type { ClientWorkspaceContract, StationExperienceApi } from '../api/station-api';
 import { canRemoveKheBranding } from '../subscription/plan-entitlements';
+import { localizeCreativePlan } from './localize-creative-plan';
 
 export type AudioMode = 'MUSIC_ONLY' | 'MIC_ONLY';
 export type SpeedEffect = '0.5x' | '0.75x' | '1x' | '1.25x' | '1.5x' | '2x';
@@ -60,6 +61,7 @@ const KHE_RED = '#b31520';
 const KHE_GOLD = '#d2ad4f';
 const KHE_BLACK = '#0d0d0f';
 const KHE_GREEN = '#16804a';
+const STUDIO_SYNC_INTERVAL_MS = 1_500;
 
 export const DEFAULT_CREATIVE_PLAN: CreativePlan = {
   template: 'NONE',
@@ -121,20 +123,24 @@ function normalizeBackground(value: unknown): DesignBackgroundAsset | null {
   };
 }
 
+export function normalizeCreativePlan(value: unknown): CreativePlan {
+  const parsed = value && typeof value === 'object' && !Array.isArray(value) ? value as Partial<CreativePlan> : {};
+  return {
+    ...DEFAULT_CREATIVE_PLAN,
+    ...parsed,
+    textStartSeconds: Number.isFinite(parsed.textStartSeconds) ? Math.max(0, Number(parsed.textStartSeconds)) : 0,
+    textEndSeconds: Number.isFinite(parsed.textEndSeconds) ? Math.max(0, Number(parsed.textEndSeconds)) : null,
+    showKheBranding: parsed.showKheBranding !== false,
+    music: Array.isArray(parsed.music) ? parsed.music.slice(0, 3).map((asset) => normalizeMusic(asset as MusicAsset)) : [],
+    background: normalizeBackground(parsed.background),
+  };
+}
+
 export async function loadCreativePlan(): Promise<CreativePlan> {
   const raw = await SecureStore.getItemAsync(STORAGE_KEY);
   if (!raw) return DEFAULT_CREATIVE_PLAN;
   try {
-    const parsed = JSON.parse(raw) as Partial<CreativePlan>;
-    return {
-      ...DEFAULT_CREATIVE_PLAN,
-      ...parsed,
-      textStartSeconds: Number.isFinite(parsed.textStartSeconds) ? Math.max(0, Number(parsed.textStartSeconds)) : 0,
-      textEndSeconds: Number.isFinite(parsed.textEndSeconds) ? Math.max(0, Number(parsed.textEndSeconds)) : null,
-      showKheBranding: parsed.showKheBranding !== false,
-      music: Array.isArray(parsed.music) ? parsed.music.slice(0, 3).map((asset) => normalizeMusic(asset as MusicAsset)) : [],
-      background: normalizeBackground(parsed.background),
-    };
+    return normalizeCreativePlan(JSON.parse(raw));
   } catch {
     return DEFAULT_CREATIVE_PLAN;
   }
@@ -210,11 +216,14 @@ interface CreativeStudioProps {
   api?: StationExperienceApi;
   stationToken?: string;
   eventId?: string;
-  onSaved?: (plan: CreativePlan) => Promise<void> | void;
+  onSaved?: (plan: CreativePlan) => Promise<ClientWorkspaceContract | void> | ClientWorkspaceContract | void;
 }
 
 export function CreativeStudio({ onClose, api, stationToken, eventId, onSaved }: CreativeStudioProps) {
   const scrollRef = useRef<ScrollView>(null);
+  const dirtyRef = useRef(false);
+  const savingRef = useRef(false);
+  const revisionRef = useRef('');
   const [plan, setPlan] = useState<CreativePlan>(DEFAULT_CREATIVE_PLAN);
   const [locked, setLocked] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -224,9 +233,36 @@ export function CreativeStudio({ onClose, api, stationToken, eventId, onSaved }:
 
   useEffect(() => {
     let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let brandingAllowed = false;
+
+    const applyRemote = async (remote: Awaited<ReturnType<StationExperienceApi['clientEventDesign']>>, announce: boolean) => {
+      if (!api || !stationToken || !eventId || dirtyRef.current || savingRef.current) return;
+      const revision = String(remote.updatedAt ?? remote.designReadyAt ?? '');
+      if (!revision || revision === revisionRef.current) return;
+      let next = normalizeCreativePlan(remote.designConfig);
+      if (!brandingAllowed) next = { ...next, showKheBranding: true };
+      next = await localizeCreativePlan(api, stationToken, eventId, next);
+      if (cancelled || dirtyRef.current || savingRef.current) return;
+      revisionRef.current = revision;
+      await saveCreativePlan(next);
+      setPlan(next);
+      setLocked(Boolean(remote.designReadyAt));
+      if (announce) setMessage('✓ Studio actualisé depuis l’autre tablette. CAPTURE et SHARING utilisent le même design.');
+    };
+
+    const poll = async () => {
+      try {
+        if (api && stationToken && eventId && !dirtyRef.current && !savingRef.current) await applyRemote(await api.clientEventDesign(stationToken, eventId), true);
+      } catch {
+        // Le plan local reste disponible hors ligne; la prochaine vérification retentera la synchronisation.
+      } finally {
+        if (!cancelled) timer = setTimeout(() => void poll(), STUDIO_SYNC_INTERVAL_MS);
+      }
+    };
+
     void (async () => {
       const [savedPlan, exists] = await Promise.all([loadCreativePlan(), hasSavedCreativePlan()]);
-      let brandingAllowed = false;
       let subscription = 'STANDARD';
       if (api && stationToken) {
         try {
@@ -246,16 +282,28 @@ export function CreativeStudio({ onClose, api, stationToken, eventId, onSaved }:
       if (cancelled) return;
       setCanRemoveBranding(brandingAllowed);
       setPlanLabel(subscription);
-      setPlan(brandingAllowed ? savedPlan : { ...savedPlan, showKheBranding: true });
+      const local = brandingAllowed ? savedPlan : { ...savedPlan, showKheBranding: true };
+      setPlan(local);
       setLocked(exists);
+      if (api && stationToken && eventId) {
+        try {
+          const remote = await api.clientEventDesign(stationToken, eventId);
+          const hasRemote = Boolean(remote.updatedAt || remote.designReadyAt || Object.keys(remote.designConfig).length);
+          if (hasRemote) await applyRemote(remote, false);
+        } catch {
+          // Le Studio reste éditable avec sa copie locale si le réseau est indisponible.
+        }
+      }
+      if (!cancelled) timer = setTimeout(() => void poll(), STUDIO_SYNC_INTERVAL_MS);
     })();
-    return () => { cancelled = true; };
-  }, [api, stationToken]);
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
+  }, [api, eventId, stationToken]);
 
   const presetText = useMemo(() => plan.template === 'WEDDING' ? ['Heureux mariage', 'Merci de partager ce moment avec nous'] : plan.template === 'BIRTHDAY' ? ['Joyeux anniversaire', 'Un souvenir rien que pour vous'] : plan.template === 'GALA' ? ['Soirée exceptionnelle', 'KHE Booth'] : plan.template === 'BABY' ? ['Bienvenue bébé', 'Un joli souvenir'] : ['', ''], [plan.template]);
 
   function patch(value: Partial<CreativePlan>) {
     if (locked) return;
+    dirtyRef.current = true;
     setPlan((current) => ({ ...current, ...value }));
     setMessage('');
   }
@@ -352,6 +400,7 @@ export function CreativeStudio({ onClose, api, stationToken, eventId, onSaved }:
   }
 
   async function persist() {
+    savingRef.current = true;
     setSaving(true);
     setMessage('');
     try {
@@ -369,13 +418,16 @@ export function CreativeStudio({ onClose, api, stationToken, eventId, onSaved }:
         background: uploaded.background ? { ...uploaded.background, localUri: null } : null,
         music: uploaded.music.map((asset) => ({ ...asset, uri: '' })),
       };
-      if (onSaved) await onSaved(shared);
+      const workspace = onSaved ? await onSaved(shared) : undefined;
+      if (workspace?.designReadyAt) revisionRef.current = String(workspace.designReadyAt);
+      dirtyRef.current = false;
       setLocked(true);
       setMessage(`✓ Design enregistré, médias Studio synchronisés et rendu final activé${shared.showKheBranding ? ' avec la signature KHE BOOTH' : ' sans branding KHE'}.`);
       requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: 0, animated: true }));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Impossible d’enregistrer le design.');
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }
@@ -384,18 +436,21 @@ export function CreativeStudio({ onClose, api, stationToken, eventId, onSaved }:
     Alert.alert('Supprimer le design ?', 'CAPTURE reviendra au rendu KHE standard pour cet événement.', [
       { text: 'Annuler', style: 'cancel' },
       { text: 'Supprimer', style: 'destructive', onPress: () => void (async () => {
+        savingRef.current = true;
         setSaving(true);
         try {
           const cleared = { ...DEFAULT_CREATIVE_PLAN, showKheBranding: true };
           await SecureStore.deleteItemAsync(STORAGE_KEY);
           await saveCreativePlan(cleared);
-          if (onSaved) await onSaved(cleared);
+          const workspace = onSaved ? await onSaved(cleared) : undefined;
+          if (workspace?.designReadyAt) revisionRef.current = String(workspace.designReadyAt);
+          dirtyRef.current = false;
           setPlan(cleared);
           setLocked(false);
           setMessage('Design supprimé localement et sur l’événement. CAPTURE reviendra au rendu KHE standard.');
         } catch (error) {
           setMessage(error instanceof Error ? error.message : 'Impossible de supprimer le design de l’événement.');
-        } finally { setSaving(false); }
+        } finally { savingRef.current = false; setSaving(false); }
       }) },
     ]);
   }
