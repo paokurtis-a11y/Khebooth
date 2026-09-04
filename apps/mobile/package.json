@@ -1,6 +1,6 @@
 {
   "name": "@khe/mobile",
-  "version": "0.3.11",
+  "version": "0.3.12",
   "private": true,
   "main": "src/main.tsx",
   "scripts": {
