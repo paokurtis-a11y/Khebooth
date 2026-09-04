@@ -47,10 +47,28 @@ test('Studio music replaces microphone audio with selected trimmed playlist trac
   assert.match(graph, /atrim=start=4,atrim=end=12/);assert.match(graph, /volume=0.75/);assert.equal(command.args.includes('[khemusic]'), true);
 });
 
-test('photo background is composited before frame, text and KHE branding', () => {
+test('photo background enriches the capture without masking it, before frame and text', () => {
   const creative = plan({ title: 'Mariage', frameStyle: 'GOLD', showKheBranding: true, background: { localUri: 'file:///bg.jpg', cloudPath: 'cloud/bg.jpg', mimeType: 'image/jpeg', byteSize: 10, cropX: 0, cropY: 0, zoom: 1, opacity: 0.55 } });
   const command = buildRenderCommand({ sourcePath: '/raw.jpg', outputPath: '/final.jpg', mimeType: 'image/jpeg', aspectRatio: '1:1', plan: creative, selectedMusic: null, backgroundPath: '/bg.jpg', musicPath: null, hasSourceAudio: false });
   const graph = command.args[command.args.indexOf('-filter_complex') + 1];
-  const overlayAt = graph.indexOf('[photo][bg]overlay');const drawTextAt = graph.indexOf('drawtext');
-  assert.ok(overlayAt >= 0);assert.ok(drawTextAt > overlayAt);assert.match(graph, /KHE BOOTH/);
+  const blendAt = graph.indexOf('[photo][bg]blend=all_mode=softlight');const drawTextAt = graph.indexOf('drawtext');
+  assert.ok(blendAt >= 0);assert.ok(drawTextAt > blendAt);assert.match(graph, /KHE BOOTH/);assert.doesNotMatch(graph, /\[photo\]\[bg\]overlay/);
+});
+
+test('Studio templates and effects produce a visible premium composition', () => {
+  const command = buildRenderCommand({ sourcePath: '/raw.mp4', outputPath: '/final.mp4', mimeType: 'video/mp4', aspectRatio: '9:16', plan: plan({ template: 'WEDDING', title: 'Notre mariage', subtitle: 'Paris · 2026', colorEffect: 'GOLD', frameStyle: 'GOLD' }), selectedMusic: null, backgroundPath: null, musicPath: null, hasSourceAudio: true, videoEncoder: 'mpeg4' });
+  const graph = command.args[command.args.indexOf('-filter_complex') + 1];
+  assert.match(graph, /colorbalance=rs=.11/);
+  assert.match(graph, /vignette=PI\/5/);
+  assert.match(graph, /color=0x241814@.58/);
+  assert.match(graph, /color=0xEFD08A@.9/);
+  assert.match(graph, /boxcolor=black@.24/);
+  assert.match(graph, /drawbox=x=iw-252:y=ih-77/);
+});
+
+test('microphone audio timestamps are normalized before Studio transformations', () => {
+  const command = buildRenderCommand({ sourcePath: '/raw.mp4', outputPath: '/final.mp4', mimeType: 'video/mp4', aspectRatio: '9:16', plan: plan(), selectedMusic: null, backgroundPath: null, musicPath: null, hasSourceAudio: true, videoEncoder: 'mpeg4' });
+  const graph = command.args[command.args.indexOf('-filter_complex') + 1];
+  assert.match(graph, /\[0:a\]asetpts=PTS-STARTPTS\[abase\]/);
+  assert.equal(command.args.includes('[abase]'), true);
 });

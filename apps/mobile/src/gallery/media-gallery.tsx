@@ -12,6 +12,7 @@ import { shareMediaNatively } from '../sharing/native-share';
 import { StationLinkHealth } from '../station/station-link-health';
 import { rescheduleCaptureProcessing } from '../studio/capture-processing';
 import { rescheduleMediaNow } from '../sync/sync-rescue';
+import { canDeleteRawCapture, deleteRawCapture } from './raw-capture-deletion';
 
 interface MediaGalleryProps {
   eventId: string;
@@ -54,6 +55,7 @@ export function MediaGallery({ eventId, eventName, store, onClose }: MediaGaller
   const [printing, setPrinting] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [rescuing,setRescuing]=useState(false);
+  const [deletingRawId,setDeletingRawId]=useState<string|null>(null);
   const [media, setMedia] = useState<LocalMediaRecord[]>([]);
   const [rawMedia,setRawMedia]=useState<CapturePipelineRecord[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -163,6 +165,23 @@ export function MediaGallery({ eventId, eventName, store, onClose }: MediaGaller
     }finally{setRescuing(false);}
   }
 
+  async function removeRaw(item:CapturePipelineRecord):Promise<void>{
+    setDeletingRawId(item.localId);
+    try{
+      await deleteRawCapture(store,item,(uri)=>{const file=new File(uri);if(file.exists)file.delete();});
+      await readMedia(false,false);
+      setMessage(item.processingState==='READY'?'Fichier brut supprimé définitivement. Le rendu final reste disponible.':'Fichier brut en échec supprimé définitivement. Les nouvelles tentatives Studio sont annulées.');
+    }catch(error){
+      setMessage(error instanceof Error?error.message:'Impossible de supprimer ce fichier brut.');
+    }finally{setDeletingRawId(null);}
+  }
+
+  function confirmDeleteRaw(item:CapturePipelineRecord):void{
+    if(!canDeleteRawCapture(item)){setMessage('Attendez la fin du traitement Studio avant de supprimer ce fichier brut.');return;}
+    const body=item.processingState==='READY'?'Le fichier original sera supprimé définitivement de cette tablette. Le rendu final restera disponible.':'Ce fichier sera supprimé définitivement et les nouvelles tentatives de rendu Studio seront annulées.';
+    Alert.alert('Supprimer ce fichier brut ?',body,[{text:'Annuler',style:'cancel'},{text:'Supprimer définitivement',style:'destructive',onPress:()=>void removeRaw(item)}]);
+  }
+
   async function printPhoto(item: LocalMediaRecord): Promise<void> {
     if (!isPhoto(item)) return;
     setPrinting(true);
@@ -235,11 +254,11 @@ export function MediaGallery({ eventId, eventName, store, onClose }: MediaGaller
         {loading ? <View style={styles.center}><ActivityIndicator /><Text>Chargement…</Text></View> : null}
 
         {!loading?<View style={styles.rawLibrary}>
-          <View><Text style={styles.sectionEyebrow}>ÉTAPE 1 • ORIGINAL CONSERVÉ</Text><Text style={[styles.sectionTitle,styles.sectionTitleLight]}>Fichiers bruts</Text><Text style={styles.rawMuted}>Chaque photo ou vidéo apparaît ici immédiatement. Studio travaille sur une copie et ne modifie jamais l’original.</Text></View>
+          <View><Text style={styles.sectionEyebrow}>ÉTAPE 1 • ORIGINAL CONSERVÉ</Text><Text style={[styles.sectionTitle,styles.sectionTitleLight]}>Fichiers bruts</Text><Text style={styles.rawMuted}>Chaque photo ou vidéo apparaît ici immédiatement. Après le traitement Studio, vous pouvez supprimer le brut sans retirer le rendu final.</Text></View>
           {rawMedia.length===0?<View style={styles.rawEmpty}><Text style={[styles.emptyTitle,styles.sectionTitleLight]}>Aucun fichier brut</Text><Text style={styles.rawMuted}>La prochaine capture sera sécurisée ici avant le traitement Studio.</Text></View>:<View style={styles.rawCards}>{rawMedia.map((item,index)=><View key={item.localId} style={[styles.rawCard,item.processingState==='FAILED'&&styles.rawCardFailed]}>
             {item.mimeType.startsWith('image/')?<Image source={{uri:item.rawUri}} style={styles.rawThumb} resizeMode="cover"/>:<View style={styles.rawVideo}><Text style={styles.playIcon}>▶</Text><Text style={styles.videoLabel}>BRUT</Text></View>}
             <View style={styles.rawCopy}><Text style={styles.rawTitle}>{item.mimeType.startsWith('image/')?'Photo':'Vidéo'} brute {rawMedia.length-index}</Text><Text style={styles.rawMeta}>{new Date(item.capturedAt).toLocaleTimeString()} • {Math.max(1,Math.round(item.rawByteSize/1024/1024))} Mo • {item.aspectRatio}</Text><Text style={[styles.processingState,item.processingState==='FAILED'&&styles.processingStateFailed]}>{processingLabel(item)}</Text>{item.lastError?<Text numberOfLines={2} style={styles.rawError}>{item.lastError}</Text>:null}</View>
-            {item.processingState==='FAILED'?<Pressable disabled={rescuing} style={styles.rawRetry} onPress={()=>void retryProcessing(item)}><Text style={styles.rawRetryText}>RELANCER</Text></Pressable>:null}
+            <View style={styles.rawActions}>{item.processingState==='FAILED'?<Pressable disabled={rescuing||deletingRawId===item.localId} style={styles.rawRetry} onPress={()=>void retryProcessing(item)}><Text style={styles.rawRetryText}>RELANCER</Text></Pressable>:null}<Pressable accessibilityRole="button" accessibilityLabel={`Supprimer définitivement ${item.mimeType.startsWith('image/')?'la photo':'la vidéo'} brute`} disabled={!canDeleteRawCapture(item)||deletingRawId!==null} style={[styles.rawDelete,!canDeleteRawCapture(item)&&styles.rawDeleteDisabled]} onPress={()=>confirmDeleteRaw(item)}><Text style={styles.rawDeleteText}>{deletingRawId===item.localId?'SUPPRESSION…':canDeleteRawCapture(item)?'SUPPRIMER LE BRUT':'STUDIO EN COURS'}</Text></Pressable></View>
           </View>)}</View>}
         </View>:null}
 
@@ -361,6 +380,7 @@ const styles = StyleSheet.create({
   rawVideo:{width:72,height:58,borderRadius:11,backgroundColor:'#08090b',alignItems:'center',justifyContent:'center'},
   rawCopy:{flex:1,minWidth:0},rawTitle:{color:'#fff',fontSize:13,fontWeight:'900'},rawMeta:{color:'#9aa1ad',fontSize:9,marginTop:3},processingState:{color:'#d2ad4f',fontSize:10,fontWeight:'800',marginTop:4},processingStateFailed:{color:'#ff9c9c'},rawError:{color:'#e8b7b7',fontSize:9,lineHeight:13,marginTop:3},
   rawRetry:{borderWidth:1,borderColor:KHE_GOLD,borderRadius:9,paddingHorizontal:9,paddingVertical:8},rawRetryText:{color:KHE_GOLD,fontSize:8,fontWeight:'900'},
+  rawActions:{gap:6,alignItems:'stretch'},rawDelete:{borderWidth:1,borderColor:'#a9444c',borderRadius:9,paddingHorizontal:9,paddingVertical:8,alignItems:'center'},rawDeleteDisabled:{borderColor:'#454950',opacity:.52},rawDeleteText:{color:'#ff9199',fontSize:8,fontWeight:'900'},
   sectionTitle: { fontSize: 19, fontWeight: '900', color: KHE_BLACK },
   cards: { gap: 9 },
   mediaCard: { flexDirection: 'row', backgroundColor: '#f4efe7', borderRadius: 16, padding: 8, gap: 10, alignItems: 'center', borderWidth: 2, borderColor: 'transparent' },
