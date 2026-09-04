@@ -6,6 +6,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { ClientWorkspaceContract, StationExperienceApi } from '../api/station-api';
 import { canRemoveKheBranding } from '../subscription/plan-entitlements';
+import { CreativePresetLibrary } from './creative-preset-library';
+import { applyCreativePreset, type CreativePreset } from './creative-presets';
 import { localizeCreativePlan } from './localize-creative-plan';
 
 export type AudioMode = 'MUSIC_ONLY' | 'MIC_ONLY';
@@ -37,6 +39,7 @@ export interface DesignBackgroundAsset {
 }
 
 export interface CreativePlan {
+  presetId?: string | null;
   template: DesignTemplate;
   title: string;
   subtitle: string;
@@ -64,6 +67,7 @@ const KHE_GREEN = '#16804a';
 const STUDIO_SYNC_INTERVAL_MS = 1_500;
 
 export const DEFAULT_CREATIVE_PLAN: CreativePlan = {
+  presetId: null,
   template: 'NONE',
   title: '',
   subtitle: '',
@@ -317,10 +321,11 @@ export function CreativeStudio({ onClose, api, stationToken, eventId, onSaved }:
     patch({ background: { ...plan.background, ...value } });
   }
 
-  function chooseTemplate(template: DesignTemplate) {
+  function choosePreset(preset: CreativePreset) {
     if (locked) return;
-    const defaults = template === 'WEDDING' ? ['Heureux mariage', 'Merci de partager ce moment avec nous'] : template === 'BIRTHDAY' ? ['Joyeux anniversaire', 'Un souvenir rien que pour vous'] : template === 'GALA' ? ['Soirée exceptionnelle', 'KHE Booth'] : template === 'BABY' ? ['Bienvenue bébé', 'Un joli souvenir'] : ['', ''];
-    patch({ template, title: defaults[0], subtitle: defaults[1] });
+    dirtyRef.current = true;
+    setPlan((current) => applyCreativePreset(current, preset));
+    setMessage(`✓ Modèle « ${preset.name} » appliqué. Personnalisez-le ou enregistrez-le directement.`);
   }
 
   async function importMusic() {
@@ -485,8 +490,7 @@ export function CreativeStudio({ onClose, api, stationToken, eventId, onSaved }:
           <View style={styles.proControl}><View style={[styles.proBadge, canRemoveBranding ? styles.proBadgeActive : undefined]}><Text style={styles.proBadgeText}>{canRemoveBranding ? 'PRO ✓' : 'PRO'}</Text></View><Toggle value={plan.showKheBranding} disabled={locked || !canRemoveBranding} onPress={() => patch({ showKheBranding: !plan.showKheBranding })} /></View>
         </View>
 
-        <Text style={styles.section}>MODÈLES</Text>
-        <View style={styles.wrap}>{(Object.keys(templateLabels) as DesignTemplate[]).map((template) => <Pressable disabled={locked} key={template} style={[styles.chip, plan.template === template && styles.chipActive]} onPress={() => chooseTemplate(template)}><Text style={plan.template === template ? styles.chipTextActive : styles.chipText}>{templateLabels[template]}</Text></Pressable>)}</View>
+        <CreativePresetLibrary selectedPresetId={plan.presetId} disabled={locked} onSelect={choosePreset} />
 
         <Text style={styles.section}>IMAGE DE FOND • RECADRAGE ASSISTÉ</Text>
         <Text style={styles.help}>Ajoutez votre photo ou visuel. KHE l’affiche en mode « cover » automatiquement, puis vous pouvez affiner le cadrage.</Text>
